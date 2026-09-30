@@ -1,0 +1,23 @@
+# Dependencias
+node_modules/
+backend/venv/
+backend/.venv/
+__pycache__/
+*.pyc
+
+# Entorno
+.env
+.env.local
+.env.*.local
+
+# Build
+frontend/.next/
+frontend/out/
+dist/
+build/
+
+# Herramientas
+.DS_Store
+*.log
+.idea/
+.vscode/
