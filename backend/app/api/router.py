@@ -5,6 +5,7 @@ from app.api.routes import (
     catalogos,
     configuracion,
     dashboard,
+    export,
     facturas,
     finanzas,
     gastos,
@@ -24,3 +25,4 @@ api_router.include_router(finanzas.router)
 api_router.include_router(mantenimiento.router)
 api_router.include_router(liquidaciones.router)
 api_router.include_router(configuracion.router)
+api_router.include_router(export.router)

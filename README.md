@@ -23,9 +23,9 @@ docs/        # Plan de desarrollo y documentación
 
 - [x] FASE 0: Fundaciones (auth, roles, tema TEI)
 - [x] FASE 1: Mantenedores (clientes, choferes, tractos, ramplas)
-- [ ] FASE 2: Viajes + Dashboard
-- [ ] FASE 3: Facturación + Cobranzas + IVA
-- [ ] FASE 4: Sueldos + Mantenimiento + Alertas
-- [ ] FASE 5: Reportes + Datos históricos + Preparación cloud
+- [x] FASE 2: Viajes + Dashboard (estados, gastos con boleta, KPIs, alertas)
+- [x] FASE 3: Facturación + Cobranzas + IVA
+- [x] FASE 4: Sueldos + Mantenimiento + Alertas (+ PDF liquidación)
+- [x] FASE 5: Export/Import CSV + Preparación cloud (docs + CI)
 
 Ver `docs/PLAN_DESARROLLO.md` para el detalle completo.

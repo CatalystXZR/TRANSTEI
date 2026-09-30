@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, FileText, XCircle } from "lucide-react";
+import { CheckCircle2, Download, FileText, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { descargarArchivo } from "@/lib/download";
 import { formatCLP, formatFecha } from "@/lib/format";
 import { useAuth } from "@/context/auth-context";
 import { Badge } from "@/components/ui/badge";
@@ -208,6 +209,18 @@ export default function FacturacionPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-[#2A237A]">Facturación</h1>
+        <Button
+          variant="outline"
+          onClick={() =>
+            descargarArchivo("/export/facturas", "facturas.csv").catch((e) =>
+              toast.error(e instanceof Error ? e.message : "Error al exportar"),
+            )
+          }
+          className="text-base"
+        >
+          <Download className="h-5 w-5" />
+          Exportar Facturas
+        </Button>
       </div>
 
       <div className="flex rounded-lg border bg-white p-1 sm:w-fit">

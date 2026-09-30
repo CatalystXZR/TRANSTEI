@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Eye, Plus } from "lucide-react";
+import { Download, Eye, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { descargarArchivo } from "@/lib/download";
 import { formatCLP, formatFecha } from "@/lib/format";
 import { useAuth } from "@/context/auth-context";
 import type {
@@ -136,15 +137,29 @@ export default function ViajesPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-[#2A237A]">Viajes</h1>
-        {puedeEscribir && (
+        <div className="flex flex-wrap gap-2">
           <Button
-            onClick={() => setDialogo(true)}
-            className="bg-[#2A237A] text-base hover:bg-[#2A237A]/90"
+            variant="outline"
+            onClick={() =>
+              descargarArchivo("/export/viajes", "viajes.csv").catch((e) =>
+                toast.error(e instanceof Error ? e.message : "Error al exportar"),
+              )
+            }
+            className="text-base"
           >
-            <Plus className="h-5 w-5" />
-            Nuevo Viaje
+            <Download className="h-5 w-5" />
+            Exportar CSV
           </Button>
-        )}
+          {puedeEscribir && (
+            <Button
+              onClick={() => setDialogo(true)}
+              className="bg-[#2A237A] text-base hover:bg-[#2A237A]/90"
+            >
+              <Plus className="h-5 w-5" />
+              Nuevo Viaje
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">

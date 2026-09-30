@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { InputCLP } from "@/components/ui-inputs/input-clp";
 import { InputRut } from "@/components/ui-inputs/input-rut";
+import { ImportarCsv } from "@/components/importar-csv";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -159,12 +160,20 @@ export default function ChoferesPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-[#2A237A]">Choferes</h1>
-        {puedeEscribir && (
-          <Button onClick={abrirNuevo} className="bg-[#2A237A] text-base hover:bg-[#2A237A]/90">
-            <Plus className="h-5 w-5" />
-            Nuevo Chofer
-          </Button>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {puedeEscribir && (
+            <>
+              <ImportarCsv endpoint="/export/import/choferes" onImportado={recargar} />
+              <Button
+                onClick={abrirNuevo}
+                className="bg-[#2A237A] text-base hover:bg-[#2A237A]/90"
+              >
+                <Plus className="h-5 w-5" />
+                Nuevo Chofer
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="relative max-w-md">

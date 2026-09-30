@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Download, FileCheck, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { descargarArchivo } from "@/lib/download";
 import { formatCLP, formatFecha, formatRut } from "@/lib/format";
 import { useAuth } from "@/context/auth-context";
 import { Badge } from "@/components/ui/badge";
@@ -248,6 +249,18 @@ export default function LiquidacionesPage() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-[#2A237A]">Liquidaciones de Sueldo</h1>
         <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            onClick={() =>
+              descargarArchivo(`/export/liquidaciones?mes=${mes}`, `liquidaciones_${mes}.csv`).catch(
+                (e) => toast.error(e instanceof Error ? e.message : "Error al exportar"),
+              )
+            }
+            className="text-base"
+          >
+            <Download className="h-5 w-5" />
+            Exportar CSV
+          </Button>
           <Label className="text-base">Mes</Label>
           <Input
             type="month"
