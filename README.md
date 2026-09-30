@@ -21,8 +21,8 @@ docs/        # Plan de desarrollo y documentación
 
 ## Estado
 
-- [ ] FASE 0: Fundaciones (auth, roles, tema TEI)
-- [ ] FASE 1: Mantenedores (clientes, choferes, tractos, ramplas)
+- [x] FASE 0: Fundaciones (auth, roles, tema TEI)
+- [x] FASE 1: Mantenedores (clientes, choferes, tractos, ramplas)
 - [ ] FASE 2: Viajes + Dashboard
 - [ ] FASE 3: Facturación + Cobranzas + IVA
 - [ ] FASE 4: Sueldos + Mantenimiento + Alertas

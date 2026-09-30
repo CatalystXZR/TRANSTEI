@@ -1,58 +1,29 @@
-# Guía de Configuración y Ejecución (Fase 0)
+# Guía de Configuración y Ejecución
 
-## Requisitos
+## Estado actual
 
-- Python 3.13+ (venv incluido en `backend/venv`)
-- Node.js 22+ (instalado en `~/.local/node/bin`, ya agregado a `~/.profile`)
-- Un proyecto [Supabase](https://supabase.com) gratuito (DB + Auth + Storage)
+- **Repo GitHub**: `github.com/CatalystXZR/TRANSTEI` (privado, rama `main`)
+- **Proyecto Supabase**: TRANSTEI — ref `luzxxhgozpqsxnwfookb` — región `sa-east-1` (São Paulo)
+- **Migración aplicada**: `supabase/migrations/0001_esquema_base.sql` ✓
+- **Bucket Storage**: `respaldos` (privado) ✓
+- **Usuarios de prueba**: admin / operacion / contabilidad (roles asignados) ✓
+- **Credenciales locales**: `backend/.env` y `frontend/.env.local` (gitignored) ✓
 
-## 1. Crear el proyecto Supabase
-
-1. Crear cuenta/proyecto en https://supabase.com/dashboard
-2. En **SQL Editor**, ejecutar el contenido de `supabase/migrations/0001_esquema_base.sql` (crea tablas, enums, RLS, triggers y seed)
-3. Crear un bucket de Storage llamado `respaldos` (privado) para boletas y PDFs
-4. En **Authentication → Users**, crear los usuarios (dueño, secretaria, contador)
-5. Asignar roles: en **Table Editor → usuarios**, cambiar `rol` del dueño a `admin` (los nuevos usuarios se crean con rol `operacion` automáticamente)
-
-## 2. Configurar el backend
+## Cómo levantar el entorno
 
 ```bash
-cd backend
-cp .env.example .env   # completar con los datos de Supabase → Settings → API
+# Backend (puerto 8000)
+cd backend && ./venv/bin/python -m uvicorn app.main:app --reload --port 8000
+
+# Frontend (puerto 3000)
+cd frontend && npm run dev
 ```
 
-| Variable | Dónde obtenerla |
-|---|---|
-| `SUPABASE_URL` | Settings → API → Project URL |
-| `SUPABASE_ANON_KEY` | Settings → API → anon public |
-| `SUPABASE_SERVICE_ROLE_KEY` | Settings → API → service_role (secreto) |
-| `SUPABASE_JWT_SECRET` | Settings → API → JWT Settings |
-| `DATABASE_URL` | Settings → Database → Connection string → Session pooler (cambiar `postgresql://` por `postgresql+psycopg://`) |
+## Cómo crear nuevos usuarios
 
-Ejecutar:
-
-```bash
-./venv/bin/python -m uvicorn app.main:app --reload --port 8000
-```
-
-Verificar: `http://localhost:8000/health` → `{"status":"ok",...}`
-
-## 3. Configurar el frontend
-
-```bash
-cd frontend
-cp .env.local.example .env.local  # completar con los datos de Supabase
-npm run dev                        # http://localhost:3000
-```
-
-Variables: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1`
-
-## 4. Verificación Fase 0 (hito)
-
-- [ ] Login con email/contraseña de Supabase funciona
-- [ ] El sistema muestra el rol correcto (admin/operación/contabilidad)
-- [ ] El menú lateral filtra opciones según el rol
-- [ ] Cerrar sesión y volver a entrar funciona
+1. En Supabase Dashboard → Authentication → Add user (con confirmación de email)
+2. En Table Editor → `usuarios`, asignar el rol (`admin`, `operacion`, `contabilidad`)
+   - El trigger `on_auth_user_created` crea el perfil automáticamente con rol `operacion`
 
 ## Roles
 
@@ -60,4 +31,16 @@ Variables: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PU
 |---|---|
 | admin (dueño) | Todo el sistema |
 | operacion (secretaria) | Dashboard, Viajes, Clientes, Choferes, Flota, Mantenimiento, Facturación |
-| contabilidad (contador) | Dashboard, Viajes, Facturación, Cobranzas, IVA, Liquidaciones |
+| contabilidad (contador) | Dashboard, Viajes, Facturación, Cobranzas, IVA, Liquidaciones (catalogos en solo lectura) |
+
+## Migraciones futuras
+
+Cada cambio de esquema se agrega como `supabase/migrations/NNNN_descripcion.sql` y se aplica con:
+
+```bash
+cd backend
+./venv/bin/python - << 'EOF'
+import psycopg
+# usar DATABASE_URL de backend/.env
+EOF
+```
