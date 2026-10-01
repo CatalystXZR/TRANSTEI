@@ -20,20 +20,68 @@ export interface NavItem {
   label: string;
   icon: LucideIcon;
   roles: Rol[];
-  fase: string;
 }
 
-export const NAV_ITEMS: NavItem[] = [
-  { href: "/dashboard", label: "Panel de Control", icon: LayoutDashboard, roles: ["admin", "operacion", "contabilidad"], fase: "Fase 2" },
-  { href: "/viajes", label: "Viajes", icon: Truck, roles: ["admin", "operacion", "contabilidad"], fase: "Fase 2" },
-  { href: "/clientes", label: "Clientes", icon: Users, roles: ["admin", "operacion"], fase: "Fase 1" },
-  { href: "/choferes", label: "Choferes", icon: UserRound, roles: ["admin", "operacion"], fase: "Fase 1" },
-  { href: "/flota", label: "Flota", icon: Container, roles: ["admin", "operacion"], fase: "Fase 1" },
-  { href: "/mantenimiento", label: "Mantenimiento", icon: Wrench, roles: ["admin", "operacion"], fase: "Fase 4" },
-  { href: "/facturacion", label: "Facturación", icon: FileText, roles: ["admin", "operacion", "contabilidad"], fase: "Fase 3" },
-  { href: "/cobranzas", label: "Cobranzas", icon: HandCoins, roles: ["admin", "contabilidad"], fase: "Fase 3" },
-  { href: "/iva", label: "IVA", icon: Calculator, roles: ["admin", "contabilidad"], fase: "Fase 3" },
-  { href: "/liquidaciones", label: "Liquidaciones", icon: Wallet, roles: ["admin", "contabilidad"], fase: "Fase 4" },
-  { href: "/kpis", label: "Indicadores (KPIs)", icon: Gauge, roles: ["admin"], fase: "Fase 6" },
-  { href: "/configuracion", label: "Configuración", icon: Settings, roles: ["admin"], fase: "Fase 0" },
+export interface NavGrupo {
+  titulo: string;
+  items: NavItem[];
+}
+
+const TODOS: Rol[] = ["admin", "operacion", "contabilidad"];
+
+export const NAV_GRUPOS: NavGrupo[] = [
+  {
+    titulo: "General",
+    items: [{ href: "/dashboard", label: "Panel de control", icon: LayoutDashboard, roles: TODOS }],
+  },
+  {
+    titulo: "Operación",
+    items: [
+      { href: "/viajes", label: "Viajes", icon: Truck, roles: TODOS },
+      { href: "/flota", label: "Flota", icon: Container, roles: ["admin", "operacion"] },
+      { href: "/mantenimiento", label: "Mantenimiento", icon: Wrench, roles: ["admin", "operacion"] },
+    ],
+  },
+  {
+    titulo: "Finanzas",
+    items: [
+      { href: "/facturacion", label: "Facturación", icon: FileText, roles: TODOS },
+      { href: "/cobranzas", label: "Cobranzas", icon: HandCoins, roles: ["admin", "contabilidad"] },
+      { href: "/iva", label: "IVA mensual", icon: Calculator, roles: ["admin", "contabilidad"] },
+      { href: "/liquidaciones", label: "Liquidaciones", icon: Wallet, roles: ["admin", "contabilidad"] },
+    ],
+  },
+  {
+    titulo: "Maestros",
+    items: [
+      { href: "/clientes", label: "Clientes", icon: Users, roles: ["admin", "operacion"] },
+      { href: "/choferes", label: "Choferes", icon: UserRound, roles: ["admin", "operacion"] },
+    ],
+  },
+  {
+    titulo: "Sistema",
+    items: [
+      { href: "/kpis", label: "Indicadores", icon: Gauge, roles: ["admin"] },
+      { href: "/configuracion", label: "Configuración", icon: Settings, roles: ["admin"] },
+    ],
+  },
 ];
+
+/** Lista plana (compatibilidad) */
+export const NAV_ITEMS: NavItem[] = NAV_GRUPOS.flatMap((g) => g.items);
+
+export function gruposParaRol(rol: Rol | undefined): NavGrupo[] {
+  if (!rol) return [];
+  return NAV_GRUPOS.map((g) => ({ ...g, items: g.items.filter((i) => i.roles.includes(rol)) })).filter(
+    (g) => g.items.length > 0,
+  );
+}
+
+export function tituloDeRuta(pathname: string): { grupo: string; label: string } | null {
+  for (const g of NAV_GRUPOS) {
+    for (const i of g.items) {
+      if (pathname === i.href || pathname.startsWith(`${i.href}/`)) return { grupo: g.titulo, label: i.label };
+    }
+  }
+  return null;
+}

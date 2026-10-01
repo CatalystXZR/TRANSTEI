@@ -1,24 +1,31 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Camera, ExternalLink, Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  FileImage,
+  Paperclip,
+  Plus,
+  Receipt,
+  Trash2,
+  Truck,
+  Undo2,
+} from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "cn";
 import { api, apiUpload } from "@/lib/api";
 import { formatCLP, formatFecha } from "@/lib/format";
 import { useAuth } from "@/context/auth-context";
-import type { CategoriaGasto, Gasto, Viaje } from "@/types";
-import {
-  CATEGORIA_GASTO_LABEL,
-  ESTADO_VIAJE_COLOR,
-  ESTADO_VIAJE_LABEL,
-} from "@/types";
-import { Button } from "@/components/ui/button";
+import type { CategoriaGasto, EstadoViaje, Gasto, PreviewRentabilidad, Viaje } from "@/types";
+import { CATEGORIA_GASTO_LABEL, ESTADO_VIAJE_LABEL, ESTADO_VIAJE_TONO, TONO_KPI, formatValorKpi } from "@/types";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { InputCLP } from "@/components/ui-inputs/input-clp";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -27,41 +34,66 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EstadoVacio, FilaVacia, Panel, Patente, StatTile, StatusBadge } from "@/components/sistema";
+import { Campo, SelectSimple } from "@/components/formulario";
 
 const CATEGORIAS = Object.keys(CATEGORIA_GASTO_LABEL) as CategoriaGasto[];
+const PASOS: EstadoViaje[] = ["programado", "en_ruta", "finalizado", "facturado"];
 
-const ACCIONES_ESTADO: Record<string, { destino: string; etiqueta: string }[]> = {
-  programado: [{ destino: "en_ruta", etiqueta: "Iniciar Viaje" }],
-  en_ruta: [
-    { destino: "finalizado", etiqueta: "Finalizar Viaje" },
-    { destino: "programado", etiqueta: "Volver a Programado" },
-  ],
-  finalizado: [{ destino: "en_ruta", etiqueta: "Volver a En Ruta" }],
-  facturado: [{ destino: "finalizado", etiqueta: "Quitar de Facturación" }],
+const AVANZAR: Partial<Record<EstadoViaje, { destino: EstadoViaje; etiqueta: string }>> = {
+  programado: { destino: "en_ruta", etiqueta: "Iniciar viaje" },
+  en_ruta: { destino: "finalizado", etiqueta: "Finalizar viaje" },
 };
+const RETROCEDER: Partial<Record<EstadoViaje, { destino: EstadoViaje; etiqueta: string }>> = {
+  en_ruta: { destino: "programado", etiqueta: "Volver a programado" },
+  finalizado: { destino: "en_ruta", etiqueta: "Reabrir (en ruta)" },
+};
+
+function hoyISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function Progreso({ estado }: { estado: EstadoViaje }) {
+  const idx = PASOS.indexOf(estado);
+  return (
+    <ol className="grid grid-cols-4 gap-s2" aria-label="Progreso del viaje">
+      {PASOS.map((p, i) => {
+        const hecho = i < idx;
+        const actual = i === idx;
+        return (
+          <li key={p} className="min-w-0" aria-current={actual ? "step" : undefined}>
+            <div
+              className={cn(
+                "h-1.5 rounded-full transition-colors duration-500",
+                hecho ? "bg-marca" : actual ? "bg-senal" : "bg-borde",
+              )}
+            />
+            <p
+              className={cn(
+                "mt-s2 flex items-center gap-1 truncate text-[13.5px]",
+                actual ? "font-semibold text-tinta" : hecho ? "text-tinta-2" : "text-tinta-3",
+              )}
+            >
+              {hecho && <Check className="size-3.5 text-marca" />}
+              {ESTADO_VIAJE_LABEL[p]}
+            </p>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
 
 export default function ViajeDetallePage() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
   const { usuario } = useAuth();
   const [viaje, setViaje] = useState<Viaje | null>(null);
   const [gastos, setGastos] = useState<Gasto[]>([]);
+  const [renta, setRenta] = useState<PreviewRentabilidad | null>(null);
   const [cargando, setCargando] = useState(true);
+  const [cambiando, setCambiando] = useState(false);
 
   const [dialogoGasto, setDialogoGasto] = useState(false);
   const [guardando, setGuardando] = useState(false);
@@ -69,24 +101,24 @@ export default function ViajeDetallePage() {
     categoria: "combustible" as CategoriaGasto,
     monto: 0,
     iva_recuperable: false,
-    fecha: new Date().toISOString().slice(0, 10),
+    fecha: "",
     notas: "",
   });
   const [archivo, setArchivo] = useState<File | null>(null);
+  const [eliminando, setEliminando] = useState<Gasto | null>(null);
 
   const puedeEscribir = usuario?.rol === "admin" || usuario?.rol === "operacion";
 
   const cargar = useCallback(() => {
-    Promise.all([
+    return Promise.all([
       api.get<Viaje>(`/viajes/${params.id}`),
       api.get<Gasto[]>(`/viajes/${params.id}/gastos`),
-    ])
-      .then(([v, g]) => {
-        setViaje(v ?? null);
-        setGastos(g ?? []);
-      })
-      .catch((e) => toast.error(e instanceof Error ? e.message : "Error al cargar"))
-      .finally(() => setCargando(false));
+      api.get<PreviewRentabilidad>(`/viajes/${params.id}/rentabilidad`).catch(() => null),
+    ]).then(([v, g, r]) => {
+      setViaje(v ?? null);
+      setGastos(g ?? []);
+      setRenta(r ?? null);
+    });
   }, [params.id]);
 
   useEffect(() => {
@@ -94,11 +126,13 @@ export default function ViajeDetallePage() {
     Promise.all([
       api.get<Viaje>(`/viajes/${params.id}`),
       api.get<Gasto[]>(`/viajes/${params.id}/gastos`),
+      api.get<PreviewRentabilidad>(`/viajes/${params.id}/rentabilidad`).catch(() => null),
     ])
-      .then(([v, g]) => {
+      .then(([v, g, r]) => {
         if (!activo) return;
         setViaje(v ?? null);
         setGastos(g ?? []);
+        setRenta(r ?? null);
       })
       .catch((e) => {
         if (activo) toast.error(e instanceof Error ? e.message : "Error al cargar");
@@ -111,14 +145,23 @@ export default function ViajeDetallePage() {
     };
   }, [params.id]);
 
-  async function cambiarEstado(destino: string) {
+  async function cambiarEstado(destino: EstadoViaje) {
+    setCambiando(true);
     try {
       await api.patch(`/viajes/${params.id}/estado`, { estado: destino });
-      toast.success(`Viaje actualizado: ${ESTADO_VIAJE_LABEL[destino as keyof typeof ESTADO_VIAJE_LABEL]}`);
-      cargar();
+      toast.success(`Estado actualizado: ${ESTADO_VIAJE_LABEL[destino]}`);
+      await cargar();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Error al cambiar estado");
+    } finally {
+      setCambiando(false);
     }
+  }
+
+  function abrirGasto() {
+    setFormGasto({ categoria: "combustible", monto: 0, iva_recuperable: false, fecha: hoyISO(), notas: "" });
+    setArchivo(null);
+    setDialogoGasto(true);
   }
 
   async function guardarGasto() {
@@ -131,15 +174,14 @@ export default function ViajeDetallePage() {
     fd.append("categoria", formGasto.categoria);
     fd.append("monto", String(formGasto.monto));
     fd.append("iva_recuperable", String(formGasto.iva_recuperable));
-    fd.append("fecha", formGasto.fecha);
+    fd.append("fecha", formGasto.fecha || hoyISO());
     if (formGasto.notas.trim()) fd.append("notas", formGasto.notas.trim());
     if (archivo) fd.append("archivo", archivo);
     try {
       await apiUpload(`/viajes/${params.id}/gastos`, fd);
       toast.success("Gasto registrado");
       setDialogoGasto(false);
-      setArchivo(null);
-      cargar();
+      await cargar();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Error al guardar gasto");
     } finally {
@@ -147,12 +189,13 @@ export default function ViajeDetallePage() {
     }
   }
 
-  async function eliminarGasto(gasto: Gasto) {
-    if (!confirm(`¿Eliminar este gasto de ${formatCLP(gasto.monto)}?`)) return;
+  async function confirmarEliminar() {
+    if (!eliminando) return;
     try {
-      await api.del(`/gastos/${gasto.id}`);
+      await api.del(`/gastos/${eliminando.id}`);
       toast.success("Gasto eliminado");
-      cargar();
+      setEliminando(null);
+      await cargar();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Error al eliminar");
     }
@@ -161,192 +204,210 @@ export default function ViajeDetallePage() {
   async function verRespaldo(gasto: Gasto) {
     try {
       const res = await api.get<{ url: string }>(`/gastos/${gasto.id}/respaldo`);
-      if (res?.url) window.open(res.url, "_blank");
+      if (res?.url) window.open(res.url, "_blank", "noopener");
     } catch {
       toast.error("No se pudo obtener el respaldo");
     }
   }
 
   if (cargando) {
-    return <p className="py-10 text-center text-gray-500">Cargando viaje…</p>;
-  }
-  if (!viaje) {
     return (
-      <div className="space-y-4 py-10 text-center">
-        <p className="text-lg text-gray-500">Viaje no encontrado</p>
-        <Button variant="outline" onClick={() => router.push("/viajes")}>
-          Volver a Viajes
-        </Button>
+      <div className="space-y-s5" aria-busy="true">
+        <Skeleton className="h-5 w-32" />
+        <Skeleton className="h-10 w-96 max-w-full" />
+        <Skeleton className="h-2 w-full" />
+        <div className="grid gap-s3 md:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-32 w-full rounded-xl" />
+          ))}
+        </div>
       </div>
     );
   }
 
+  if (!viaje) {
+    return (
+      <Panel>
+        <EstadoVacio
+          icono={Truck}
+          titulo="Viaje no encontrado"
+          descripcion="Es posible que haya sido eliminado."
+          accion={
+            <Link href="/viajes" className={buttonVariants({ variant: "outline" })}>
+              <ArrowLeft /> Volver a viajes
+            </Link>
+          }
+        />
+      </Panel>
+    );
+  }
+
   const totalGastos = gastos.reduce((acc, g) => acc + Number(g.monto), 0);
-  const rentabilidad = Number(viaje.valor_flete_neto) - totalGastos;
+  const avanzar = AVANZAR[viaje.estado];
+  const retroceder = RETROCEDER[viaje.estado];
+  const tonoRenta = renta && !renta.error ? (TONO_KPI[renta.color] ?? "neutro") : "neutro";
+  const margen = renta?.detalle?.margen_viaje;
+
+  const datos: [string, React.ReactNode][] = [
+    ["Cliente", viaje.cliente_nombre],
+    ["Chofer", viaje.chofer_nombre],
+    ["Tracto", <Patente key="t">{viaje.tracto_patente}</Patente>],
+    ["Rampla", <Patente key="r">{viaje.rampla_patente}</Patente>],
+    ["Inicio", formatFecha(viaje.fecha_inicio)],
+    ["Término", viaje.fecha_fin ? formatFecha(viaje.fecha_fin) : "—"],
+  ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => router.push("/viajes")} aria-label="Volver">
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold text-[#2A237A]">
-              {viaje.origen} → {viaje.destino}
+    <div className="space-y-s5">
+      <div className="space-y-s4">
+        <Link
+          href="/viajes"
+          className="inline-flex items-center gap-1.5 rounded-md text-[15px] font-medium text-tinta-3 transition-colors hover:text-marca"
+        >
+          <ArrowLeft className="size-4" /> Viajes
+        </Link>
+        <div className="flex flex-wrap items-start justify-between gap-s4">
+          <div className="min-w-0 space-y-s2">
+            <div className="flex flex-wrap items-center gap-s2">
+              <StatusBadge tono={ESTADO_VIAJE_TONO[viaje.estado]}>{ESTADO_VIAJE_LABEL[viaje.estado]}</StatusBadge>
+              <span className="rotulo">Viaje · {formatFecha(viaje.fecha_inicio)}</span>
+            </div>
+            <h1 className="flex flex-wrap items-center gap-x-s3 text-[30px] leading-tight font-semibold sm:text-[38px]">
+              {viaje.origen}
+              <ArrowRight className="size-7 text-tinta-3" />
+              {viaje.destino}
             </h1>
-            <p className="text-base text-gray-500">{formatFecha(viaje.fecha_inicio)}</p>
           </div>
-          <Badge className={`${ESTADO_VIAJE_COLOR[viaje.estado]} text-sm`}>
-            {ESTADO_VIAJE_LABEL[viaje.estado]}
-          </Badge>
-        </div>
-        {puedeEscribir &&
-          (ACCIONES_ESTADO[viaje.estado] ?? []).map((a) => (
-            <Button
-              key={a.destino}
-              onClick={() => cambiarEstado(a.destino)}
-              className="bg-[#2A237A] text-base hover:bg-[#2A237A]/90"
-            >
-              {a.etiqueta}
-            </Button>
-          ))}
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base text-gray-500">Valor Flete</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-bold text-[#2A237A]">
-              {formatCLP(viaje.valor_flete_neto)}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base text-gray-500">Gastos de Ruta</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-bold text-red-600">{formatCLP(totalGastos)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base text-gray-500">Rentabilidad (Flete − Gastos)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className={`text-3xl font-bold ${rentabilidad >= 0 ? "text-green-700" : "text-red-600"}`}>
-              {formatCLP(rentabilidad)}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Datos del Viaje</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 text-base sm:grid-cols-2 lg:grid-cols-3">
-          <div>
-            <p className="text-gray-500">Cliente</p>
-            <p className="font-medium">{viaje.cliente_nombre}</p>
-          </div>
-          <div>
-            <p className="text-gray-500">Chofer</p>
-            <p className="font-medium">{viaje.chofer_nombre}</p>
-          </div>
-          <div>
-            <p className="text-gray-500">Camión</p>
-            <p className="font-medium">{viaje.tracto_patente}</p>
-          </div>
-          <div>
-            <p className="text-gray-500">Rampla</p>
-            <p className="font-medium">{viaje.rampla_patente}</p>
-          </div>
-          <div>
-            <p className="text-gray-500">Fecha Fin</p>
-            <p className="font-medium">{formatFecha(viaje.fecha_fin)}</p>
-          </div>
-          {viaje.notas && (
-            <div>
-              <p className="text-gray-500">Notas</p>
-              <p className="font-medium">{viaje.notas}</p>
+          {puedeEscribir && (
+            <div className="flex flex-wrap gap-s2">
+              {retroceder && (
+                <Button variant="ghost" onClick={() => cambiarEstado(retroceder.destino)} disabled={cambiando}>
+                  <Undo2 /> {retroceder.etiqueta}
+                </Button>
+              )}
+              {avanzar && (
+                <Button size="lg" onClick={() => cambiarEstado(avanzar.destino)} disabled={cambiando}>
+                  {avanzar.etiqueta} <ArrowRight />
+                </Button>
+              )}
+              {viaje.estado === "finalizado" && (
+                <Link href="/facturacion" className={buttonVariants({ size: "lg" })}>
+                  <Receipt /> Facturar
+                </Link>
+              )}
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-[#2A237A]">Gastos del Viaje</h2>
-          {puedeEscribir && viaje.estado !== "facturado" && (
-            <Button onClick={() => setDialogoGasto(true)} className="bg-[#2A237A] text-base hover:bg-[#2A237A]/90">
-              <Plus className="h-5 w-5" />
-              Registrar Gasto
-            </Button>
-          )}
         </div>
-        <div className="overflow-x-auto rounded-lg border bg-white">
+        <Progreso estado={viaje.estado} />
+      </div>
+
+      <section className="grid gap-s3 md:grid-cols-3" aria-label="Resultado del viaje">
+        <StatTile etiqueta="Valor del flete" valor={formatCLP(viaje.valor_flete_neto)} detalle="Neto, sin IVA" tono="info" />
+        <StatTile
+          etiqueta="Gastos de ruta"
+          valor={formatCLP(totalGastos)}
+          detalle={`${gastos.length} ${gastos.length === 1 ? "registro" : "registros"}`}
+          tono={totalGastos > 0 ? "atencion" : "neutro"}
+        />
+        <StatTile
+          etiqueta="Rentabilidad"
+          valor={renta && !renta.error ? formatValorKpi(renta.valor, renta.formato) : "—"}
+          detalle={margen !== undefined ? `Margen ${formatCLP(margen)} (incluye comisión)` : "Según indicador configurado"}
+          tono={tonoRenta}
+        />
+      </section>
+
+      <div className="grid gap-s4 xl:grid-cols-[1fr_2fr]">
+        <Panel titulo="Detalle">
+          <dl className="divide-y divide-borde">
+            {datos.map(([k, v]) => (
+              <div key={k} className="flex items-center justify-between gap-s3 px-s4 py-s3">
+                <dt className="text-[15px] text-tinta-3">{k}</dt>
+                <dd className="text-right text-[16px] font-medium">{v}</dd>
+              </div>
+            ))}
+            {viaje.notas && (
+              <div className="px-s4 py-s3">
+                <dt className="text-[15px] text-tinta-3">Notas</dt>
+                <dd className="mt-1 text-[15.5px]">{viaje.notas}</dd>
+              </div>
+            )}
+          </dl>
+        </Panel>
+
+        <Panel
+          titulo="Gastos del viaje"
+          descripcion="Combustible, peajes, viáticos y otros, con su respaldo"
+          acciones={
+            puedeEscribir &&
+            viaje.estado !== "facturado" && (
+              <Button size="sm" onClick={abrirGasto}>
+                <Plus /> Registrar gasto
+              </Button>
+            )
+          }
+        >
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-base">Fecha</TableHead>
-                <TableHead className="text-base">Categoría</TableHead>
-                <TableHead className="text-base">Monto</TableHead>
-                <TableHead className="text-base">IVA Rec.</TableHead>
-                <TableHead className="text-base">Respaldo</TableHead>
-                {puedeEscribir && <TableHead className="w-16 text-base"></TableHead>}
+                <TableHead>Fecha</TableHead>
+                <TableHead>Categoría</TableHead>
+                <TableHead className="text-right">Monto</TableHead>
+                <TableHead>IVA</TableHead>
+                <TableHead>Respaldo</TableHead>
+                {puedeEscribir && (
+                  <TableHead className="w-12">
+                    <span className="sr-only">Acciones</span>
+                  </TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
               {gastos.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-gray-500">
-                    Sin gastos registrados
-                  </TableCell>
-                </TableRow>
+                <FilaVacia
+                  columnas={puedeEscribir ? 6 : 5}
+                  icono={Receipt}
+                  titulo="Sin gastos registrados"
+                  descripcion="Registre combustible, peajes y otros gastos para conocer la rentabilidad real."
+                />
               ) : (
                 gastos.map((g) => (
                   <TableRow key={g.id}>
-                    <TableCell className="text-base">{formatFecha(g.fecha)}</TableCell>
-                    <TableCell className="text-base">
-                      {CATEGORIA_GASTO_LABEL[g.categoria]}
+                    <TableCell className="text-tinta-2">{formatFecha(g.fecha)}</TableCell>
+                    <TableCell>
+                      <span className="font-medium">{CATEGORIA_GASTO_LABEL[g.categoria]}</span>
+                      {g.notas && <span className="block text-[13.5px] text-tinta-3">{g.notas}</span>}
                     </TableCell>
-                    <TableCell className="text-base font-semibold">{formatCLP(g.monto)}</TableCell>
-                    <TableCell className="text-base">
+                    <TableCell className="cifra text-right font-semibold">{formatCLP(g.monto)}</TableCell>
+                    <TableCell>
                       {g.iva_recuperable ? (
-                        <Badge className="bg-green-100 text-green-800">Sí</Badge>
+                        <StatusBadge tono="ok">Recuperable</StatusBadge>
                       ) : (
-                        <Badge className="bg-gray-100 text-gray-600">No</Badge>
+                        <span className="text-[14px] text-tinta-3">No</span>
                       )}
                     </TableCell>
                     <TableCell>
                       {g.respaldo_url ? (
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => verRespaldo(g)}
-                          aria-label="Ver respaldo"
-                        >
-                          <ExternalLink className="h-4 w-4" />
+                        <Button variant="ghost" size="xs" onClick={() => verRespaldo(g)}>
+                          <FileImage /> Ver
                         </Button>
                       ) : (
-                        <span className="text-sm text-gray-400">-</span>
+                        <span className="text-[14px] text-tinta-3">—</span>
                       )}
                     </TableCell>
                     {puedeEscribir && (
                       <TableCell>
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          className="border-red-200 text-red-600 hover:bg-red-50"
-                          onClick={() => eliminarGasto(g)}
-                          aria-label="Eliminar gasto"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {viaje.estado !== "facturado" && (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="text-tinta-3 hover:bg-critico-tenue hover:text-critico"
+                            onClick={() => setEliminando(g)}
+                            aria-label={`Eliminar gasto de ${formatCLP(g.monto)}`}
+                          >
+                            <Trash2 />
+                          </Button>
+                        )}
                       </TableCell>
                     )}
                   </TableRow>
@@ -354,100 +415,81 @@ export default function ViajeDetallePage() {
               )}
             </TableBody>
           </Table>
-        </div>
+        </Panel>
       </div>
 
       <Dialog open={dialogoGasto} onOpenChange={setDialogoGasto}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-xl">Registrar Gasto</DialogTitle>
-            <DialogDescription className="text-base">
-              Adjunte una foto de la boleta si la tiene a mano.
-            </DialogDescription>
+            <DialogTitle>Registrar gasto</DialogTitle>
+            <DialogDescription>Adjunte la foto de la boleta si la tiene a mano.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-base">Categoría</Label>
-                <Select
-                  value={formGasto.categoria}
-                  onValueChange={(v) => setFormGasto({ ...formGasto, categoria: v as CategoriaGasto })}
-                >
-                  <SelectTrigger className="text-base">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CATEGORIAS.map((c) => (
-                      <SelectItem key={c} value={c} className="text-base">
-                        {CATEGORIA_GASTO_LABEL[c]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-base">Monto ($) *</Label>
-                <InputCLP
-                  value={formGasto.monto}
-                  onChange={(v) => setFormGasto({ ...formGasto, monto: v })}
+          <div className="space-y-s4">
+            <div className="grid gap-s3 sm:grid-cols-2">
+              <Campo etiqueta="Categoría" htmlFor="g-cat">
+                <SelectSimple
+                  id="g-cat"
+                  valor={formGasto.categoria}
+                  onCambio={(v) => setFormGasto({ ...formGasto, categoria: (v || "combustible") as CategoriaGasto })}
+                  opciones={CATEGORIAS.map((c) => ({ valor: c, etiqueta: CATEGORIA_GASTO_LABEL[c] }))}
                 />
+              </Campo>
+              <Campo etiqueta="Monto" htmlFor="g-monto" requerido>
+                <InputCLP id="g-monto" value={formGasto.monto} onChange={(v) => setFormGasto({ ...formGasto, monto: v })} className="cifra font-semibold" />
+              </Campo>
+              <Campo etiqueta="Fecha" htmlFor="g-fecha">
+                <Input id="g-fecha" type="date" value={formGasto.fecha} onChange={(e) => setFormGasto({ ...formGasto, fecha: e.target.value })} />
+              </Campo>
+              <div className="flex items-end">
+                <label className="flex h-11 w-full cursor-pointer items-center gap-s3 rounded-lg border border-borde-fuerte bg-superficie px-3 text-[15.5px] transition-colors hover:border-marca/40 hover:bg-marca-tenue/40">
+                  <input
+                    type="checkbox"
+                    checked={formGasto.iva_recuperable}
+                    onChange={(e) => setFormGasto({ ...formGasto, iva_recuperable: e.target.checked })}
+                    className="size-[18px]"
+                  />
+                  Tiene IVA recuperable
+                </label>
               </div>
             </div>
-            <div className="grid grid-cols-2 items-end gap-4">
-              <div className="space-y-2">
-                <Label className="text-base">Fecha</Label>
-                <Input
-                  type="date"
-                  value={formGasto.fecha}
-                  onChange={(e) => setFormGasto({ ...formGasto, fecha: e.target.value })}
-                  className="text-base"
-                />
-              </div>
-              <label className="flex items-center gap-2 pb-2 text-base">
-                <input
-                  type="checkbox"
-                  checked={formGasto.iva_recuperable}
-                  onChange={(e) =>
-                    setFormGasto({ ...formGasto, iva_recuperable: e.target.checked })
-                  }
-                  className="h-5 w-5 accent-[#2A237A]"
-                />
-                IVA recuperable
-              </label>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-base">Notas</Label>
-              <Input
-                value={formGasto.notas}
-                onChange={(e) => setFormGasto({ ...formGasto, notas: e.target.value })}
-                className="text-base"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-base">Foto boleta / PDF</Label>
-              <Input
-                type="file"
-                accept="image/*,.pdf"
-                onChange={(e) => setArchivo(e.target.files?.[0] ?? null)}
-                className="text-base"
-              />
+            <Campo etiqueta="Notas" htmlFor="g-notas">
+              <Input id="g-notas" value={formGasto.notas} onChange={(e) => setFormGasto({ ...formGasto, notas: e.target.value })} placeholder="Opcional" />
+            </Campo>
+            <Campo etiqueta="Boleta o factura (foto o PDF)" htmlFor="g-archivo" ayuda={archivo ? undefined : "JPG, PNG, HEIC o PDF"}>
+              <Input id="g-archivo" type="file" accept="image/*,.pdf" onChange={(e) => setArchivo(e.target.files?.[0] ?? null)} className="h-auto py-2" />
               {archivo && (
-                <p className="flex items-center gap-1 text-sm text-green-700">
-                  <Camera className="h-4 w-4" /> {archivo.name}
+                <p className="flex items-center gap-1.5 text-[14px] text-ok">
+                  <Paperclip className="size-4" /> {archivo.name}
                 </p>
               )}
-            </div>
+            </Campo>
           </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDialogoGasto(false)} className="text-base">
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogoGasto(false)}>
               Cancelar
             </Button>
-            <Button
-              onClick={guardarGasto}
-              disabled={guardando}
-              className="bg-[#2A237A] text-base hover:bg-[#2A237A]/90"
-            >
-              {guardando ? "Guardando…" : "Guardar Gasto"}
+            <Button onClick={guardarGasto} disabled={guardando}>
+              {guardando ? "Guardando…" : "Guardar gasto"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!eliminando} onOpenChange={(o) => !o && setEliminando(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Eliminar gasto</DialogTitle>
+            <DialogDescription>
+              Se eliminará el gasto de <strong>{eliminando ? formatCLP(eliminando.monto) : ""}</strong>. Esta acción no
+              se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEliminando(null)}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={confirmarEliminar}>
+              <Trash2 /> Eliminar
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -455,4 +497,3 @@ export default function ViajeDetallePage() {
     </div>
   );
 }
-

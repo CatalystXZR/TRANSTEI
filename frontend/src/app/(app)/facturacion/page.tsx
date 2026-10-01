@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CheckCircle2, Download, FileText, XCircle } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { ArrowRight, CheckCircle2, Download, FileCheck2, FileText, Inbox, XCircle } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "cn";
 import { api } from "@/lib/api";
 import { descargarArchivo } from "@/lib/download";
 import { formatCLP, formatFecha } from "@/lib/format";
 import { useAuth } from "@/context/auth-context";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -19,34 +19,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  EstadoVacio,
+  FilaVacia,
+  FilasCargando,
+  PageHeader,
+  Panel,
+  Segmentado,
+  StatusBadge,
+  type Tono,
+} from "@/components/sistema";
+import { Campo, SelectSimple } from "@/components/formulario";
 
 interface GrupoFletes {
   cliente_id: string;
   cliente_nombre: string;
   dias_pago: number;
   total_neto: string;
-  viajes: {
-    id: string;
-    origen: string;
-    destino: string;
-    valor_flete_neto: string;
-    fecha_inicio: string;
-  }[];
+  viajes: { id: string; origen: string; destino: string; valor_flete_neto: string; fecha_inicio: string }[];
 }
 
 interface Factura {
@@ -65,36 +57,41 @@ interface Factura {
   viajes: { id: string; origen: string; destino: string; valor_flete_neto: string }[];
 }
 
-const ESTADO_FACTURA_COLOR: Record<string, string> = {
-  pendiente: "bg-yellow-500 text-black",
-  pagada: "bg-green-600 text-white",
-  anulada: "bg-red-100 text-red-700",
+const ESTADO_FACTURA: Record<Factura["estado"], { tono: Tono; label: string }> = {
+  pendiente: { tono: "atencion", label: "Pendiente" },
+  pagada: { tono: "ok", label: "Pagada" },
+  anulada: { tono: "neutro", label: "Anulada" },
 };
+
+function hoyISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 export default function FacturacionPage() {
   const { usuario } = useAuth();
   const [pestana, setPestana] = useState<"fletes" | "facturas">("fletes");
   const [grupos, setGrupos] = useState<GrupoFletes[]>([]);
   const [facturas, setFacturas] = useState<Factura[]>([]);
+  const [tasaIva, setTasaIva] = useState(19);
   const [cargando, setCargando] = useState(true);
 
   const [dialogo, setDialogo] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  const [intento, setIntento] = useState(false);
   const [form, setForm] = useState({
     numero_sii: "",
-    tipo: "afecta",
-    fecha_emision: new Date().toISOString().slice(0, 10),
+    tipo: "afecta" as "afecta" | "exenta",
+    fecha_emision: "",
     cliente_id: "",
     viaje_ids: [] as string[],
   });
+  const [anulando, setAnulando] = useState<Factura | null>(null);
 
-  const puedeEscribir = usuario && ["admin", "operacion", "contabilidad"].includes(usuario.rol);
+  const puedeEscribir = !!usuario && ["admin", "operacion", "contabilidad"].includes(usuario.rol);
 
   function recargar() {
-    Promise.all([
-      api.get<GrupoFletes[]>("/facturacion/fletes-por-facturar"),
-      api.get<Factura[]>("/facturas"),
-    ])
+    Promise.all([api.get<GrupoFletes[]>("/facturacion/fletes-por-facturar"), api.get<Factura[]>("/facturas")])
       .then(([g, f]) => {
         setGrupos(g ?? []);
         setFacturas(f ?? []);
@@ -108,11 +105,14 @@ export default function FacturacionPage() {
     Promise.all([
       api.get<GrupoFletes[]>("/facturacion/fletes-por-facturar"),
       api.get<Factura[]>("/facturas"),
+      api.get<Record<string, string>>("/configuracion").catch(() => null),
     ])
-      .then(([g, f]) => {
+      .then(([g, f, c]) => {
         if (!activo) return;
         setGrupos(g ?? []);
         setFacturas(f ?? []);
+        const t = Number(c?.iva_porcentaje);
+        if (!Number.isNaN(t) && t >= 0) setTasaIva(t);
       })
       .catch((e) => {
         if (activo) toast.error(e instanceof Error ? e.message : "Error al cargar");
@@ -125,18 +125,17 @@ export default function FacturacionPage() {
     };
   }, []);
 
+  const grupoActual = grupos.find((g) => g.cliente_id === form.cliente_id);
+  const totalPorFacturar = useMemo(() => grupos.reduce((a, g) => a + Number(g.total_neto), 0), [grupos]);
+
   function abrirFacturar(grupo: GrupoFletes) {
-    setForm({
-      numero_sii: "",
-      tipo: "afecta",
-      fecha_emision: new Date().toISOString().slice(0, 10),
-      cliente_id: grupo.cliente_id,
-      viaje_ids: grupo.viajes.map((v) => v.id),
-    });
+    setForm({ numero_sii: "", tipo: "afecta", fecha_emision: hoyISO(), cliente_id: grupo.cliente_id, viaje_ids: grupo.viajes.map((v) => v.id) });
+    setIntento(false);
     setDialogo(true);
   }
 
   async function crearFactura() {
+    setIntento(true);
     if (!form.numero_sii.trim()) {
       toast.error("Ingrese el número de factura emitido en el SII");
       return;
@@ -151,36 +150,36 @@ export default function FacturacionPage() {
         numero_sii: form.numero_sii.trim(),
         cliente_id: form.cliente_id,
         tipo: form.tipo,
-        fecha_emision: form.fecha_emision,
+        fecha_emision: form.fecha_emision || hoyISO(),
         viaje_ids: form.viaje_ids,
       });
-      toast.success("Factura asociada correctamente");
+      toast.success("Factura registrada");
       setDialogo(false);
       setPestana("facturas");
       recargar();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error al crear factura");
+      toast.error(e instanceof Error ? e.message : "Error al registrar la factura");
     } finally {
       setGuardando(false);
     }
   }
 
-  async function marcarPagada(factura: Factura) {
+  async function marcarPagada(f: Factura) {
     try {
-      await api.patch(`/facturas/${factura.id}/estado`, { estado: "pagada" });
-      toast.success("Factura marcada como pagada");
+      await api.patch(`/facturas/${f.id}/estado`, { estado: "pagada" });
+      toast.success(`Factura ${f.numero_sii} marcada como pagada`);
       recargar();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Error");
     }
   }
 
-  async function anular(factura: Factura) {
-    if (!confirm(`¿Anular la factura ${factura.numero_sii}? Los viajes volverán a estar finalizados.`))
-      return;
+  async function confirmarAnular() {
+    if (!anulando) return;
     try {
-      await api.patch(`/facturas/${factura.id}/estado`, { estado: "anulada" });
+      await api.patch(`/facturas/${anulando.id}/estado`, { estado: "anulada" });
       toast.success("Factura anulada");
+      setAnulando(null);
       recargar();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Error");
@@ -188,181 +187,171 @@ export default function FacturacionPage() {
   }
 
   function toggleViaje(id: string) {
-    setForm((f) => ({
-      ...f,
-      viaje_ids: f.viaje_ids.includes(id)
-        ? f.viaje_ids.filter((x) => x !== id)
-        : [...f.viaje_ids, id],
-    }));
+    setForm((f) => ({ ...f, viaje_ids: f.viaje_ids.includes(id) ? f.viaje_ids.filter((x) => x !== id) : [...f.viaje_ids, id] }));
   }
 
-  const totalSeleccionado = form.viaje_ids
-    .reduce((acc, id) => {
-      const v = grupos
-        .flatMap((g) => g.viajes)
-        .find((x) => x.id === id);
-      return acc + (v ? Number(v.valor_flete_neto) : 0);
-    }, 0);
-  const ivaEstimado = form.tipo === "afecta" ? Math.round(totalSeleccionado * 0.19) : 0;
+  const neto = form.viaje_ids.reduce((acc, id) => {
+    const v = grupoActual?.viajes.find((x) => x.id === id);
+    return acc + (v ? Number(v.valor_flete_neto) : 0);
+  }, 0);
+  const iva = form.tipo === "afecta" ? Math.round((neto * tasaIva) / 100) : 0;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold text-[#2A237A]">Facturación</h1>
-        <Button
-          variant="outline"
-          onClick={() =>
-            descargarArchivo("/export/facturas", "facturas.csv").catch((e) =>
-              toast.error(e instanceof Error ? e.message : "Error al exportar"),
-            )
-          }
-          className="text-base"
-        >
-          <Download className="h-5 w-5" />
-          Exportar Facturas
-        </Button>
-      </div>
+    <div className="space-y-s5">
+      <PageHeader
+        rotulo="Finanzas"
+        titulo="Facturación"
+        descripcion="Asocie los viajes finalizados a la factura emitida en el SII. El sistema calcula neto, IVA y vencimiento."
+        acciones={
+          <Button
+            variant="outline"
+            onClick={() =>
+              descargarArchivo("/export/facturas", "facturas.csv").catch((e) => toast.error(e instanceof Error ? e.message : "Error al exportar"))
+            }
+          >
+            <Download /> Exportar
+          </Button>
+        }
+      />
 
-      <div className="flex rounded-lg border bg-white p-1 sm:w-fit">
-        <button
-          onClick={() => setPestana("fletes")}
-          className={`rounded-md px-4 py-2 text-base font-medium ${
-            pestana === "fletes" ? "bg-[#2A237A] text-white" : "text-gray-600 hover:bg-gray-100"
-          }`}
-        >
-          Fletes por Facturar ({grupos.length})
-        </button>
-        <button
-          onClick={() => setPestana("facturas")}
-          className={`rounded-md px-4 py-2 text-base font-medium ${
-            pestana === "facturas" ? "bg-[#2A237A] text-white" : "text-gray-600 hover:bg-gray-100"
-          }`}
-        >
-          Facturas ({facturas.length})
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-s3">
+        <Segmentado
+          etiqueta="Vista"
+          valor={pestana}
+          onCambio={setPestana}
+          opciones={[
+            { valor: "fletes", etiqueta: "Por facturar", contador: grupos.reduce((a, g) => a + g.viajes.length, 0) },
+            { valor: "facturas", etiqueta: "Facturas emitidas", contador: facturas.length },
+          ]}
+        />
+        {pestana === "fletes" && !cargando && grupos.length > 0 && (
+          <p className="text-[15px] text-tinta-3">
+            Total por facturar <span className="cifra ml-1 text-[18px] font-semibold text-tinta">{formatCLP(totalPorFacturar)}</span>
+          </p>
+        )}
       </div>
 
       {pestana === "fletes" ? (
-        <div className="space-y-4">
-          {cargando ? (
-            <p className="py-8 text-center text-gray-500">Cargando…</p>
-          ) : grupos.length === 0 ? (
-            <div className="rounded-lg border bg-white p-8 text-center">
-              <p className="text-lg text-gray-500">No hay fletes pendientes de facturar ✓</p>
-            </div>
-          ) : (
-            grupos.map((g) => (
-              <div key={g.cliente_id} className="rounded-lg border bg-white p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-lg font-bold text-[#2A237A]">{g.cliente_nombre}</p>
-                    <p className="text-sm text-gray-500">
-                      {g.viajes.length} viaje(s) · pago a {g.dias_pago} días
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <p className="text-xl font-bold text-green-700">{formatCLP(g.total_neto)}</p>
+        cargando ? (
+          <div className="space-y-s3">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <Skeleton key={i} className="h-40 w-full rounded-xl" />
+            ))}
+          </div>
+        ) : grupos.length === 0 ? (
+          <Panel>
+            <EstadoVacio
+              icono={Inbox}
+              titulo="No hay fletes pendientes de facturar"
+              descripcion="Cuando un viaje se finaliza, aparece aquí agrupado por cliente."
+              accion={
+                <Link href="/viajes" className="inline-flex items-center gap-1 text-[15px] font-medium text-marca hover:underline">
+                  Ir a viajes <ArrowRight className="size-4" />
+                </Link>
+              }
+            />
+          </Panel>
+        ) : (
+          <div className="space-y-s4">
+            {grupos.map((g) => (
+              <Panel
+                key={g.cliente_id}
+                titulo={g.cliente_nombre}
+                descripcion={`${g.viajes.length} ${g.viajes.length === 1 ? "viaje" : "viajes"} · pago a ${g.dias_pago} días`}
+                acciones={
+                  <>
+                    <span className="cifra mr-s2 text-[22px] font-semibold">{formatCLP(g.total_neto)}</span>
                     {puedeEscribir && (
-                      <Button
-                        onClick={() => abrirFacturar(g)}
-                        className="bg-[#2A237A] text-base hover:bg-[#2A237A]/90"
-                      >
-                        <FileText className="h-5 w-5" />
-                        Asociar Factura
+                      <Button onClick={() => abrirFacturar(g)}>
+                        <FileText /> Registrar factura
                       </Button>
                     )}
-                  </div>
-                </div>
+                  </>
+                }
+              >
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="text-base">Fecha</TableHead>
-                      <TableHead className="text-base">Ruta</TableHead>
-                      <TableHead className="text-base">Valor</TableHead>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead>Ruta</TableHead>
+                      <TableHead className="text-right">Valor neto</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {g.viajes.map((v) => (
                       <TableRow key={v.id}>
-                        <TableCell className="text-base">{formatFecha(v.fecha_inicio)}</TableCell>
-                        <TableCell className="text-base">
-                          {v.origen} → {v.destino}
+                        <TableCell className="text-tinta-2">{formatFecha(v.fecha_inicio)}</TableCell>
+                        <TableCell>
+                          <Link href={`/viajes/${v.id}`} className="inline-flex items-center gap-1.5 font-medium hover:text-marca">
+                            {v.origen} <ArrowRight className="size-3.5 text-tinta-3" /> {v.destino}
+                          </Link>
                         </TableCell>
-                        <TableCell className="text-base">{formatCLP(v.valor_flete_neto)}</TableCell>
+                        <TableCell className="cifra text-right">{formatCLP(v.valor_flete_neto)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-              </div>
-            ))
-          )}
-        </div>
+              </Panel>
+            ))}
+          </div>
+        )
       ) : (
-        <div className="overflow-x-auto rounded-lg border bg-white">
+        <Panel>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-base">N° SII</TableHead>
-                <TableHead className="text-base">Cliente</TableHead>
-                <TableHead className="text-base">Neto</TableHead>
-                <TableHead className="text-base">IVA</TableHead>
-                <TableHead className="text-base">Total</TableHead>
-                <TableHead className="text-base">Emisión</TableHead>
-                <TableHead className="text-base">Vencimiento</TableHead>
-                <TableHead className="text-base">Estado</TableHead>
-                {puedeEscribir && <TableHead className="w-40 text-base">Acciones</TableHead>}
+                <TableHead>N° SII</TableHead>
+                <TableHead>Cliente</TableHead>
+                <TableHead className="text-right">Neto</TableHead>
+                <TableHead className="text-right">IVA</TableHead>
+                <TableHead className="text-right">Total</TableHead>
+                <TableHead>Emisión</TableHead>
+                <TableHead>Vence</TableHead>
+                <TableHead>Estado</TableHead>
+                {puedeEscribir && <TableHead className="text-right">Acciones</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {facturas.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={9} className="py-8 text-center text-gray-500">
-                    No hay facturas registradas
-                  </TableCell>
-                </TableRow>
+              {cargando ? (
+                <FilasCargando columnas={puedeEscribir ? 9 : 8} />
+              ) : facturas.length === 0 ? (
+                <FilaVacia columnas={puedeEscribir ? 9 : 8} icono={FileCheck2} titulo="Aún no hay facturas" descripcion="Registre facturas desde la pestaña “Por facturar”." />
               ) : (
                 facturas.map((f) => (
-                  <TableRow key={f.id}>
-                    <TableCell className="text-base font-semibold">{f.numero_sii}</TableCell>
-                    <TableCell className="text-base">{f.cliente_nombre}</TableCell>
-                    <TableCell className="text-base">{formatCLP(f.monto_neto)}</TableCell>
-                    <TableCell className="text-base">{formatCLP(f.iva)}</TableCell>
-                    <TableCell className="text-base font-semibold">{formatCLP(f.total)}</TableCell>
-                    <TableCell className="text-base">{formatFecha(f.fecha_emision)}</TableCell>
-                    <TableCell className="text-base">{formatFecha(f.fecha_vencimiento)}</TableCell>
+                  <TableRow key={f.id} className={cn(f.estado === "anulada" && "opacity-60")}>
+                    <TableCell className="font-mono font-semibold">{f.numero_sii}</TableCell>
                     <TableCell>
-                      <Badge className={`${ESTADO_FACTURA_COLOR[f.estado]} text-sm`}>
-                        {f.estado === "pendiente"
-                          ? "Pendiente"
-                          : f.estado === "pagada"
-                            ? "Pagada"
-                            : "Anulada"}
-                      </Badge>
+                      <span className="font-medium">{f.cliente_nombre}</span>
+                      <span className="block text-[13px] text-tinta-3">
+                        {f.viajes.length} {f.viajes.length === 1 ? "viaje" : "viajes"} · {f.tipo === "afecta" ? "afecta" : "exenta"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="cifra text-right text-tinta-2">{formatCLP(f.monto_neto)}</TableCell>
+                    <TableCell className="cifra text-right text-tinta-2">{formatCLP(f.iva)}</TableCell>
+                    <TableCell className="cifra text-right font-semibold">{formatCLP(f.total)}</TableCell>
+                    <TableCell className="text-tinta-2">{formatFecha(f.fecha_emision)}</TableCell>
+                    <TableCell className="text-tinta-2">{f.estado === "pagada" ? `Pagada ${formatFecha(f.fecha_pago)}` : formatFecha(f.fecha_vencimiento)}</TableCell>
+                    <TableCell>
+                      <StatusBadge tono={ESTADO_FACTURA[f.estado].tono}>{ESTADO_FACTURA[f.estado].label}</StatusBadge>
                     </TableCell>
                     {puedeEscribir && (
                       <TableCell>
-                        <div className="flex gap-2">
-                          {f.estado === "pendiente" && (
-                            <>
-                              <Button
-                                size="sm"
-                                className="bg-green-600 text-white hover:bg-green-700"
-                                onClick={() => marcarPagada(f)}
-                              >
-                                <CheckCircle2 className="h-4 w-4" />
-                                Pagar
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="border-red-200 text-red-600 hover:bg-red-50"
-                                onClick={() => anular(f)}
-                              >
-                                <XCircle className="h-4 w-4" />
-                              </Button>
-                            </>
-                          )}
-                        </div>
+                        {f.estado === "pendiente" && (
+                          <div className="flex justify-end gap-1">
+                            <Button variant="success" size="xs" onClick={() => marcarPagada(f)}>
+                              <CheckCircle2 /> Pagada
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              className="text-tinta-3 hover:bg-critico-tenue hover:text-critico"
+                              onClick={() => setAnulando(f)}
+                              aria-label={`Anular factura ${f.numero_sii}`}
+                            >
+                              <XCircle />
+                            </Button>
+                          </div>
+                        )}
                       </TableCell>
                     )}
                   </TableRow>
@@ -370,103 +359,104 @@ export default function FacturacionPage() {
               )}
             </TableBody>
           </Table>
-        </div>
+        </Panel>
       )}
 
       <Dialog open={dialogo} onOpenChange={setDialogo}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle className="text-xl">Asociar Factura SII</DialogTitle>
-            <DialogDescription className="text-base">
-              El sistema no emite facturas: registre aquí la factura ya emitida en el SII.
+            <DialogTitle>Registrar factura</DialogTitle>
+            <DialogDescription>
+              {grupoActual?.cliente_nombre}. El sistema no emite al SII: ingrese el número de la factura ya emitida.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-base">Número Factura SII *</Label>
-                <Input
-                  value={form.numero_sii}
-                  onChange={(e) => setForm({ ...form, numero_sii: e.target.value })}
-                  className="text-base"
-                  placeholder="123456"
+          <div className="space-y-s4">
+            <div className="grid gap-s3 sm:grid-cols-3">
+              <Campo etiqueta="N° factura SII" htmlFor="f-num" requerido error={intento && !form.numero_sii.trim() ? "Obligatorio" : null}>
+                <Input id="f-num" inputMode="numeric" value={form.numero_sii} onChange={(e) => setForm({ ...form, numero_sii: e.target.value })} className="font-mono" placeholder="123456" />
+              </Campo>
+              <Campo etiqueta="Tipo" htmlFor="f-tipo">
+                <SelectSimple
+                  id="f-tipo"
+                  valor={form.tipo}
+                  onCambio={(v) => setForm({ ...form, tipo: (v || "afecta") as "afecta" | "exenta" })}
+                  opciones={[
+                    { valor: "afecta", etiqueta: `Afecta (${tasaIva} %)` },
+                    { valor: "exenta", etiqueta: "Exenta" },
+                  ]}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-base">Tipo</Label>
-                <Select value={form.tipo} onValueChange={(v) => setForm({ ...form, tipo: v ?? "afecta" })}>
-                  <SelectTrigger className="text-base">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="afecta" className="text-base">
-                      Afecta (IVA 19%)
-                    </SelectItem>
-                    <SelectItem value="exenta" className="text-base">
-                      Exenta
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              </Campo>
+              <Campo etiqueta="Emisión" htmlFor="f-fecha">
+                <Input id="f-fecha" type="date" value={form.fecha_emision} onChange={(e) => setForm({ ...form, fecha_emision: e.target.value })} />
+              </Campo>
             </div>
-            <div className="space-y-2">
-              <Label className="text-base">Fecha Emisión</Label>
-              <Input
-                type="date"
-                value={form.fecha_emision}
-                onChange={(e) => setForm({ ...form, fecha_emision: e.target.value })}
-                className="text-base"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-base">Viajes a facturar</Label>
-              <div className="max-h-48 space-y-2 overflow-y-auto rounded-lg border p-2">
-                {grupos
-                  .find((g) => g.cliente_id === form.cliente_id)
-                  ?.viajes.map((v) => (
+
+            <fieldset>
+              <legend className="mb-s2 text-[15px] font-medium text-tinta-2">Viajes incluidos</legend>
+              <div className="max-h-56 divide-y divide-borde overflow-y-auto rounded-xl border border-borde">
+                {grupoActual?.viajes.map((v) => {
+                  const sel = form.viaje_ids.includes(v.id);
+                  return (
                     <label
                       key={v.id}
-                      className="flex items-center justify-between rounded-md border p-2 text-base"
+                      className={cn(
+                        "flex cursor-pointer items-center gap-s3 px-s3 py-s3 text-[15.5px] transition-colors",
+                        sel ? "bg-marca-tenue/50" : "hover:bg-superficie-hundida",
+                      )}
                     >
-                      <span>
-                        {v.origen} → {v.destino} · {formatCLP(v.valor_flete_neto)}
+                      <input type="checkbox" checked={sel} onChange={() => toggleViaje(v.id)} className="size-[18px]" />
+                      <span className="flex-1">
+                        {v.origen} → {v.destino}
+                        <span className="block text-[13px] text-tinta-3">{formatFecha(v.fecha_inicio)}</span>
                       </span>
-                      <input
-                        type="checkbox"
-                        checked={form.viaje_ids.includes(v.id)}
-                        onChange={() => toggleViaje(v.id)}
-                        className="h-5 w-5 accent-[#2A237A]"
-                      />
+                      <span className="cifra font-medium">{formatCLP(v.valor_flete_neto)}</span>
                     </label>
-                  ))}
+                  );
+                })}
               </div>
-            </div>
-            <div className="rounded-lg bg-gray-50 p-4 text-base">
-              <p>
-                Neto: <strong>{formatCLP(totalSeleccionado)}</strong>
-              </p>
-              <p>
-                IVA ({form.tipo === "afecta" ? "19%" : "exento"}):{" "}
-                <strong>{formatCLP(ivaEstimado)}</strong>
-              </p>
-              <p className="text-lg">
-                Total:{" "}
-                <strong className="text-[#2A237A]">
-                  {formatCLP(totalSeleccionado + ivaEstimado)}
-                </strong>
-              </p>
-            </div>
+            </fieldset>
+
+            <dl className="space-y-s2 rounded-xl bg-superficie-hundida px-s4 py-s3 text-[15.5px]">
+              <div className="flex justify-between">
+                <dt className="text-tinta-3">Neto</dt>
+                <dd className="cifra">{formatCLP(neto)}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-tinta-3">IVA {form.tipo === "afecta" ? `(${tasaIva} %)` : "(exenta)"}</dt>
+                <dd className="cifra">{formatCLP(iva)}</dd>
+              </div>
+              <div className="flex items-baseline justify-between border-t border-borde-fuerte pt-s2">
+                <dt className="font-medium">Total</dt>
+                <dd className="cifra text-[22px] font-semibold text-marca">{formatCLP(neto + iva)}</dd>
+              </div>
+            </dl>
           </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDialogo(false)} className="text-base">
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogo(false)}>
               Cancelar
             </Button>
-            <Button
-              onClick={crearFactura}
-              disabled={guardando}
-              className="bg-[#2A237A] text-base hover:bg-[#2A237A]/90"
-            >
-              {guardando ? "Guardando…" : "Asociar Factura"}
+            <Button onClick={crearFactura} disabled={guardando || form.viaje_ids.length === 0}>
+              {guardando ? "Guardando…" : "Registrar factura"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!anulando} onOpenChange={(o) => !o && setAnulando(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Anular factura {anulando?.numero_sii}</DialogTitle>
+            <DialogDescription>
+              Los {anulando?.viajes.length} viajes asociados volverán al estado <strong>Finalizado</strong> y podrán
+              facturarse nuevamente.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAnulando(null)}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={confirmarAnular}>
+              <XCircle /> Anular factura
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,21 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CheckCircle2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { CheckCircle2, HandCoins } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "cn";
 import { api } from "@/lib/api";
 import { formatCLP, formatFecha } from "@/lib/format";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  FilaVacia,
+  FilasCargando,
+  PageHeader,
+  Panel,
+  Segmentado,
+  StatTile,
+  StatTileSkeleton,
+  StatusBadge,
+  type Tono,
+} from "@/components/sistema";
 
 interface CobranzaItem {
   id: string;
@@ -35,21 +46,19 @@ interface Cobranzas {
   items: CobranzaItem[];
 }
 
-const SEMAFORO_COLOR: Record<string, string> = {
-  vencida: "bg-red-600 text-white",
-  por_vencer: "bg-yellow-500 text-black",
-  al_dia: "bg-green-100 text-green-800",
+const SEMAFORO: Record<CobranzaItem["semaforo"], { tono: Tono; label: string }> = {
+  vencida: { tono: "critico", label: "Vencida" },
+  por_vencer: { tono: "atencion", label: "Por vencer" },
+  al_dia: { tono: "ok", label: "Al día" },
 };
 
-const SEMAFORO_LABEL: Record<string, string> = {
-  vencida: "Vencida",
-  por_vencer: "Por vencer",
-  al_dia: "Al día",
-};
+type Filtro = "todas" | CobranzaItem["semaforo"];
 
 export default function CobranzasPage() {
   const [data, setData] = useState<Cobranzas | null>(null);
   const [cargando, setCargando] = useState(true);
+  const [filtro, setFiltro] = useState<Filtro>("todas");
+  const [pagando, setPagando] = useState<CobranzaItem | null>(null);
 
   function recargar() {
     api
@@ -77,10 +86,16 @@ export default function CobranzasPage() {
     };
   }, []);
 
-  async function marcarPagada(item: CobranzaItem) {
+  const items = useMemo(() => (data?.items ?? []).filter((i) => filtro === "todas" || i.semaforo === filtro), [data, filtro]);
+  const cuenta = (s: CobranzaItem["semaforo"]) => (data?.items ?? []).filter((i) => i.semaforo === s).length;
+  const total = Number(data?.total_vencidas ?? 0) + Number(data?.total_por_vencer ?? 0) + Number(data?.total_al_dia ?? 0);
+
+  async function confirmarPago() {
+    if (!pagando) return;
     try {
-      await api.patch(`/facturas/${item.id}/estado`, { estado: "pagada" });
-      toast.success("Factura marcada como pagada");
+      await api.patch(`/facturas/${pagando.id}/estado`, { estado: "pagada" });
+      toast.success(`Pago registrado: factura ${pagando.numero_sii}`);
+      setPagando(null);
       recargar();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Error");
@@ -88,103 +103,88 @@ export default function CobranzasPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-[#2A237A]">Cuentas por Cobrar</h1>
+    <div className="space-y-s5">
+      <PageHeader
+        rotulo="Finanzas"
+        titulo="Cuentas por cobrar"
+        descripcion={cargando ? "Facturas pendientes de pago, ordenadas por vencimiento." : <>Total pendiente <strong className="font-semibold text-tinta">{formatCLP(total)}</strong>, ordenado por vencimiento.</>}
+      />
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="border-red-200">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base text-red-700">
-              <span className="h-3 w-3 rounded-full bg-red-600" /> Vencidas
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold text-red-600">{formatCLP(data?.total_vencidas)}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-yellow-200">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base text-yellow-700">
-              <span className="h-3 w-3 rounded-full bg-yellow-500" /> Por vencer (≤5 días)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold text-yellow-600">
-              {formatCLP(data?.total_por_vencer)}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="border-green-200">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base text-green-700">
-              <span className="h-3 w-3 rounded-full bg-green-600" /> Al día
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold text-green-700">{formatCLP(data?.total_al_dia)}</p>
-          </CardContent>
-        </Card>
-      </div>
+      <section className="grid gap-s3 md:grid-cols-3" aria-label="Resumen de cobranzas">
+        {cargando ? (
+          Array.from({ length: 3 }).map((_, i) => <StatTileSkeleton key={i} />)
+        ) : (
+          <>
+            <StatTile etiqueta="Vencidas" valor={formatCLP(data?.total_vencidas)} detalle={`${cuenta("vencida")} facturas — cobrar ya`} tono="critico" />
+            <StatTile etiqueta="Por vencer" valor={formatCLP(data?.total_por_vencer)} detalle={`${cuenta("por_vencer")} facturas en los próximos días`} tono="atencion" />
+            <StatTile etiqueta="Al día" valor={formatCLP(data?.total_al_dia)} detalle={`${cuenta("al_dia")} facturas dentro de plazo`} tono="ok" />
+          </>
+        )}
+      </section>
 
-      <div className="overflow-x-auto rounded-lg border bg-white">
+      <Segmentado
+        etiqueta="Filtrar por estado"
+        valor={filtro}
+        onCambio={setFiltro}
+        opciones={[
+          { valor: "todas", etiqueta: "Todas", contador: data?.items.length ?? 0 },
+          { valor: "vencida", etiqueta: "Vencidas", contador: cuenta("vencida") },
+          { valor: "por_vencer", etiqueta: "Por vencer", contador: cuenta("por_vencer") },
+          { valor: "al_dia", etiqueta: "Al día", contador: cuenta("al_dia") },
+        ]}
+      />
+
+      <Panel>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="text-base">N° SII</TableHead>
-              <TableHead className="text-base">Cliente</TableHead>
-              <TableHead className="text-base">Total</TableHead>
-              <TableHead className="text-base">Emisión</TableHead>
-              <TableHead className="text-base">Vencimiento</TableHead>
-              <TableHead className="text-base">Semáforo</TableHead>
-              <TableHead className="w-24 text-base"></TableHead>
+              <TableHead>N° SII</TableHead>
+              <TableHead>Cliente</TableHead>
+              <TableHead className="text-right">Total</TableHead>
+              <TableHead>Emisión</TableHead>
+              <TableHead>Vencimiento</TableHead>
+              <TableHead>Estado</TableHead>
+              <TableHead className="text-right">
+                <span className="sr-only">Acciones</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {cargando ? (
-              <TableRow>
-                <TableCell colSpan={7} className="py-8 text-center text-gray-500">
-                  Cargando…
-                </TableCell>
-              </TableRow>
-            ) : (data?.items ?? []).length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="py-8 text-center text-gray-500">
-                  No hay facturas pendientes ✓
-                </TableCell>
-              </TableRow>
+              <FilasCargando columnas={7} />
+            ) : items.length === 0 ? (
+              <FilaVacia
+                columnas={7}
+                icono={HandCoins}
+                titulo={(data?.items.length ?? 0) === 0 ? "No hay facturas pendientes" : "Sin facturas en este estado"}
+                descripcion={(data?.items.length ?? 0) === 0 ? "Todas las facturas emitidas están pagadas." : undefined}
+              />
             ) : (
-              (data?.items ?? []).map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="text-base font-semibold">{item.numero_sii}</TableCell>
-                  <TableCell className="text-base">{item.cliente}</TableCell>
-                  <TableCell className="text-base font-semibold">{formatCLP(item.total)}</TableCell>
-                  <TableCell className="text-base">{formatFecha(item.fecha_emision)}</TableCell>
-                  <TableCell className="text-base">
-                    {formatFecha(item.fecha_vencimiento)}
-                    {item.dias_restantes !== null && item.dias_restantes >= 0 && (
-                      <span className="ml-1 text-sm text-gray-500">
-                        ({item.dias_restantes} d)
-                      </span>
-                    )}
-                    {item.dias_restantes !== null && item.dias_restantes < 0 && (
-                      <span className="ml-1 text-sm font-medium text-red-600">
-                        (+{Math.abs(item.dias_restantes)} d atraso)
+              items.map((i) => (
+                <TableRow key={i.id}>
+                  <TableCell className="font-mono font-semibold">{i.numero_sii}</TableCell>
+                  <TableCell className="font-medium">{i.cliente}</TableCell>
+                  <TableCell className="cifra text-right text-[16px] font-semibold">{formatCLP(i.total)}</TableCell>
+                  <TableCell className="text-tinta-2">{formatFecha(i.fecha_emision)}</TableCell>
+                  <TableCell>
+                    <span className="text-tinta-2">{formatFecha(i.fecha_vencimiento)}</span>
+                    {i.dias_restantes !== null && (
+                      <span
+                        className={cn(
+                          "ml-2 text-[13px] font-medium",
+                          i.dias_restantes < 0 ? "text-critico" : i.semaforo === "por_vencer" ? "text-atencion" : "text-tinta-3",
+                        )}
+                      >
+                        {i.dias_restantes < 0 ? `${-i.dias_restantes} d de atraso` : i.dias_restantes === 0 ? "vence hoy" : `en ${i.dias_restantes} d`}
                       </span>
                     )}
                   </TableCell>
                   <TableCell>
-                    <Badge className={`${SEMAFORO_COLOR[item.semaforo]} text-sm`}>
-                      {SEMAFORO_LABEL[item.semaforo]}
-                    </Badge>
+                    <StatusBadge tono={SEMAFORO[i.semaforo].tono}>{SEMAFORO[i.semaforo].label}</StatusBadge>
                   </TableCell>
-                  <TableCell>
-                    <Button
-                      size="sm"
-                      className="bg-green-600 text-white hover:bg-green-700"
-                      onClick={() => marcarPagada(item)}
-                      aria-label="Marcar pagada"
-                    >
-                      <CheckCircle2 className="h-4 w-4" />
+                  <TableCell className="text-right">
+                    <Button variant="outline" size="xs" onClick={() => setPagando(i)}>
+                      <CheckCircle2 /> Registrar pago
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -192,7 +192,27 @@ export default function CobranzasPage() {
             )}
           </TableBody>
         </Table>
-      </div>
+      </Panel>
+
+      <Dialog open={!!pagando} onOpenChange={(o) => !o && setPagando(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Registrar pago</DialogTitle>
+            <DialogDescription>
+              Factura <strong>{pagando?.numero_sii}</strong> de {pagando?.cliente} por{" "}
+              <strong>{pagando ? formatCLP(pagando.total) : ""}</strong>. Se registrará con fecha de hoy.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPagando(null)}>
+              Cancelar
+            </Button>
+            <Button variant="success" onClick={confirmarPago}>
+              <CheckCircle2 /> Confirmar pago
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

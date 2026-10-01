@@ -1,28 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Download, Eye, Plus } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowRight, ChevronRight, Download, Plus, Search, Truck } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "cn";
 import { api } from "@/lib/api";
 import { descargarArchivo } from "@/lib/download";
 import { formatCLP, formatFecha } from "@/lib/format";
 import { useAuth } from "@/context/auth-context";
-import type {
-  Chofer,
-  Cliente,
-  EstadoViaje,
-  PreviewRentabilidad,
-  Rampla,
-  Tracto,
-  Viaje,
-} from "@/types";
-import { ESTADO_VIAJE_COLOR, ESTADO_VIAJE_LABEL, formatValorKpi } from "@/types";
+import type { Chofer, Cliente, EstadoViaje, PreviewRentabilidad, Rampla, Tracto, Viaje } from "@/types";
+import { ESTADO_VIAJE_LABEL, ESTADO_VIAJE_TONO, TONO_KPI, formatValorKpi } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { InputCLP } from "@/components/ui-inputs/input-clp";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -31,50 +23,62 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { FilaVacia, FilasCargando, PageHeader, Panel, Patente, Segmentado, StatusBadge } from "@/components/sistema";
+import { Campo, SelectSimple } from "@/components/formulario";
 
 const ESTADOS: EstadoViaje[] = ["programado", "en_ruta", "finalizado", "facturado"];
 
-export default function ViajesPage() {
+const FORM_VACIO = {
+  fecha_inicio: "",
+  origen: "",
+  destino: "",
+  valor_flete_neto: 0,
+  cliente_id: "",
+  chofer_id: "",
+  tracto_id: "",
+  rampla_id: "",
+  notas: "",
+};
+
+const TONO_RENTA: Record<string, string> = {
+  ok: "border-ok/25 bg-ok-tenue text-ok",
+  atencion: "border-atencion/25 bg-atencion-tenue text-atencion",
+  critico: "border-critico/25 bg-critico-tenue text-critico",
+  info: "border-marca/15 bg-marca-tenue text-marca",
+  neutro: "border-borde bg-superficie-hundida text-tinta-2",
+};
+
+function ViajesContenido() {
   const { usuario } = useAuth();
+  const router = useRouter();
+  const params = useSearchParams();
   const [viajes, setViajes] = useState<Viaje[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [choferes, setChoferes] = useState<Chofer[]>([]);
   const [tractos, setTractos] = useState<Tracto[]>([]);
   const [ramplas, setRamplas] = useState<Rampla[]>([]);
   const [cargando, setCargando] = useState(true);
-  const [filtroEstado, setFiltroEstado] = useState<string>("todos");
+  const [filtroEstado, setFiltroEstado] = useState<EstadoViaje | "todos">("todos");
+  const [busqueda, setBusqueda] = useState("");
 
   const [dialogo, setDialogo] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  const [intento, setIntento] = useState(false);
   const [rentabilidad, setRentabilidad] = useState<PreviewRentabilidad | null>(null);
-  const [form, setForm] = useState({
-    fecha_inicio: "",
-    origen: "",
-    destino: "",
-    valor_flete_neto: 0,
-    cliente_id: "",
-    chofer_id: "",
-    tracto_id: "",
-    rampla_id: "",
-    notas: "",
-  });
+  const [form, setForm] = useState(FORM_VACIO);
 
   const puedeEscribir = usuario?.rol === "admin" || usuario?.rol === "operacion";
+
+  useEffect(() => {
+    if (params.get("nuevo") === "1" && puedeEscribir) {
+      const t = setTimeout(() => {
+        setDialogo(true);
+        router.replace("/viajes");
+      }, 0);
+      return () => clearTimeout(t);
+    }
+  }, [params, puedeEscribir, router]);
 
   useEffect(() => {
     if (!dialogo || !form.valor_flete_neto || !form.chofer_id) {
@@ -90,7 +94,7 @@ export default function ViajesPage() {
         })
         .then((r) => setRentabilidad(r))
         .catch(() => setRentabilidad(null));
-    }, 400);
+    }, 350);
     return () => clearTimeout(t);
   }, [dialogo, form.valor_flete_neto, form.chofer_id]);
 
@@ -120,26 +124,48 @@ export default function ViajesPage() {
     };
   }, []);
 
-  const filtrados =
-    filtroEstado === "todos" ? viajes : viajes.filter((v) => v.estado === filtroEstado);
+  const filtrados = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    return viajes.filter(
+      (v) =>
+        (filtroEstado === "todos" || v.estado === filtroEstado) &&
+        (!q ||
+          [v.origen, v.destino, v.cliente_nombre, v.chofer_nombre, v.tracto_patente].some((x) =>
+            x.toLowerCase().includes(q),
+          )),
+    );
+  }, [viajes, filtroEstado, busqueda]);
+
+  function abrir() {
+    setForm(FORM_VACIO);
+    setIntento(false);
+    setDialogo(true);
+  }
+
+  const faltan = {
+    fecha_inicio: !form.fecha_inicio,
+    origen: !form.origen.trim(),
+    destino: !form.destino.trim(),
+    valor_flete_neto: !form.valor_flete_neto,
+    cliente_id: !form.cliente_id,
+    chofer_id: !form.chofer_id,
+    tracto_id: !form.tracto_id,
+    rampla_id: !form.rampla_id,
+  };
+  const err = (k: keyof typeof faltan, msg = "Campo obligatorio") => (intento && faltan[k] ? msg : null);
 
   async function guardar() {
-    const obligatorios = ["fecha_inicio", "origen", "destino", "cliente_id", "chofer_id", "tracto_id", "rampla_id"];
-    if (obligatorios.some((k) => !form[k as keyof typeof form])) {
-      toast.error("Complete todos los campos obligatorios");
+    setIntento(true);
+    if (Object.values(faltan).some(Boolean)) {
+      toast.error("Complete los campos obligatorios");
       return;
     }
     setGuardando(true);
     try {
       await api.post("/viajes", {
-        fecha_inicio: form.fecha_inicio,
+        ...form,
         origen: form.origen.trim(),
         destino: form.destino.trim(),
-        valor_flete_neto: form.valor_flete_neto,
-        cliente_id: form.cliente_id,
-        chofer_id: form.chofer_id,
-        tracto_id: form.tracto_id,
-        rampla_id: form.rampla_id,
         notas: form.notas.trim() || null,
       });
       toast.success("Viaje creado");
@@ -153,282 +179,295 @@ export default function ViajesPage() {
     }
   }
 
+  const tonoRenta = rentabilidad ? (TONO_KPI[rentabilidad.color] ?? "neutro") : "neutro";
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold text-[#2A237A]">Viajes</h1>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            onClick={() =>
-              descargarArchivo("/export/viajes", "viajes.csv").catch((e) =>
-                toast.error(e instanceof Error ? e.message : "Error al exportar"),
-              )
-            }
-            className="text-base"
-          >
-            <Download className="h-5 w-5" />
-            Exportar CSV
-          </Button>
-          {puedeEscribir && (
+    <div className="space-y-s5">
+      <PageHeader
+        rotulo="Operación"
+        titulo="Viajes"
+        descripcion="Registro de fletes: desde la programación hasta la facturación."
+        acciones={
+          <>
             <Button
-              onClick={() => setDialogo(true)}
-              className="bg-[#2A237A] text-base hover:bg-[#2A237A]/90"
+              variant="outline"
+              onClick={() =>
+                descargarArchivo("/export/viajes", "viajes.csv").catch((e) =>
+                  toast.error(e instanceof Error ? e.message : "Error al exportar"),
+                )
+              }
             >
-              <Plus className="h-5 w-5" />
-              Nuevo Viaje
+              <Download /> Exportar
             </Button>
-          )}
+            {puedeEscribir && (
+              <Button onClick={abrir}>
+                <Plus /> Nuevo viaje
+              </Button>
+            )}
+          </>
+        }
+      />
+
+      <div className="flex flex-wrap items-center justify-between gap-s3">
+        <Segmentado
+          etiqueta="Filtrar por estado"
+          valor={filtroEstado}
+          onCambio={setFiltroEstado}
+          opciones={[
+            { valor: "todos", etiqueta: "Todos", contador: viajes.length },
+            ...ESTADOS.map((e) => ({
+              valor: e,
+              etiqueta: ESTADO_VIAJE_LABEL[e],
+              contador: viajes.filter((v) => v.estado === e).length,
+            })),
+          ]}
+        />
+        <div className="relative w-full sm:w-72">
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-[18px] -translate-y-1/2 text-tinta-3" />
+          <Input
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar ruta, cliente, patente…"
+            className="pl-10"
+            aria-label="Buscar viajes"
+          />
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <button
-          onClick={() => setFiltroEstado("todos")}
-          className={`rounded-full px-4 py-1.5 text-base font-medium ${
-            filtroEstado === "todos" ? "bg-[#2A237A] text-white" : "bg-white text-gray-600 border"
-          }`}
-        >
-          Todos ({viajes.length})
-        </button>
-        {ESTADOS.map((e) => (
-          <button
-            key={e}
-            onClick={() => setFiltroEstado(e)}
-            className={`rounded-full px-4 py-1.5 text-base font-medium ${
-              filtroEstado === e ? "bg-[#2A237A] text-white" : "bg-white text-gray-600 border"
-            }`}
-          >
-            {ESTADO_VIAJE_LABEL[e]} ({viajes.filter((v) => v.estado === e).length})
-          </button>
-        ))}
-      </div>
-
-      <div className="overflow-x-auto rounded-lg border bg-white">
+      <Panel>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="text-base">Inicio</TableHead>
-              <TableHead className="text-base">Ruta</TableHead>
-              <TableHead className="text-base">Cliente</TableHead>
-              <TableHead className="text-base">Chofer</TableHead>
-              <TableHead className="text-base">Camión</TableHead>
-              <TableHead className="text-base">Valor Flete</TableHead>
-              <TableHead className="text-base">Estado</TableHead>
-              <TableHead className="w-16 text-base"></TableHead>
+              <TableHead>Inicio</TableHead>
+              <TableHead>Ruta</TableHead>
+              <TableHead>Cliente</TableHead>
+              <TableHead>Chofer</TableHead>
+              <TableHead>Camión</TableHead>
+              <TableHead className="text-right">Flete</TableHead>
+              <TableHead>Estado</TableHead>
+              <TableHead className="w-10">
+                <span className="sr-only">Abrir</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {cargando ? (
-              <TableRow>
-                <TableCell colSpan={8} className="py-8 text-center text-gray-500">
-                  Cargando…
-                </TableCell>
-              </TableRow>
+              <FilasCargando columnas={8} />
             ) : filtrados.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} className="py-8 text-center text-gray-500">
-                  No hay viajes registrados
-                </TableCell>
-              </TableRow>
+              <FilaVacia
+                columnas={8}
+                icono={Truck}
+                titulo={viajes.length === 0 ? "Aún no hay viajes" : "Sin resultados"}
+                descripcion={
+                  viajes.length === 0
+                    ? "Registre el primer flete para comenzar a controlar la operación."
+                    : "Pruebe con otro estado o término de búsqueda."
+                }
+                accion={
+                  viajes.length === 0 && puedeEscribir ? (
+                    <Button onClick={abrir}>
+                      <Plus /> Nuevo viaje
+                    </Button>
+                  ) : undefined
+                }
+              />
             ) : (
               filtrados.map((v) => (
-                <TableRow key={v.id}>
-                  <TableCell className="text-base">{formatFecha(v.fecha_inicio)}</TableCell>
-                  <TableCell className="text-base">
-                    {v.origen} → {v.destino}
+                <TableRow
+                  key={v.id}
+                  className="group cursor-pointer"
+                  onClick={() => router.push(`/viajes/${v.id}`)}
+                >
+                  <TableCell className="text-tinta-2">{formatFecha(v.fecha_inicio)}</TableCell>
+                  <TableCell>
+                    <Link
+                      href={`/viajes/${v.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex items-center gap-1.5 font-medium text-tinta hover:text-marca"
+                    >
+                      {v.origen}
+                      <ArrowRight className="size-3.5 text-tinta-3" />
+                      {v.destino}
+                    </Link>
                   </TableCell>
-                  <TableCell className="text-base">{v.cliente_nombre}</TableCell>
-                  <TableCell className="text-base">{v.chofer_nombre}</TableCell>
-                  <TableCell className="text-base font-medium">{v.tracto_patente}</TableCell>
-                  <TableCell className="text-base font-semibold">
+                  <TableCell className="text-tinta-2">{v.cliente_nombre}</TableCell>
+                  <TableCell className="text-tinta-2">{v.chofer_nombre}</TableCell>
+                  <TableCell>
+                    <Patente>{v.tracto_patente}</Patente>
+                  </TableCell>
+                  <TableCell className="cifra text-right text-[16px] font-semibold">
                     {formatCLP(v.valor_flete_neto)}
                   </TableCell>
                   <TableCell>
-                    <Badge className={`${ESTADO_VIAJE_COLOR[v.estado]} text-sm`}>
-                      {ESTADO_VIAJE_LABEL[v.estado]}
-                    </Badge>
+                    <StatusBadge tono={ESTADO_VIAJE_TONO[v.estado]}>{ESTADO_VIAJE_LABEL[v.estado]}</StatusBadge>
                   </TableCell>
                   <TableCell>
-                    <Link href={`/viajes/${v.id}`}>
-                      <Button size="icon" variant="outline" aria-label="Ver viaje">
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                    </Link>
+                    <ChevronRight className="size-4 text-tinta-3 transition-transform group-hover:translate-x-0.5 group-hover:text-marca" />
                   </TableCell>
                 </TableRow>
               ))
             )}
           </TableBody>
         </Table>
-      </div>
+      </Panel>
 
       <Dialog open={dialogo} onOpenChange={setDialogo}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle className="text-xl">Nuevo Viaje</DialogTitle>
-            <DialogDescription className="text-base">
-              Seleccione cliente, chofer y equipos para el flete.
-            </DialogDescription>
+            <DialogTitle>Nuevo viaje</DialogTitle>
+            <DialogDescription>Defina la ruta, el cliente y los equipos asignados al flete.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-base">Fecha Inicio *</Label>
+
+          <div className="space-y-s4">
+            <fieldset className="space-y-s3 border-0">
+              <legend className="rotulo float-left mb-s2 w-full">Ruta</legend>
+              <div className="grid gap-s3 sm:grid-cols-2">
+                <Campo etiqueta="Origen" htmlFor="v-origen" requerido error={err("origen")}>
+                  <Input
+                    id="v-origen"
+                    value={form.origen}
+                    onChange={(e) => setForm({ ...form, origen: e.target.value })}
+                    placeholder="Santiago"
+                    aria-invalid={!!err("origen")}
+                  />
+                </Campo>
+                <Campo etiqueta="Destino" htmlFor="v-destino" requerido error={err("destino")}>
+                  <Input
+                    id="v-destino"
+                    value={form.destino}
+                    onChange={(e) => setForm({ ...form, destino: e.target.value })}
+                    placeholder="Antofagasta"
+                    aria-invalid={!!err("destino")}
+                  />
+                </Campo>
+              </div>
+              <Campo etiqueta="Fecha de inicio" htmlFor="v-fecha" requerido error={err("fecha_inicio")} className="sm:max-w-[50%] sm:pr-1.5">
                 <Input
+                  id="v-fecha"
                   type="date"
                   value={form.fecha_inicio}
                   onChange={(e) => setForm({ ...form, fecha_inicio: e.target.value })}
-                  className="text-base"
+                  aria-invalid={!!err("fecha_inicio")}
                 />
+              </Campo>
+            </fieldset>
+
+            <fieldset className="space-y-s3 border-0 border-t border-borde pt-s4">
+              <legend className="rotulo float-left mb-s2 w-full">Asignación</legend>
+              <div className="grid gap-s3 sm:grid-cols-2">
+                <Campo etiqueta="Cliente" htmlFor="v-cliente" requerido error={err("cliente_id")}>
+                  <SelectSimple
+                    id="v-cliente"
+                    valor={form.cliente_id}
+                    onCambio={(v) => setForm({ ...form, cliente_id: v })}
+                    placeholder="Seleccione cliente"
+                    opciones={clientes.map((c) => ({ valor: c.id, etiqueta: c.razon_social }))}
+                  />
+                </Campo>
+                <Campo etiqueta="Chofer" htmlFor="v-chofer" requerido error={err("chofer_id")}>
+                  <SelectSimple
+                    id="v-chofer"
+                    valor={form.chofer_id}
+                    onCambio={(v) => setForm({ ...form, chofer_id: v })}
+                    placeholder="Seleccione chofer"
+                    opciones={choferes.map((c) => ({
+                      valor: c.id,
+                      etiqueta: `${c.nombre} · ${Math.round(Number(c.porcentaje_produccion) * 100)} %`,
+                    }))}
+                  />
+                </Campo>
+                <Campo etiqueta="Tracto" htmlFor="v-tracto" requerido error={err("tracto_id")}>
+                  <SelectSimple
+                    id="v-tracto"
+                    valor={form.tracto_id}
+                    onCambio={(v) => setForm({ ...form, tracto_id: v })}
+                    placeholder="Patente del tracto"
+                    opciones={tractos.map((t) => ({
+                      valor: t.id,
+                      etiqueta: `${t.patente}${t.marca ? ` · ${t.marca}` : ""}`,
+                    }))}
+                  />
+                </Campo>
+                <Campo etiqueta="Rampla" htmlFor="v-rampla" requerido error={err("rampla_id")}>
+                  <SelectSimple
+                    id="v-rampla"
+                    valor={form.rampla_id}
+                    onCambio={(v) => setForm({ ...form, rampla_id: v })}
+                    placeholder="Patente de la rampla"
+                    opciones={ramplas.map((r) => ({ valor: r.id, etiqueta: `${r.patente} · ${r.tipo}` }))}
+                  />
+                </Campo>
               </div>
-              <div className="space-y-2">
-                <Label className="text-base">Valor Flete ($) *</Label>
+            </fieldset>
+
+            <fieldset className="space-y-s3 border-0 border-t border-borde pt-s4">
+              <legend className="rotulo float-left mb-s2 w-full">Valor</legend>
+              <Campo
+                etiqueta="Valor del flete (neto)"
+                htmlFor="v-flete"
+                requerido
+                error={err("valor_flete_neto")}
+                ayuda={!form.chofer_id ? "Seleccione el chofer para estimar la rentabilidad." : undefined}
+              >
                 <InputCLP
+                  id="v-flete"
                   value={form.valor_flete_neto}
                   onChange={(v) => setForm({ ...form, valor_flete_neto: v })}
                   placeholder="$ 1.200.000"
+                  className="cifra h-12 text-[19px] font-semibold"
                 />
-                {rentabilidad && !rentabilidad.error && (
-                  <div
-                    className={`mt-1 rounded-md border px-3 py-2 text-sm ${
-                      rentabilidad.color === "rojo"
-                        ? "border-red-300 bg-red-50 text-red-700"
-                        : rentabilidad.color === "amarillo"
-                          ? "border-yellow-300 bg-yellow-50 text-yellow-800"
-                          : rentabilidad.color === "verde"
-                            ? "border-green-300 bg-green-50 text-green-800"
-                            : "border-gray-200 bg-gray-50 text-gray-600"
-                    }`}
-                  >
-                    Rentabilidad estimada:{" "}
-                    <strong>{formatValorKpi(rentabilidad.valor, rentabilidad.formato)}</strong>
-                    {rentabilidad.detalle?.margen_viaje !== undefined && (
-                      <span className="ml-1">
-                        (margen {formatCLP(rentabilidad.detalle.margen_viaje)})
-                      </span>
-                    )}
-                  </div>
+              </Campo>
+              <div
+                role="status"
+                aria-live="polite"
+                className={cn(
+                  "flex items-center justify-between gap-s3 rounded-xl border px-s4 py-s3 transition-colors duration-300",
+                  rentabilidad && !rentabilidad.error ? TONO_RENTA[tonoRenta] : "border-dashed border-borde-fuerte text-tinta-3",
                 )}
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-base">Origen *</Label>
-                <Input
-                  value={form.origen}
-                  onChange={(e) => setForm({ ...form, origen: e.target.value })}
-                  className="text-base"
-                  placeholder="Santiago"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-base">Destino *</Label>
-                <Input
-                  value={form.destino}
-                  onChange={(e) => setForm({ ...form, destino: e.target.value })}
-                  className="text-base"
-                  placeholder="Antofagasta"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-base">Cliente *</Label>
-              <Select
-                value={form.cliente_id}
-                onValueChange={(v) => setForm({ ...form, cliente_id: v ?? "" })}
               >
-                <SelectTrigger className="text-base">
-                  <SelectValue placeholder="Seleccione cliente" />
-                </SelectTrigger>
-                <SelectContent>
-                  {clientes.map((c) => (
-                    <SelectItem key={c.id} value={c.id} className="text-base">
-                      {c.razon_social}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-base">Chofer *</Label>
-              <Select
-                value={form.chofer_id}
-                onValueChange={(v) => setForm({ ...form, chofer_id: v ?? "" })}
-              >
-                <SelectTrigger className="text-base">
-                  <SelectValue placeholder="Seleccione chofer" />
-                </SelectTrigger>
-                <SelectContent>
-                  {choferes.map((c) => (
-                    <SelectItem key={c.id} value={c.id} className="text-base">
-                      {c.nombre}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-base">Tracto *</Label>
-                <Select
-                  value={form.tracto_id}
-                  onValueChange={(v) => setForm({ ...form, tracto_id: v ?? "" })}
-                >
-                  <SelectTrigger className="text-base">
-                    <SelectValue placeholder="Tracto" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {tractos.map((t) => (
-                      <SelectItem key={t.id} value={t.id} className="text-base">
-                        {t.patente}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div>
+                  <p className="text-[14px] font-medium opacity-80">Rentabilidad estimada</p>
+                  <p className="text-[13px] opacity-70">Flete − comisión del chofer (sin gastos aún)</p>
+                </div>
+                <div className="text-right">
+                  <p className="cifra text-[26px] leading-none font-semibold">
+                    {rentabilidad && !rentabilidad.error ? formatValorKpi(rentabilidad.valor, rentabilidad.formato) : "—"}
+                  </p>
+                  {rentabilidad?.detalle?.margen_viaje !== undefined && (
+                    <p className="mt-1 text-[13px] opacity-80">margen {formatCLP(rentabilidad.detalle.margen_viaje)}</p>
+                  )}
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label className="text-base">Rampla *</Label>
-                <Select
-                  value={form.rampla_id}
-                  onValueChange={(v) => setForm({ ...form, rampla_id: v ?? "" })}
-                >
-                  <SelectTrigger className="text-base">
-                    <SelectValue placeholder="Rampla" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ramplas.map((r) => (
-                      <SelectItem key={r.id} value={r.id} className="text-base">
-                        {r.patente}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-base">Notas</Label>
+            </fieldset>
+
+            <Campo etiqueta="Notas" htmlFor="v-notas">
               <Input
+                id="v-notas"
                 value={form.notas}
                 onChange={(e) => setForm({ ...form, notas: e.target.value })}
-                className="text-base"
+                placeholder="Opcional"
               />
-            </div>
+            </Campo>
           </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDialogo(false)} className="text-base">
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogo(false)}>
               Cancelar
             </Button>
-            <Button
-              onClick={guardar}
-              disabled={guardando}
-              className="bg-[#2A237A] text-base hover:bg-[#2A237A]/90"
-            >
-              {guardando ? "Guardando…" : "Crear Viaje"}
+            <Button onClick={guardar} disabled={guardando}>
+              {guardando ? "Guardando…" : "Crear viaje"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+export default function ViajesPage() {
+  return (
+    <Suspense fallback={null}>
+      <ViajesContenido />
+    </Suspense>
   );
 }

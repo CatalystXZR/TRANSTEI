@@ -63,11 +63,11 @@ export const ESTADO_VIAJE_LABEL: Record<EstadoViaje, string> = {
   facturado: "Facturado",
 };
 
-export const ESTADO_VIAJE_COLOR: Record<EstadoViaje, string> = {
-  programado: "bg-blue-100 text-blue-800",
-  en_ruta: "bg-yellow-500 text-black",
-  finalizado: "bg-green-100 text-green-800",
-  facturado: "bg-[#2A237A] text-white",
+export const ESTADO_VIAJE_TONO: Record<EstadoViaje, "ok" | "atencion" | "critico" | "info" | "neutro"> = {
+  programado: "neutro",
+  en_ruta: "info",
+  finalizado: "atencion",
+  facturado: "ok",
 };
 
 export interface Viaje {
@@ -206,23 +206,20 @@ export interface PreviewRentabilidad {
   error: string | null;
 }
 
-export const COLOR_KPI_CLASES: Record<string, string> = {
-  rojo: "bg-red-600 text-white",
-  amarillo: "bg-yellow-500 text-black",
-  verde: "bg-green-600 text-white",
-  azul: "bg-[#2A237A] text-white",
-  gris: "bg-gray-100 text-gray-700",
+export const TONO_KPI: Record<string, "ok" | "atencion" | "critico" | "info" | "neutro"> = {
+  rojo: "critico",
+  amarillo: "atencion",
+  verde: "ok",
+  azul: "info",
+  gris: "neutro",
 };
 
 export function formatValorKpi(valor: number | null, formato: FormatoKpi): string {
   if (valor === null || valor === undefined) return "—";
   if (formato === "clp") {
-    return new Intl.NumberFormat("es-CL", {
-      style: "currency",
-      currency: "CLP",
-      maximumFractionDigits: 0,
-    }).format(valor);
+    return `${valor < 0 ? "−" : ""}$ ${new Intl.NumberFormat("es-CL", { maximumFractionDigits: 0 }).format(Math.abs(Math.round(valor)))}`;
   }
-  if (formato === "porcentaje") return `${valor.toFixed(1)}%`;
+  if (formato === "porcentaje")
+    return `${new Intl.NumberFormat("es-CL", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(valor)} %`;
   return new Intl.NumberFormat("es-CL", { maximumFractionDigits: 1 }).format(valor);
 }

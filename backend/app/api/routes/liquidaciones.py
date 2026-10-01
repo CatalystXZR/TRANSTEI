@@ -286,6 +286,11 @@ def calcular_liquidacion(
     ).first()
     if liquidacion is None:
         liquidacion = Liquidacion(chofer_id=chofer_id, mes=mes)
+    elif liquidacion.estado == EstadoLiquidacion.emitida:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "La liquidación ya fue emitida y no puede recalcularse",
+        )
 
     liquidacion.sueldo_base = chofer.sueldo_base
     liquidacion.comision = comision

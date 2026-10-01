@@ -61,9 +61,8 @@ export function ImportarCsv({
         variant="outline"
         onClick={() => inputRef.current?.click()}
         disabled={subiendo}
-        className="text-base"
       >
-        {subiendo ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileUp className="h-5 w-5" />}
+        {subiendo ? <Loader2 className="animate-spin" /> : <FileUp />}
         Importar CSV
       </Button>
     </>

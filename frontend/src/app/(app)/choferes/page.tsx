@@ -1,19 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { IdCard, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import { formatCLP, formatFecha, formatRut } from "@/lib/format";
+import { formatCLP, formatRut } from "@/lib/format";
 import { useAuth } from "@/context/auth-context";
 import type { Chofer } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { InputCLP } from "@/components/ui-inputs/input-clp";
 import { InputRut } from "@/components/ui-inputs/input-rut";
 import { ImportarCsv } from "@/components/importar-csv";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -22,14 +20,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { FilaVacia, FilasCargando, PageHeader, Panel, Vencimiento } from "@/components/sistema";
+import { Campo } from "@/components/formulario";
 
 interface FormChofer {
   nombre: string;
@@ -39,15 +32,7 @@ interface FormChofer {
   vencimiento_licencia: string;
 }
 
-const FORM_VACIO: FormChofer = {
-  nombre: "",
-  rut: "",
-  sueldo_base: 0,
-  porcentaje_produccion: "15",
-  vencimiento_licencia: "",
-};
-
-const LIMITE_ALERTA_LICENCIA = Date.now() + 30 * 86400000;
+const FORM_VACIO: FormChofer = { nombre: "", rut: "", sueldo_base: 0, porcentaje_produccion: "15", vencimiento_licencia: "" };
 
 export default function ChoferesPage() {
   const { usuario } = useAuth();
@@ -58,6 +43,7 @@ export default function ChoferesPage() {
   const [editando, setEditando] = useState<Chofer | null>(null);
   const [form, setForm] = useState<FormChofer>(FORM_VACIO);
   const [rutValido, setRutValido] = useState(true);
+  const [intento, setIntento] = useState(false);
   const [eliminando, setEliminando] = useState<Chofer | null>(null);
   const [guardando, setGuardando] = useState(false);
 
@@ -65,18 +51,16 @@ export default function ChoferesPage() {
 
   function recargar() {
     api
-      .get<Chofer[]>("/choferes")
+      .get<Chofer[]>("/choferes?activo=true")
       .then((data) => setChoferes(data ?? []))
-      .catch((e) =>
-        toast.error(e instanceof Error ? e.message : "Error al cargar choferes"),
-      )
+      .catch((e) => toast.error(e instanceof Error ? e.message : "Error al cargar choferes"))
       .finally(() => setCargando(false));
   }
 
   useEffect(() => {
     let activo = true;
     api
-      .get<Chofer[]>("/choferes")
+      .get<Chofer[]>("/choferes?activo=true")
       .then((data) => {
         if (activo) setChoferes(data ?? []);
       })
@@ -91,32 +75,43 @@ export default function ChoferesPage() {
     };
   }, []);
 
-  const filtrados = choferes.filter(
-    (c) =>
-      c.nombre.toLowerCase().includes(busqueda.toLowerCase()) || c.rut.includes(busqueda),
-  );
+  const filtrados = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    const qRut = q.replace(/[^0-9k]/g, "");
+    return choferes.filter(
+      (c) => !q || c.nombre.toLowerCase().includes(q) || (qRut && c.rut.toLowerCase().replace(/[^0-9k]/g, "").includes(qRut)),
+    );
+  }, [choferes, busqueda]);
 
   function abrirNuevo() {
     setEditando(null);
     setForm(FORM_VACIO);
+    setRutValido(true);
+    setIntento(false);
     setDialogo(true);
   }
 
-  function abrirEditar(chofer: Chofer) {
-    setEditando(chofer);
+  function abrirEditar(c: Chofer) {
+    setEditando(c);
     setForm({
-      nombre: chofer.nombre,
-      rut: chofer.rut,
-      sueldo_base: Number(chofer.sueldo_base),
-      porcentaje_produccion: String(Math.round(Number(chofer.porcentaje_produccion) * 100)),
-      vencimiento_licencia: chofer.vencimiento_licencia ?? "",
+      nombre: c.nombre,
+      rut: c.rut,
+      sueldo_base: Number(c.sueldo_base),
+      porcentaje_produccion: String(Math.round(Number(c.porcentaje_produccion) * 1000) / 10),
+      vencimiento_licencia: c.vencimiento_licencia ?? "",
     });
+    setRutValido(true);
+    setIntento(false);
     setDialogo(true);
   }
+
+  const pct = Number(form.porcentaje_produccion);
+  const pctInvalido = form.porcentaje_produccion !== "" && (Number.isNaN(pct) || pct < 0 || pct > 100);
 
   async function guardar() {
-    if (!form.nombre.trim() || !form.rut || !rutValido) {
-      toast.error("Revise los datos: nombre y RUT son obligatorios");
+    setIntento(true);
+    if (!form.nombre.trim() || !form.rut || !rutValido || pctInvalido) {
+      toast.error("Revise los datos marcados");
       return;
     }
     setGuardando(true);
@@ -124,7 +119,7 @@ export default function ChoferesPage() {
       nombre: form.nombre.trim(),
       rut: form.rut,
       sueldo_base: form.sueldo_base,
-      porcentaje_produccion: Number(form.porcentaje_produccion || "0") / 100,
+      porcentaje_produccion: (Number(form.porcentaje_produccion) || 0) / 100,
       vencimiento_licencia: form.vencimiento_licencia || null,
     };
     try {
@@ -148,7 +143,7 @@ export default function ChoferesPage() {
     if (!eliminando) return;
     try {
       await api.del(`/choferes/${eliminando.id}`);
-      toast.success("Chofer eliminado");
+      toast.success("Chofer desactivado");
       setEliminando(null);
       recargar();
     } catch (e) {
@@ -156,104 +151,88 @@ export default function ChoferesPage() {
     }
   }
 
+  const columnas = puedeEscribir ? 6 : 5;
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold text-[#2A237A]">Choferes</h1>
-        <div className="flex flex-wrap gap-2">
-          {puedeEscribir && (
+    <div className="space-y-s5">
+      <PageHeader
+        rotulo="Maestros"
+        titulo="Choferes"
+        descripcion="Conductores, su remuneración y el vencimiento de su licencia."
+        acciones={
+          puedeEscribir && (
             <>
               <ImportarCsv endpoint="/export/import/choferes" onImportado={recargar} />
-              <Button
-                onClick={abrirNuevo}
-                className="bg-[#2A237A] text-base hover:bg-[#2A237A]/90"
-              >
-                <Plus className="h-5 w-5" />
-                Nuevo Chofer
+              <Button onClick={abrirNuevo}>
+                <Plus /> Nuevo chofer
               </Button>
             </>
-          )}
-        </div>
-      </div>
+          )
+        }
+      />
 
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
-        <Input
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Buscar por nombre o RUT"
-          className="pl-10 text-base"
-        />
-      </div>
-
-      <div className="overflow-x-auto rounded-lg border bg-white">
+      <Panel
+        titulo={`${choferes.length} ${choferes.length === 1 ? "chofer" : "choferes"}`}
+        acciones={
+          <div className="relative w-full sm:w-72">
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-[18px] -translate-y-1/2 text-tinta-3" />
+            <Input
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              placeholder="Buscar por nombre o RUT"
+              className="h-10 pl-10"
+              aria-label="Buscar choferes"
+            />
+          </div>
+        }
+      >
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="text-base">Nombre</TableHead>
-              <TableHead className="text-base">RUT</TableHead>
-              <TableHead className="text-base">Sueldo Base</TableHead>
-              <TableHead className="text-base">% Comisión</TableHead>
-              <TableHead className="text-base">Venc. Licencia</TableHead>
-              {puedeEscribir && <TableHead className="w-28 text-base">Acciones</TableHead>}
+              <TableHead>Nombre</TableHead>
+              <TableHead>RUT</TableHead>
+              <TableHead className="text-right">Sueldo base</TableHead>
+              <TableHead className="text-right">Comisión</TableHead>
+              <TableHead>Licencia</TableHead>
+              {puedeEscribir && <TableHead className="w-28 text-right">Acciones</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {cargando ? (
-              <TableRow>
-                <TableCell colSpan={6} className="py-8 text-center text-gray-500">
-                  Cargando…
-                </TableCell>
-              </TableRow>
+              <FilasCargando columnas={columnas} />
             ) : filtrados.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="py-8 text-center text-gray-500">
-                  No hay choferes registrados
-                </TableCell>
-              </TableRow>
+              <FilaVacia
+                columnas={columnas}
+                icono={IdCard}
+                titulo={choferes.length === 0 ? "Aún no hay choferes" : "Sin resultados"}
+                descripcion={choferes.length === 0 ? "Agregue choferes para asignarlos a los viajes." : "Pruebe con otro nombre o RUT."}
+              />
             ) : (
               filtrados.map((c) => (
                 <TableRow key={c.id}>
-                  <TableCell className="text-base font-medium">{c.nombre}</TableCell>
-                  <TableCell className="text-base">{formatRut(c.rut)}</TableCell>
-                  <TableCell className="text-base">{formatCLP(c.sueldo_base)}</TableCell>
-                  <TableCell className="text-base">
-                    {Math.round(Number(c.porcentaje_produccion) * 100)}%
+                  <TableCell className="font-medium">{c.nombre}</TableCell>
+                  <TableCell className="font-mono text-[14.5px] text-tinta-2">{formatRut(c.rut)}</TableCell>
+                  <TableCell className="cifra text-right">{formatCLP(c.sueldo_base)}</TableCell>
+                  <TableCell className="cifra text-right">
+                    {Math.round(Number(c.porcentaje_produccion) * 1000) / 10} %
                   </TableCell>
-                  <TableCell className="text-base">
-                    {c.vencimiento_licencia ? (
-                      <Badge
-                        className={
-                          new Date(c.vencimiento_licencia).getTime() < LIMITE_ALERTA_LICENCIA
-                            ? "bg-yellow-500 text-black"
-                            : "bg-gray-100 text-gray-700"
-                        }
-                      >
-                        {formatFecha(c.vencimiento_licencia)}
-                      </Badge>
-                    ) : (
-                      "-"
-                    )}
+                  <TableCell>
+                    <Vencimiento fecha={c.vencimiento_licencia} />
                   </TableCell>
                   {puedeEscribir && (
                     <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          onClick={() => abrirEditar(c)}
-                          aria-label="Editar chofer"
-                        >
-                          <Pencil className="h-4 w-4" />
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon-sm" onClick={() => abrirEditar(c)} aria-label={`Editar ${c.nombre}`}>
+                          <Pencil />
                         </Button>
                         <Button
-                          size="icon"
-                          variant="outline"
-                          className="border-red-200 text-red-600 hover:bg-red-50"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-tinta-3 hover:bg-critico-tenue hover:text-critico"
                           onClick={() => setEliminando(c)}
-                          aria-label="Eliminar chofer"
+                          aria-label={`Desactivar ${c.nombre}`}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 />
                         </Button>
                       </div>
                     </TableCell>
@@ -263,82 +242,71 @@ export default function ChoferesPage() {
             )}
           </TableBody>
         </Table>
-      </div>
+      </Panel>
 
       <Dialog open={dialogo} onOpenChange={setDialogo}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[92vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-xl">
-              {editando ? "Editar Chofer" : "Nuevo Chofer"}
-            </DialogTitle>
-            <DialogDescription className="text-base">
-              El sueldo mensual se calcula como Sueldo Base + (% Comisión × fletes del mes).
-            </DialogDescription>
+            <DialogTitle>{editando ? "Editar chofer" : "Nuevo chofer"}</DialogTitle>
+            <DialogDescription>Sueldo mensual = sueldo base + (% comisión × fletes finalizados del mes).</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label className="text-base">Nombre *</Label>
-              <Input
-                value={form.nombre}
-                onChange={(e) => setForm({ ...form, nombre: e.target.value })}
-                className="text-base"
-                placeholder="Nombre completo"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-base">RUT *</Label>
+          <div className="space-y-s4">
+            <Campo etiqueta="Nombre completo" htmlFor="ch-nombre" requerido error={intento && !form.nombre.trim() ? "Ingrese el nombre" : null}>
+              <Input id="ch-nombre" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+            </Campo>
+            <Campo
+              etiqueta="RUT"
+              htmlFor="ch-rut"
+              requerido
+              error={!rutValido ? "El RUT no es válido" : intento && !form.rut ? "Ingrese el RUT" : null}
+            >
               <InputRut
+                key={editando?.id ?? "nuevo"}
+                id="ch-rut"
                 value={form.rut}
                 onChange={(rut) => setForm({ ...form, rut })}
                 onValidez={setRutValido}
                 placeholder="12.345.678-9"
               />
-              {!rutValido && (
-                <p className="text-sm text-red-600">El RUT ingresado no es válido</p>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-base">Sueldo Base ($)</Label>
+            </Campo>
+            <div className="grid gap-s3 sm:grid-cols-2">
+              <Campo etiqueta="Sueldo base" htmlFor="ch-sueldo">
                 <InputCLP
+                  key={editando?.id ?? "nuevo"}
+                  id="ch-sueldo"
                   value={form.sueldo_base}
                   onChange={(v) => setForm({ ...form, sueldo_base: v })}
                   placeholder="$ 500.000"
+                  className="cifra"
                 />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-base">% Comisión</Label>
+              </Campo>
+              <Campo etiqueta="Comisión (%)" htmlFor="ch-pct" error={pctInvalido ? "Entre 0 y 100" : null}>
                 <Input
+                  id="ch-pct"
                   type="number"
                   min={0}
                   max={100}
+                  step={0.5}
                   value={form.porcentaje_produccion}
-                  onChange={(e) =>
-                    setForm({ ...form, porcentaje_produccion: e.target.value })
-                  }
-                  className="text-base"
+                  onChange={(e) => setForm({ ...form, porcentaje_produccion: e.target.value })}
+                  aria-invalid={pctInvalido}
                 />
-              </div>
+              </Campo>
             </div>
-            <div className="space-y-2">
-              <Label className="text-base">Vencimiento Licencia</Label>
+            <Campo etiqueta="Vencimiento de licencia" htmlFor="ch-lic" ayuda="Se alertará 30 días antes">
               <Input
+                id="ch-lic"
                 type="date"
                 value={form.vencimiento_licencia}
                 onChange={(e) => setForm({ ...form, vencimiento_licencia: e.target.value })}
-                className="text-base"
               />
-            </div>
+            </Campo>
           </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDialogo(false)} className="text-base">
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogo(false)}>
               Cancelar
             </Button>
-            <Button
-              onClick={guardar}
-              disabled={guardando}
-              className="bg-[#2A237A] text-base hover:bg-[#2A237A]/90"
-            >
+            <Button onClick={guardar} disabled={guardando}>
               {guardando ? "Guardando…" : "Guardar"}
             </Button>
           </DialogFooter>
@@ -348,18 +316,17 @@ export default function ChoferesPage() {
       <Dialog open={!!eliminando} onOpenChange={(o) => !o && setEliminando(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-xl">Eliminar Chofer</DialogTitle>
-            <DialogDescription className="text-base">
-              ¿Seguro que desea eliminar a <strong>{eliminando?.nombre}</strong>?
+            <DialogTitle>Desactivar chofer</DialogTitle>
+            <DialogDescription>
+              <strong>{eliminando?.nombre}</strong> dejará de estar disponible para nuevos viajes. Su historial se conserva.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setEliminando(null)} className="text-base">
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEliminando(null)}>
               Cancelar
             </Button>
-            <Button variant="destructive" onClick={eliminar} className="text-base">
-              <Trash2 className="h-4 w-4" />
-              Eliminar
+            <Button variant="destructive" onClick={eliminar}>
+              <Trash2 /> Desactivar
             </Button>
           </DialogFooter>
         </DialogContent>

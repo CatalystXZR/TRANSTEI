@@ -19,8 +19,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#F9FAFB]">
-        <Loader2 className="h-8 w-8 animate-spin text-[#2A237A]" />
+      <div className="flex min-h-screen flex-col items-center justify-center gap-s3 bg-fondo" role="status">
+        <span className="grid size-12 place-items-center rounded-xl bg-marca font-heading text-[15px] font-extrabold text-white">
+          TEI
+        </span>
+        <Loader2 className="size-5 animate-spin text-tinta-3" />
+        <span className="sr-only">Cargando</span>
       </div>
     );
   }

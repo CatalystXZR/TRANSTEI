@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Building2, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { formatRut } from "@/lib/format";
@@ -9,7 +9,6 @@ import { useAuth } from "@/context/auth-context";
 import type { Cliente } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { InputRut } from "@/components/ui-inputs/input-rut";
 import { ImportarCsv } from "@/components/importar-csv";
 import {
@@ -20,14 +19,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { FilaVacia, FilasCargando, PageHeader, Panel } from "@/components/sistema";
+import { Campo } from "@/components/formulario";
 
 interface FormCliente {
   razon_social: string;
@@ -38,14 +32,7 @@ interface FormCliente {
   email: string;
 }
 
-const FORM_VACIO: FormCliente = {
-  razon_social: "",
-  rut: "",
-  giro: "",
-  dias_pago: "30",
-  telefono: "",
-  email: "",
-};
+const FORM_VACIO: FormCliente = { razon_social: "", rut: "", giro: "", dias_pago: "30", telefono: "", email: "" };
 
 export default function ClientesPage() {
   const { usuario } = useAuth();
@@ -56,26 +43,24 @@ export default function ClientesPage() {
   const [editando, setEditando] = useState<Cliente | null>(null);
   const [form, setForm] = useState<FormCliente>(FORM_VACIO);
   const [rutValido, setRutValido] = useState(true);
+  const [intento, setIntento] = useState(false);
   const [eliminando, setEliminando] = useState<Cliente | null>(null);
   const [guardando, setGuardando] = useState(false);
 
-  const puedeEscribir =
-    usuario?.rol === "admin" || usuario?.rol === "operacion";
+  const puedeEscribir = usuario?.rol === "admin" || usuario?.rol === "operacion";
 
   function recargar() {
     api
-      .get<Cliente[]>("/clientes")
+      .get<Cliente[]>("/clientes?activo=true")
       .then((data) => setClientes(data ?? []))
-      .catch((e) =>
-        toast.error(e instanceof Error ? e.message : "Error al cargar clientes"),
-      )
+      .catch((e) => toast.error(e instanceof Error ? e.message : "Error al cargar clientes"))
       .finally(() => setCargando(false));
   }
 
   useEffect(() => {
     let activo = true;
     api
-      .get<Cliente[]>("/clientes")
+      .get<Cliente[]>("/clientes?activo=true")
       .then((data) => {
         if (activo) setClientes(data ?? []);
       })
@@ -90,34 +75,41 @@ export default function ClientesPage() {
     };
   }, []);
 
-  const filtrados = clientes.filter(
-    (c) =>
-      c.razon_social.toLowerCase().includes(busqueda.toLowerCase()) ||
-      c.rut.includes(busqueda),
-  );
+  const filtrados = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    const qRut = q.replace(/[^0-9k]/g, "");
+    return clientes.filter(
+      (c) => !q || c.razon_social.toLowerCase().includes(q) || (qRut && c.rut.toLowerCase().replace(/[^0-9k]/g, "").includes(qRut)),
+    );
+  }, [clientes, busqueda]);
 
   function abrirNuevo() {
     setEditando(null);
     setForm(FORM_VACIO);
+    setRutValido(true);
+    setIntento(false);
     setDialogo(true);
   }
 
-  function abrirEditar(cliente: Cliente) {
-    setEditando(cliente);
+  function abrirEditar(c: Cliente) {
+    setEditando(c);
     setForm({
-      razon_social: cliente.razon_social,
-      rut: cliente.rut,
-      giro: cliente.giro ?? "",
-      dias_pago: String(cliente.dias_pago),
-      telefono: cliente.telefono ?? "",
-      email: cliente.email ?? "",
+      razon_social: c.razon_social,
+      rut: c.rut,
+      giro: c.giro ?? "",
+      dias_pago: String(c.dias_pago),
+      telefono: c.telefono ?? "",
+      email: c.email ?? "",
     });
+    setRutValido(true);
+    setIntento(false);
     setDialogo(true);
   }
 
   async function guardar() {
+    setIntento(true);
     if (!form.razon_social.trim() || !form.rut || !rutValido) {
-      toast.error("Revise los datos: razón social y RUT son obligatorios");
+      toast.error("Revise los datos: razón social y RUT válido son obligatorios");
       return;
     }
     setGuardando(true);
@@ -125,7 +117,7 @@ export default function ClientesPage() {
       razon_social: form.razon_social.trim(),
       rut: form.rut,
       giro: form.giro.trim() || null,
-      dias_pago: Number(form.dias_pago) || 30,
+      dias_pago: Math.max(0, Number(form.dias_pago) || 30),
       telefono: form.telefono.trim() || null,
       email: form.email.trim() || null,
     };
@@ -150,7 +142,7 @@ export default function ClientesPage() {
     if (!eliminando) return;
     try {
       await api.del(`/clientes/${eliminando.id}`);
-      toast.success("Cliente eliminado");
+      toast.success("Cliente desactivado");
       setEliminando(null);
       recargar();
     } catch (e) {
@@ -158,86 +150,87 @@ export default function ClientesPage() {
     }
   }
 
+  const columnas = puedeEscribir ? 6 : 5;
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold text-[#2A237A]">Clientes</h1>
-        <div className="flex flex-wrap gap-2">
-          {puedeEscribir && (
+    <div className="space-y-s5">
+      <PageHeader
+        rotulo="Maestros"
+        titulo="Clientes"
+        descripcion="Empresas a las que se presta servicio de transporte y sus condiciones de pago."
+        acciones={
+          puedeEscribir && (
             <>
               <ImportarCsv endpoint="/export/import/clientes" onImportado={recargar} />
-              <Button
-                onClick={abrirNuevo}
-                className="bg-[#2A237A] text-base hover:bg-[#2A237A]/90"
-              >
-                <Plus className="h-5 w-5" />
-                Nuevo Cliente
+              <Button onClick={abrirNuevo}>
+                <Plus /> Nuevo cliente
               </Button>
             </>
-          )}
-        </div>
-      </div>
+          )
+        }
+      />
 
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
-        <Input
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Buscar por nombre o RUT"
-          className="pl-10 text-base"
-        />
-      </div>
-
-      <div className="overflow-x-auto rounded-lg border bg-white">
+      <Panel
+        titulo={`${clientes.length} ${clientes.length === 1 ? "cliente" : "clientes"}`}
+        acciones={
+          <div className="relative w-full sm:w-72">
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-[18px] -translate-y-1/2 text-tinta-3" />
+            <Input
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              placeholder="Buscar por nombre o RUT"
+              className="h-10 pl-10"
+              aria-label="Buscar clientes"
+            />
+          </div>
+        }
+      >
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="text-base">Razón Social</TableHead>
-              <TableHead className="text-base">RUT</TableHead>
-              <TableHead className="text-base">Días Pago</TableHead>
-              <TableHead className="text-base">Teléfono</TableHead>
-              {puedeEscribir && <TableHead className="w-28 text-base">Acciones</TableHead>}
+              <TableHead>Razón social</TableHead>
+              <TableHead>RUT</TableHead>
+              <TableHead>Pago</TableHead>
+              <TableHead>Teléfono</TableHead>
+              <TableHead>Correo</TableHead>
+              {puedeEscribir && <TableHead className="w-28 text-right">Acciones</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {cargando ? (
-              <TableRow>
-                <TableCell colSpan={5} className="py-8 text-center text-gray-500">
-                  Cargando…
-                </TableCell>
-              </TableRow>
+              <FilasCargando columnas={columnas} />
             ) : filtrados.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} className="py-8 text-center text-gray-500">
-                  No hay clientes registrados
-                </TableCell>
-              </TableRow>
+              <FilaVacia
+                columnas={columnas}
+                icono={Building2}
+                titulo={clientes.length === 0 ? "Aún no hay clientes" : "Sin resultados"}
+                descripcion={clientes.length === 0 ? "Agregue clientes manualmente o importe una planilla CSV." : "Pruebe con otro nombre o RUT."}
+              />
             ) : (
               filtrados.map((c) => (
                 <TableRow key={c.id}>
-                  <TableCell className="text-base font-medium">{c.razon_social}</TableCell>
-                  <TableCell className="text-base">{formatRut(c.rut)}</TableCell>
-                  <TableCell className="text-base">{c.dias_pago} días</TableCell>
-                  <TableCell className="text-base">{c.telefono ?? "-"}</TableCell>
+                  <TableCell>
+                    <span className="font-medium">{c.razon_social}</span>
+                    {c.giro && <span className="block text-[13.5px] text-tinta-3">{c.giro}</span>}
+                  </TableCell>
+                  <TableCell className="font-mono text-[14.5px] text-tinta-2">{formatRut(c.rut)}</TableCell>
+                  <TableCell className="text-tinta-2">{c.dias_pago} días</TableCell>
+                  <TableCell className="text-tinta-2">{c.telefono ?? "—"}</TableCell>
+                  <TableCell className="text-tinta-2">{c.email ?? "—"}</TableCell>
                   {puedeEscribir && (
                     <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          onClick={() => abrirEditar(c)}
-                          aria-label="Editar cliente"
-                        >
-                          <Pencil className="h-4 w-4" />
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon-sm" onClick={() => abrirEditar(c)} aria-label={`Editar ${c.razon_social}`}>
+                          <Pencil />
                         </Button>
                         <Button
-                          size="icon"
-                          variant="outline"
-                          className="border-red-200 text-red-600 hover:bg-red-50"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-tinta-3 hover:bg-critico-tenue hover:text-critico"
                           onClick={() => setEliminando(c)}
-                          aria-label="Eliminar cliente"
+                          aria-label={`Desactivar ${c.razon_social}`}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 />
                         </Button>
                       </div>
                     </TableCell>
@@ -247,89 +240,71 @@ export default function ClientesPage() {
             )}
           </TableBody>
         </Table>
-      </div>
+      </Panel>
 
       <Dialog open={dialogo} onOpenChange={setDialogo}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[92vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-xl">
-              {editando ? "Editar Cliente" : "Nuevo Cliente"}
-            </DialogTitle>
-            <DialogDescription className="text-base">
-              Complete los datos del cliente. El RUT se valida automáticamente.
-            </DialogDescription>
+            <DialogTitle>{editando ? "Editar cliente" : "Nuevo cliente"}</DialogTitle>
+            <DialogDescription>El RUT se valida automáticamente al escribirlo.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label className="text-base">Razón Social *</Label>
+          <div className="space-y-s4">
+            <Campo
+              etiqueta="Razón social"
+              htmlFor="c-razon"
+              requerido
+              error={intento && !form.razon_social.trim() ? "Ingrese la razón social" : null}
+            >
               <Input
+                id="c-razon"
                 value={form.razon_social}
                 onChange={(e) => setForm({ ...form, razon_social: e.target.value })}
-                className="text-base"
                 placeholder="Empresa de Transportes SpA"
               />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-base">RUT *</Label>
-              <InputRut
-                value={form.rut}
-                onChange={(rut) => setForm({ ...form, rut })}
-                onValidez={setRutValido}
-                placeholder="12.345.678-9"
-              />
-              {!rutValido && (
-                <p className="text-sm text-red-600">El RUT ingresado no es válido</p>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-base">Días de Pago</Label>
+            </Campo>
+            <div className="grid gap-s3 sm:grid-cols-2">
+              <Campo
+                etiqueta="RUT"
+                htmlFor="c-rut"
+                requerido
+                error={!rutValido ? "El RUT no es válido" : intento && !form.rut ? "Ingrese el RUT" : null}
+              >
+                <InputRut
+                  key={editando?.id ?? "nuevo"}
+                  id="c-rut"
+                  value={form.rut}
+                  onChange={(rut) => setForm({ ...form, rut })}
+                  onValidez={setRutValido}
+                  placeholder="76.123.456-7"
+                />
+              </Campo>
+              <Campo etiqueta="Días de pago" htmlFor="c-dias" ayuda="Plazo para calcular el vencimiento">
                 <Input
+                  id="c-dias"
                   type="number"
                   min={0}
                   value={form.dias_pago}
                   onChange={(e) => setForm({ ...form, dias_pago: e.target.value })}
-                  className="text-base"
                 />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-base">Teléfono</Label>
-                <Input
-                  value={form.telefono}
-                  onChange={(e) => setForm({ ...form, telefono: e.target.value })}
-                  className="text-base"
-                  placeholder="+56 9 ..."
-                />
-              </div>
+              </Campo>
             </div>
-            <div className="space-y-2">
-              <Label className="text-base">Giro</Label>
-              <Input
-                value={form.giro}
-                onChange={(e) => setForm({ ...form, giro: e.target.value })}
-                className="text-base"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-base">Email</Label>
-              <Input
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className="text-base"
-                placeholder="contacto@empresa.cl"
-              />
+            <Campo etiqueta="Giro" htmlFor="c-giro">
+              <Input id="c-giro" value={form.giro} onChange={(e) => setForm({ ...form, giro: e.target.value })} placeholder="Opcional" />
+            </Campo>
+            <div className="grid gap-s3 sm:grid-cols-2">
+              <Campo etiqueta="Teléfono" htmlFor="c-tel">
+                <Input id="c-tel" value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} placeholder="+56 9 …" />
+              </Campo>
+              <Campo etiqueta="Correo" htmlFor="c-email">
+                <Input id="c-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="contacto@empresa.cl" />
+              </Campo>
             </div>
           </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDialogo(false)} className="text-base">
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogo(false)}>
               Cancelar
             </Button>
-            <Button
-              onClick={guardar}
-              disabled={guardando}
-              className="bg-[#2A237A] text-base hover:bg-[#2A237A]/90"
-            >
+            <Button onClick={guardar} disabled={guardando}>
               {guardando ? "Guardando…" : "Guardar"}
             </Button>
           </DialogFooter>
@@ -339,19 +314,18 @@ export default function ClientesPage() {
       <Dialog open={!!eliminando} onOpenChange={(o) => !o && setEliminando(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-xl">Eliminar Cliente</DialogTitle>
-            <DialogDescription className="text-base">
-              ¿Seguro que desea eliminar a <strong>{eliminando?.razon_social}</strong>?
-              Podrá reactivarlo desde el sistema si lo necesita.
+            <DialogTitle>Desactivar cliente</DialogTitle>
+            <DialogDescription>
+              <strong>{eliminando?.razon_social}</strong> dejará de aparecer en las listas. Su historial de viajes y
+              facturas se conserva.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setEliminando(null)} className="text-base">
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEliminando(null)}>
               Cancelar
             </Button>
-            <Button variant="destructive" onClick={eliminar} className="text-base">
-              <Trash2 className="h-4 w-4" />
-              Eliminar
+            <Button variant="destructive" onClick={eliminar}>
+              <Trash2 /> Desactivar
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,20 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CalendarDays, Minus, Receipt, ReceiptText, Equal } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { formatCLP, formatFecha } from "@/lib/format";
 import { CATEGORIA_GASTO_LABEL } from "@/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Aviso, FilaVacia, FilasCargando, PageHeader, Panel, StatTileSkeleton } from "@/components/sistema";
 
 interface IvaResumen {
   mes: string;
@@ -26,14 +20,37 @@ interface IvaResumen {
   gastos: { id: string; categoria: string; monto: string; iva_credito: string; fecha: string }[];
 }
 
+function mesActual() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function nombreMes(mes: string) {
+  const [a, m] = mes.split("-").map(Number);
+  if (!a || !m) return mes;
+  return new Intl.DateTimeFormat("es-CL", { month: "long", year: "numeric" }).format(new Date(a, m - 1, 1));
+}
+
+function fechaPago(mes: string) {
+  const [a, m] = mes.split("-").map(Number);
+  if (!a || !m) return "";
+  return new Intl.DateTimeFormat("es-CL", { day: "numeric", month: "long", year: "numeric" }).format(new Date(a, m, 20));
+}
+
 export default function IvaPage() {
-  const hoy = new Date();
-  const [mes, setMes] = useState(`${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`);
+  const [mes, setMes] = useState("");
   const [data, setData] = useState<IvaResumen | null>(null);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
+    const t = setTimeout(() => setMes(mesActual()), 0);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    if (!mes) return;
     let activo = true;
+    const t = setTimeout(() => setCargando(true), 0);
     api
       .get<IvaResumen>(`/iva/resumen?mes=${mes}`)
       .then((d) => {
@@ -47,123 +64,127 @@ export default function IvaPage() {
       });
     return () => {
       activo = false;
+      clearTimeout(t);
     };
   }, [mes]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold text-[#2A237A]">Cuadratura de IVA</h1>
-        <div className="flex items-center gap-3">
-          <Input
-            type="month"
-            value={mes}
-            onChange={(e) => setMes(e.target.value)}
-            className="w-44 text-base"
-          />
+    <div className="space-y-s5">
+      <PageHeader
+        rotulo="Finanzas"
+        titulo="IVA mensual"
+        descripcion="Débito fiscal de las facturas afectas menos el crédito de los gastos con IVA recuperable."
+        acciones={
+          <label className="flex items-center gap-s2 text-[15px] text-tinta-3">
+            <CalendarDays className="size-[18px]" />
+            <span className="sr-only">Mes</span>
+            <Input type="month" value={mes} onChange={(e) => e.target.value && setMes(e.target.value)} className="w-48" aria-label="Mes a declarar" />
+          </label>
+        }
+      />
+
+      {cargando || !data ? (
+        <div className="grid gap-s3 md:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <StatTileSkeleton key={i} />
+          ))}
         </div>
-      </div>
-
-      <div className="rounded-lg bg-yellow-50 p-4 text-base text-yellow-800">
-        El IVA se paga el día <strong>20</strong> del mes siguiente al declarado.
-      </div>
-
-      {cargando ? (
-        <p className="py-8 text-center text-gray-500">Calculando…</p>
       ) : (
-        <>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base text-gray-500">IVA Débito Fiscal</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold text-[#2A237A]">{formatCLP(data?.debito)}</p>
-                <p className="text-sm text-gray-500">IVA de facturas afectas emitidas</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base text-gray-500">IVA Crédito Fiscal</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold text-green-700">{formatCLP(data?.credito)}</p>
-                <p className="text-sm text-gray-500">IVA de gastos con boleta recuperable</p>
-              </CardContent>
-            </Card>
-            <Card className={Number(data?.a_pagar ?? 0) > 0 ? "border-red-200" : ""}>
-              <CardHeader>
-                <CardTitle className="text-base text-gray-500">A Pagar (día 20)</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-bold text-red-600">{formatCLP(data?.a_pagar)}</p>
-              </CardContent>
-            </Card>
+        <section aria-label="Cuadratura" className="grid items-stretch gap-s3 md:grid-cols-[1fr_auto_1fr_auto_1.15fr]">
+          <div className="rounded-xl border border-borde bg-superficie p-s4 shadow-elev-1">
+            <p className="text-[15px] font-medium text-tinta-3">IVA débito</p>
+            <p className="cifra mt-s3 text-[32px] leading-none font-semibold">{formatCLP(data.debito)}</p>
+            <p className="mt-s2 text-[14px] text-tinta-3">{data.facturas.length} facturas afectas</p>
           </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-lg border bg-white">
-              <p className="border-b p-4 text-base font-semibold">
-                Facturas afectas del mes ({data?.facturas.length ?? 0})
-              </p>
-              <div className="max-h-80 overflow-y-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-base">N°</TableHead>
-                      <TableHead className="text-base">Cliente</TableHead>
-                      <TableHead className="text-base">Neto</TableHead>
-                      <TableHead className="text-base">IVA</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(data?.facturas ?? []).map((f, i) => (
-                      <TableRow key={i}>
-                        <TableCell className="text-base">{f.numero_sii}</TableCell>
-                        <TableCell className="text-base">{f.cliente}</TableCell>
-                        <TableCell className="text-base">{formatCLP(f.neto)}</TableCell>
-                        <TableCell className="text-base">{formatCLP(f.iva)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-            <div className="rounded-lg border bg-white">
-              <p className="border-b p-4 text-base font-semibold">
-                Gastos con IVA recuperable ({data?.gastos.length ?? 0})
-              </p>
-              <div className="max-h-80 overflow-y-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-base">Fecha</TableHead>
-                      <TableHead className="text-base">Categoría</TableHead>
-                      <TableHead className="text-base">Monto</TableHead>
-                      <TableHead className="text-base">Crédito</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(data?.gastos ?? []).map((g) => (
-                      <TableRow key={g.id}>
-                        <TableCell className="text-base">{formatFecha(g.fecha)}</TableCell>
-                        <TableCell className="text-base">
-                          {CATEGORIA_GASTO_LABEL[g.categoria as keyof typeof CATEGORIA_GASTO_LABEL] ??
-                            g.categoria}
-                        </TableCell>
-                        <TableCell className="text-base">{formatCLP(g.monto)}</TableCell>
-                        <TableCell className="text-base text-green-700">
-                          {formatCLP(g.iva_credito)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
+          <div className="hidden items-center justify-center text-tinta-3 md:flex" aria-hidden="true">
+            <Minus className="size-5" />
           </div>
-        </>
+          <div className="rounded-xl border border-borde bg-superficie p-s4 shadow-elev-1">
+            <p className="text-[15px] font-medium text-tinta-3">IVA crédito</p>
+            <p className="cifra mt-s3 text-[32px] leading-none font-semibold text-ok">{formatCLP(data.credito)}</p>
+            <p className="mt-s2 text-[14px] text-tinta-3">{data.gastos.length} gastos con IVA recuperable</p>
+          </div>
+          <div className="hidden items-center justify-center text-tinta-3 md:flex" aria-hidden="true">
+            <Equal className="size-5" />
+          </div>
+          <div className="relative overflow-hidden rounded-xl border border-marca bg-marca p-s4 text-white shadow-elev-2">
+            <p className="text-[15px] font-medium text-white/75">A pagar</p>
+            <p className="cifra mt-s3 text-[38px] leading-none font-semibold">{formatCLP(data.a_pagar)}</p>
+            <p className="mt-s2 text-[14px] text-white/70">Plazo: {fechaPago(data.mes)}</p>
+            <span className="absolute inset-x-0 bottom-0 h-[3px] bg-senal" aria-hidden="true" />
+          </div>
+        </section>
       )}
+
+      {mes && (
+        <Aviso icono={CalendarDays}>
+          Período <strong className="capitalize">{nombreMes(mes)}</strong> · tasa {data?.tasa ?? "19"} %. El IVA se declara
+          y paga hasta el día 20 del mes siguiente.
+        </Aviso>
+      )}
+
+      <div className="grid gap-s4 xl:grid-cols-2">
+        <Panel titulo="Facturas afectas" descripcion="Generan IVA débito">
+          <div className="max-h-[420px] overflow-y-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>N°</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead className="text-right">Neto</TableHead>
+                  <TableHead className="text-right">IVA</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {cargando ? (
+                  <FilasCargando columnas={4} filas={3} />
+                ) : !data?.facturas.length ? (
+                  <FilaVacia columnas={4} icono={ReceiptText} titulo="Sin facturas afectas este mes" />
+                ) : (
+                  data.facturas.map((f, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="font-mono">{f.numero_sii}</TableCell>
+                      <TableCell>{f.cliente}</TableCell>
+                      <TableCell className="cifra text-right text-tinta-2">{formatCLP(f.neto)}</TableCell>
+                      <TableCell className="cifra text-right font-semibold">{formatCLP(f.iva)}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </Panel>
+        <Panel titulo="Gastos con IVA recuperable" descripcion="Generan IVA crédito">
+          <div className="max-h-[420px] overflow-y-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead>Categoría</TableHead>
+                  <TableHead className="text-right">Monto</TableHead>
+                  <TableHead className="text-right">Crédito</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {cargando ? (
+                  <FilasCargando columnas={4} filas={3} />
+                ) : !data?.gastos.length ? (
+                  <FilaVacia columnas={4} icono={Receipt} titulo="Sin gastos con IVA recuperable" />
+                ) : (
+                  data.gastos.map((g) => (
+                    <TableRow key={g.id}>
+                      <TableCell className="text-tinta-2">{formatFecha(g.fecha)}</TableCell>
+                      <TableCell>{CATEGORIA_GASTO_LABEL[g.categoria as keyof typeof CATEGORIA_GASTO_LABEL] ?? g.categoria}</TableCell>
+                      <TableCell className="cifra text-right text-tinta-2">{formatCLP(g.monto)}</TableCell>
+                      <TableCell className="cifra text-right font-semibold text-ok">{formatCLP(g.iva_credito)}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </Panel>
+      </div>
     </div>
   );
 }

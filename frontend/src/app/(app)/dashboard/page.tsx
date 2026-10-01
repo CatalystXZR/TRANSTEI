@@ -2,31 +2,52 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, FileWarning } from "lucide-react";
+import {
+  ArrowRight,
+  ArrowUpRight,
+  CalendarClock,
+  CircleCheck,
+  FileWarning,
+  Gauge,
+  Plus,
+  Truck,
+} from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { formatCLP, formatFecha } from "@/lib/format";
+import { useAuth } from "@/context/auth-context";
 import type { AlertasDashboard, KpiValor, ResumenDashboard } from "@/types";
-import { ESTADO_VIAJE_COLOR, ESTADO_VIAJE_LABEL, formatValorKpi } from "@/types";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ESTADO_VIAJE_LABEL, ESTADO_VIAJE_TONO, TONO_KPI, formatValorKpi } from "@/types";
+import { buttonVariants } from "@/components/ui/button";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  EstadoVacio,
+  PageHeader,
+  Panel,
+  Patente,
+  StatTile,
+  StatTileSkeleton,
+  StatusBadge,
+} from "@/components/sistema";
+import { Skeleton } from "@/components/ui/skeleton";
+
+function saludo() {
+  const h = new Date().getHours();
+  if (h < 12) return "Buenos días";
+  if (h < 20) return "Buenas tardes";
+  return "Buenas noches";
+}
 
 export default function DashboardPage() {
+  const { usuario } = useAuth();
   const [resumen, setResumen] = useState<ResumenDashboard | null>(null);
   const [alertas, setAlertas] = useState<AlertasDashboard | null>(null);
   const [kpis, setKpis] = useState<KpiValor[]>([]);
   const [cargando, setCargando] = useState(true);
+  const [hola, setHola] = useState("Hola");
 
   useEffect(() => {
     let activo = true;
+    const t = setTimeout(() => setHola(saludo()), 0);
     Promise.all([
       api.get<ResumenDashboard>("/dashboard/resumen"),
       api.get<AlertasDashboard>("/dashboard/alertas"),
@@ -39,192 +60,198 @@ export default function DashboardPage() {
         setKpis(k ?? []);
       })
       .catch((e) => {
-        if (activo) toast.error(e instanceof Error ? e.message : "Error al cargar dashboard");
+        if (activo) toast.error(e instanceof Error ? e.message : "Error al cargar el panel");
       })
       .finally(() => {
         if (activo) setCargando(false);
       });
     return () => {
       activo = false;
+      clearTimeout(t);
     };
   }, []);
 
-  if (cargando) {
-    return <p className="py-10 text-center text-gray-500">Cargando panel de control…</p>;
-  }
-
   const vencimientos = alertas?.vencimientos ?? [];
   const facturasVencidas = alertas?.facturas_vencidas ?? [];
-  const hayAlertas = vencimientos.length > 0 || facturasVencidas.length > 0;
+  const totalAlertas = vencimientos.length + facturasVencidas.length;
+  const viajesActivos = resumen?.viajes_activos ?? [];
+  const puedeCrear = usuario?.rol === "admin" || usuario?.rol === "operacion";
+  const primerNombre = usuario?.nombre?.split(/[\s.]/)[0] ?? "";
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-[#2A237A]">Panel de Control</h1>
+    <div className="space-y-s5">
+      <PageHeader
+        rotulo="Resumen del negocio"
+        titulo={
+          <>
+            {hola}
+            {primerNombre && <span className="capitalize">, {primerNombre}</span>}
+          </>
+        }
+        descripcion={
+          cargando ? (
+            "Cargando la situación del día…"
+          ) : (
+            <>
+              Hay <strong className="font-semibold text-tinta">{formatCLP(resumen?.cuentas_por_cobrar)}</strong> por
+              cobrar
+              {Number(resumen?.cuentas_atrasadas ?? 0) > 0 && (
+                <>
+                  , de los cuales{" "}
+                  <strong className="font-semibold text-critico">{formatCLP(resumen?.cuentas_atrasadas)}</strong> están
+                  vencidos
+                </>
+              )}
+              . {viajesActivos.length} {viajesActivos.length === 1 ? "viaje activo" : "viajes activos"} y{" "}
+              {totalAlertas} {totalAlertas === 1 ? "alerta pendiente" : "alertas pendientes"}.
+            </>
+          )
+        }
+        acciones={
+          puedeCrear && (
+            <Link href="/viajes?nuevo=1" className={buttonVariants({ size: "lg" })}>
+              <Plus /> Nuevo viaje
+            </Link>
+          )
+        }
+      />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {kpis.length === 0 ? (
-          <Card className="sm:col-span-2 lg:col-span-3 xl:col-span-4">
-            <CardContent className="pt-6 text-base text-gray-500">
-              No hay indicadores configurados. Un administrador puede crearlos en
-              “Indicadores (KPIs)”.
-            </CardContent>
-          </Card>
+      {/* Indicadores */}
+      <section aria-label="Indicadores" className="grid gap-s3 sm:grid-cols-2 xl:grid-cols-[repeat(auto-fit,minmax(240px,1fr))]">
+        {cargando ? (
+          Array.from({ length: 4 }).map((_, i) => <StatTileSkeleton key={i} />)
+        ) : kpis.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-borde-fuerte bg-superficie sm:col-span-2 xl:col-span-4">
+            <EstadoVacio
+              icono={Gauge}
+              titulo="Sin indicadores configurados"
+              descripcion="Un administrador puede crearlos en Sistema → Indicadores."
+            />
+          </div>
         ) : (
-          kpis.map((k) => (
-            <Card key={k.id}>
-              <CardHeader>
-                <CardTitle className="text-base text-gray-500">{k.nombre}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {k.error ? (
-                  <p className="text-sm text-red-600">Error en la fórmula</p>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="h-3 w-3 shrink-0 rounded-full"
-                      style={{
-                        backgroundColor:
-                          k.color === "rojo"
-                            ? "#dc2626"
-                            : k.color === "amarillo"
-                              ? "#f59e0b"
-                              : k.color === "verde"
-                                ? "#16a34a"
-                                : k.color === "azul"
-                                  ? "#2A237A"
-                                  : "#d1d5db",
-                      }}
-                    />
-                    <p className="text-2xl font-bold text-[#2A237A]">
-                      {formatValorKpi(k.valor, k.formato)}
-                    </p>
-                  </div>
-                )}
-                {k.descripcion && (
-                  <p className="mt-1 text-xs text-gray-400">{k.descripcion}</p>
-                )}
-              </CardContent>
-            </Card>
+          kpis.map((k, i) => (
+            <StatTile
+              key={k.id}
+              etiqueta={k.nombre}
+              valor={k.error ? "—" : formatValorKpi(k.valor, k.formato)}
+              detalle={k.error ? "Revise la fórmula del indicador" : (k.descripcion ?? undefined)}
+              tono={k.error ? "critico" : (TONO_KPI[k.color] ?? "neutro")}
+              destacado={i === 0 && !k.error}
+            />
           ))
         )}
-      </div>
+      </section>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg text-[#2A237A]">
-              <AlertTriangle className="h-5 w-5 text-yellow-500" />
-              Centro de Alertas
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {!hayAlertas ? (
-              <p className="text-base text-gray-500">Sin alertas pendientes. Todo al día ✓</p>
-            ) : (
-              <>
-                {vencimientos.map((v, i) => (
-                  <div
-                    key={`v-${i}`}
-                    className={`flex items-center justify-between rounded-lg border p-3 ${
-                      v.dias_restantes < 0
-                        ? "border-red-200 bg-red-50"
-                        : "border-yellow-200 bg-yellow-50"
-                    }`}
+      <div className="grid gap-s4 xl:grid-cols-[1.35fr_1fr]">
+        {/* Viajes activos */}
+        <Panel
+          titulo="Viajes activos"
+          descripcion="Programados y en ruta"
+          acciones={
+            <Link
+              href="/viajes"
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[14px] font-medium text-marca transition-colors hover:bg-marca-tenue"
+            >
+              Ver todos <ArrowRight className="size-4" />
+            </Link>
+          }
+        >
+          {cargando ? (
+            <div className="space-y-s3 p-s4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : viajesActivos.length === 0 ? (
+            <EstadoVacio icono={Truck} titulo="No hay camiones en ruta" descripcion="Los viajes programados o en ruta aparecerán aquí." />
+          ) : (
+            <ul className="divide-y divide-borde">
+              {viajesActivos.map((v) => (
+                <li key={v.id}>
+                  <Link
+                    href={`/viajes/${v.id}`}
+                    className="group flex items-center gap-s3 px-s4 py-s3 transition-colors hover:bg-marca-tenue/45"
                   >
-                    <div>
-                      <p className="text-base font-medium">
-                        {v.equipo} — {v.concepto}
+                    <Patente>{v.tracto_patente}</Patente>
+                    <div className="min-w-0 flex-1">
+                      <p className="flex items-center gap-1.5 truncate text-[16px] font-medium text-tinta">
+                        {v.origen}
+                        <ArrowRight className="size-3.5 shrink-0 text-tinta-3" />
+                        {v.destino}
                       </p>
-                      <p className="text-sm text-gray-600">
-                        Vence {formatFecha(v.fecha)} ·{" "}
-                        {v.dias_restantes < 0
-                          ? `vencido hace ${Math.abs(v.dias_restantes)} días`
-                          : `en ${v.dias_restantes} días`}
+                      <p className="truncate text-[14px] text-tinta-3">
+                        {v.chofer_nombre} · {v.cliente_nombre} · {formatFecha(v.fecha_inicio)}
                       </p>
                     </div>
-                    <Badge
-                      className={
-                        v.dias_restantes < 0
-                          ? "bg-red-600 text-white"
-                          : "bg-yellow-500 text-black"
-                      }
+                    <StatusBadge tono={ESTADO_VIAJE_TONO[v.estado]}>{ESTADO_VIAJE_LABEL[v.estado]}</StatusBadge>
+                    <ArrowUpRight className="hidden size-4 text-tinta-3 opacity-0 transition-[opacity,transform] group-hover:translate-x-0.5 group-hover:opacity-100 sm:block" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+
+        {/* Alertas */}
+        <Panel
+          titulo="Requiere atención"
+          descripcion={cargando ? undefined : totalAlertas === 0 ? "Todo al día" : `${totalAlertas} pendientes`}
+        >
+          {cargando ? (
+            <div className="space-y-s3 p-s4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : totalAlertas === 0 ? (
+            <EstadoVacio icono={CircleCheck} titulo="Sin pendientes" descripcion="No hay documentos por vencer ni facturas atrasadas." />
+          ) : (
+            <ul className="divide-y divide-borde">
+              {facturasVencidas.map((f) => (
+                <li key={f.id} className="flex items-center gap-s3 px-s4 py-s3">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-critico-tenue text-critico">
+                    <FileWarning className="size-[18px]" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[15.5px] font-medium">
+                      Factura {f.numero_sii} · {f.cliente}
+                    </p>
+                    <p className="text-[14px] text-tinta-3">
+                      {formatCLP(f.total)} · {f.dias_atraso} días de atraso
+                    </p>
+                  </div>
+                  <Link href="/cobranzas" className={buttonVariants({ variant: "outline", size: "xs" })}>
+                    Cobrar
+                  </Link>
+                </li>
+              ))}
+              {vencimientos.map((v, i) => {
+                const vencido = v.dias_restantes < 0;
+                return (
+                  <li key={`v-${i}`} className="flex items-center gap-s3 px-s4 py-s3">
+                    <span
+                      className={`grid size-9 shrink-0 place-items-center rounded-lg ${
+                        vencido ? "bg-critico-tenue text-critico" : "bg-atencion-tenue text-atencion"
+                      }`}
                     >
-                      {v.dias_restantes < 0 ? "Vencido" : "Por vencer"}
-                    </Badge>
-                  </div>
-                ))}
-                {facturasVencidas.map((f) => (
-                  <div
-                    key={f.id}
-                    className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 p-3"
-                  >
-                    <div className="flex items-center gap-2">
-                      <FileWarning className="h-5 w-5 text-red-600" />
-                      <div>
-                        <p className="text-base font-medium">
-                          Factura {f.numero_sii} — {f.cliente}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {formatCLP(f.total)} · atrasada {f.dias_atraso} días
-                        </p>
-                      </div>
+                      <CalendarClock className="size-[18px]" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[15.5px] font-medium">
+                        {v.equipo} · {v.concepto}
+                      </p>
+                      <p className="text-[14px] text-tinta-3">
+                        {formatFecha(v.fecha)} ·{" "}
+                        {vencido ? `vencido hace ${Math.abs(v.dias_restantes)} días` : `vence en ${v.dias_restantes} días`}
+                      </p>
                     </div>
-                    <Link href="/cobranzas">
-                      <Badge className="bg-red-600 text-white">Cobrar</Badge>
-                    </Link>
-                  </div>
-                ))}
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between text-lg text-[#2A237A]">
-              Viajes Activos Hoy
-              <Link href="/viajes" className="text-sm font-normal text-gray-500 hover:underline">
-                Ver todos
-              </Link>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-base">Ruta</TableHead>
-                  <TableHead className="text-base">Camión</TableHead>
-                  <TableHead className="text-base">Estado</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(resumen?.viajes_activos ?? []).length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={3} className="py-6 text-center text-gray-500">
-                      No hay camiones en ruta
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  (resumen?.viajes_activos ?? []).map((v) => (
-                    <TableRow key={v.id}>
-                      <TableCell className="text-base">
-                        <Link href={`/viajes/${v.id}`} className="flex items-center gap-1 hover:underline">
-                          {v.origen} <ArrowRight className="h-4 w-4" /> {v.destino}
-                        </Link>
-                      </TableCell>
-                      <TableCell className="text-base font-medium">{v.tracto_patente}</TableCell>
-                      <TableCell>
-                        <Badge className={`${ESTADO_VIAJE_COLOR[v.estado]} text-sm`}>
-                          {ESTADO_VIAJE_LABEL[v.estado]}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                    <StatusBadge tono={vencido ? "critico" : "atencion"}>{vencido ? "Vencido" : "Próximo"}</StatusBadge>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Panel>
       </div>
     </div>
   );

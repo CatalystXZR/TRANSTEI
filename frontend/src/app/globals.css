@@ -4,41 +4,88 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ============================================================
+   TRANSTEI — Sistema de diseño
+   Marca: índigo #2A237A + amarillo #FCD116 (prompts.md)
+   Escala de espacio rítmica: 4 / 8 / 12 / 20 / 32 / 52 / 84
+   ============================================================ */
+
 @theme inline {
+  /* Tipografía */
+  --font-sans: var(--font-plex-sans);
+  --font-heading: var(--font-bricolage);
+  --font-mono: var(--font-plex-mono);
+
+  /* Tokens shadcn */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Tokens semánticos TEI */
+  --color-marca: #2a237a;
+  --color-marca-hover: #1f1a5e;
+  --color-marca-profundo: #15113f;
+  --color-marca-tenue: #eeedf8;
+  --color-senal: #fcd116;
+  --color-senal-tenue: #fff8d6;
+  --color-fondo: #f5f5f2;
+  --color-superficie: #ffffff;
+  --color-superficie-hundida: #f0f0ec;
+  --color-tinta: #17151f;
+  --color-tinta-2: #4d4d55;
+  --color-tinta-3: #6b6b73;
+  --color-borde: #e4e3dc;
+  --color-borde-fuerte: #cfcdc4;
+
+  /* Estados (indicativos, sobrios) */
+  --color-ok: #15803d;
+  --color-ok-tenue: #e7f5ec;
+  --color-atencion: #a16207;
+  --color-atencion-tenue: #fdf5dc;
+  --color-critico: #b91c1c;
+  --color-critico-tenue: #fcebea;
+  --color-info: #2a237a;
+  --color-info-tenue: #eeedf8;
+  --color-neutro: #6b6b73;
+  --color-neutro-tenue: #efeeea;
+
+  /* Espaciado rítmico (utilidades p-s3, gap-s5, etc.) */
+  --spacing-s1: 4px;
+  --spacing-s2: 8px;
+  --spacing-s3: 12px;
+  --spacing-s4: 20px;
+  --spacing-s5: 32px;
+  --spacing-s6: 52px;
+  --spacing-s7: 84px;
+
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -46,86 +93,130 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  --shadow-elev-1: 0 1px 2px rgb(23 21 31 / 0.05), 0 1px 1px rgb(23 21 31 / 0.03);
+  --shadow-elev-2: 0 8px 24px -12px rgb(23 21 31 / 0.18), 0 2px 4px rgb(23 21 31 / 0.04);
+
+  --animate-shimmer: shimmer 1.4s linear infinite;
+  @keyframes shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+  }
 }
 
 :root {
-  --background: #f9fafb;
-  --foreground: #1f2937;
+  --radius: 0.625rem;
+  --background: #f5f5f2;
+  --foreground: #17151f;
   --card: #ffffff;
-  --card-foreground: #1f2937;
+  --card-foreground: #17151f;
   --popover: #ffffff;
-  --popover-foreground: #1f2937;
+  --popover-foreground: #17151f;
   --primary: #2a237a;
   --primary-foreground: #ffffff;
-  --secondary: #fcd116;
-  --secondary-foreground: #1f2937;
-  --muted: #f3f4f6;
-  --muted-foreground: #4d4d4d;
-  --accent: #fef9e7;
-  --accent-foreground: #1f2937;
-  --destructive: #dc2626;
-  --border: #8c8c8c;
-  --input: #8c8c8c;
+  --secondary: #f0f0ec;
+  --secondary-foreground: #17151f;
+  --muted: #f0f0ec;
+  --muted-foreground: #6b6b73;
+  --accent: #eeedf8;
+  --accent-foreground: #2a237a;
+  --destructive: #b91c1c;
+  --border: #e4e3dc;
+  --input: #cfcdc4;
   --ring: #2a237a;
   --chart-1: #2a237a;
   --chart-2: #fcd116;
-  --chart-3: #4d4d4d;
-  --chart-4: #8c8c8c;
-  --chart-5: #1f2937;
-  --radius: 0.625rem;
-  --sidebar: #2a237a;
-  --sidebar-foreground: #ffffff;
-  --sidebar-primary: #ffffff;
-  --sidebar-primary-foreground: #2a237a;
-  --sidebar-accent: #ffffff1f;
+  --chart-3: #15803d;
+  --chart-4: #6b6b73;
+  --chart-5: #b91c1c;
+  --sidebar: #15113f;
+  --sidebar-foreground: #c9c6ea;
+  --sidebar-primary: #fcd116;
+  --sidebar-primary-foreground: #15113f;
+  --sidebar-accent: #241e63;
   --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #ffffff26;
+  --sidebar-border: rgb(255 255 255 / 0.08);
   --sidebar-ring: #fcd116;
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
-  }
-  body {
-    @apply bg-background text-foreground;
-    font-size: 16px;
+    @apply border-border;
   }
   html {
-    @apply font-sans;
+    @apply font-sans antialiased;
+    font-feature-settings: "ss01", "tnum" 0;
+  }
+  body {
+    @apply bg-fondo text-tinta;
+    font-size: 16px;
+    line-height: 1.55;
+  }
+  h1, h2, h3 {
+    @apply font-heading tracking-tight text-tinta;
+  }
+  ::selection {
+    background: #fcd11666;
+  }
+
+  /* Foco visible personalizado: anillo índigo + halo amarillo */
+  :focus-visible {
+    outline: 2px solid #2a237a;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 5px rgb(252 209 22 / 0.45);
+  }
+  [data-slot="sidebar"] :focus-visible {
+    outline-color: #fcd116;
+    box-shadow: none;
+  }
+
+  /* Checkbox nativo con color de marca */
+  input[type="checkbox"] {
+    accent-color: #2a237a;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Cifras tabulares para montos */
+  .cifra {
+    font-family: var(--font-bricolage);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.025em;
+  }
+  /* Etiqueta técnica (mono, versalitas) */
+  .rotulo {
+    font-family: var(--font-plex-mono);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-tinta-3);
+  }
+  /* Ancla visual: retícula fina sobre el área de trabajo */
+  .reticula {
+    background-image:
+      linear-gradient(rgb(42 35 122 / 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(42 35 122 / 0.035) 1px, transparent 1px);
+    background-size: 52px 52px;
+  }
+  /* Ancla visual del sidebar: curvas de nivel tenues */
+  .contorno {
+    background-image:
+      radial-gradient(120% 60% at 0% 100%, rgb(252 209 22 / 0.07), transparent 60%),
+      radial-gradient(90% 50% at 100% 0%, rgb(139 131 255 / 0.12), transparent 60%);
+  }
+  /* Skeleton con brillo */
+  .esqueleto {
+    background: linear-gradient(90deg, #ecebe6 25%, #f6f6f2 50%, #ecebe6 75%);
+    background-size: 200% 100%;
+    animation: var(--animate-shimmer);
+    border-radius: 6px;
   }
 }

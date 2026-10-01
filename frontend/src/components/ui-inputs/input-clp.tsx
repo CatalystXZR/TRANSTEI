@@ -20,6 +20,7 @@ export function InputCLP({ value, onChange, ...props }: InputCLPProps) {
     <Input
       {...props}
       inputMode="numeric"
+      autoComplete="off"
       value={texto}
       onChange={(e) => {
         const limpio = e.target.value.replace(/\D/g, "");

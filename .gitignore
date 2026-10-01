@@ -24,3 +24,6 @@ build/
 
 # Backups locales
 backups/
+
+# Prototipos de diseño (referencia local, no versionados)
+design/

@@ -1,11 +1,8 @@
 export function formatCLP(value: number | string | null | undefined): string {
   const n = typeof value === "string" ? Number(value) : (value ?? 0);
   if (Number.isNaN(n)) return "$ 0";
-  return new Intl.NumberFormat("es-CL", {
-    style: "currency",
-    currency: "CLP",
-    maximumFractionDigits: 0,
-  }).format(n);
+  const abs = new Intl.NumberFormat("es-CL", { maximumFractionDigits: 0 }).format(Math.abs(Math.round(n)));
+  return `${n < 0 ? "−" : ""}$ ${abs}`;
 }
 
 export function formatFecha(value: string | Date | null | undefined): string {
