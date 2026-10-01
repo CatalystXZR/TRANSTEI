@@ -6,8 +6,8 @@ import { AlertTriangle, ArrowRight, FileWarning } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { formatCLP, formatFecha } from "@/lib/format";
-import type { AlertasDashboard, ResumenDashboard } from "@/types";
-import { ESTADO_VIAJE_COLOR, ESTADO_VIAJE_LABEL } from "@/types";
+import type { AlertasDashboard, KpiValor, ResumenDashboard } from "@/types";
+import { ESTADO_VIAJE_COLOR, ESTADO_VIAJE_LABEL, formatValorKpi } from "@/types";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -22,6 +22,7 @@ import {
 export default function DashboardPage() {
   const [resumen, setResumen] = useState<ResumenDashboard | null>(null);
   const [alertas, setAlertas] = useState<AlertasDashboard | null>(null);
+  const [kpis, setKpis] = useState<KpiValor[]>([]);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
@@ -29,11 +30,13 @@ export default function DashboardPage() {
     Promise.all([
       api.get<ResumenDashboard>("/dashboard/resumen"),
       api.get<AlertasDashboard>("/dashboard/alertas"),
+      api.get<KpiValor[]>("/kpis/valores"),
     ])
-      .then(([r, a]) => {
+      .then(([r, a, k]) => {
         if (!activo) return;
         setResumen(r ?? null);
         setAlertas(a ?? null);
+        setKpis(k ?? []);
       })
       .catch((e) => {
         if (activo) toast.error(e instanceof Error ? e.message : "Error al cargar dashboard");
@@ -58,52 +61,52 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-[#2A237A]">Panel de Control</h1>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base text-gray-500">
-              Ingresos del Mes ({resumen?.mes ?? "-"})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold text-green-700">
-              {formatCLP(resumen?.ingresos_mes)}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base text-gray-500">Cuentas por Cobrar</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold text-[#2A237A]">
-              {formatCLP(resumen?.cuentas_por_cobrar)}
-            </p>
-            {Number(resumen?.cuentas_atrasadas ?? 0) > 0 && (
-              <p className="mt-1 text-sm font-medium text-red-600">
-                Atrasadas: {formatCLP(resumen?.cuentas_atrasadas)}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base text-gray-500">Gastos del Mes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold text-red-600">{formatCLP(resumen?.gastos_mes)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base text-gray-500">Viajes Activos</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold text-[#2A237A]">
-              {resumen?.viajes_activos.length ?? 0}
-            </p>
-          </CardContent>
-        </Card>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {kpis.length === 0 ? (
+          <Card className="sm:col-span-2 lg:col-span-3 xl:col-span-4">
+            <CardContent className="pt-6 text-base text-gray-500">
+              No hay indicadores configurados. Un administrador puede crearlos en
+              “Indicadores (KPIs)”.
+            </CardContent>
+          </Card>
+        ) : (
+          kpis.map((k) => (
+            <Card key={k.id}>
+              <CardHeader>
+                <CardTitle className="text-base text-gray-500">{k.nombre}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {k.error ? (
+                  <p className="text-sm text-red-600">Error en la fórmula</p>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="h-3 w-3 shrink-0 rounded-full"
+                      style={{
+                        backgroundColor:
+                          k.color === "rojo"
+                            ? "#dc2626"
+                            : k.color === "amarillo"
+                              ? "#f59e0b"
+                              : k.color === "verde"
+                                ? "#16a34a"
+                                : k.color === "azul"
+                                  ? "#2A237A"
+                                  : "#d1d5db",
+                      }}
+                    />
+                    <p className="text-2xl font-bold text-[#2A237A]">
+                      {formatValorKpi(k.valor, k.formato)}
+                    </p>
+                  </div>
+                )}
+                {k.descripcion && (
+                  <p className="mt-1 text-xs text-gray-400">{k.descripcion}</p>
+                )}
+              </CardContent>
+            </Card>
+          ))
+        )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">

@@ -19,7 +19,13 @@ from app.models import (
     Tracto,
     Viaje,
 )
-from app.schemas.viajes import ViajeCreate, ViajeEstadoUpdate, ViajeRead, ViajeUpdate
+from app.schemas.viajes import (
+    RentabilidadPreview,
+    ViajeCreate,
+    ViajeEstadoUpdate,
+    ViajeRead,
+    ViajeUpdate,
+)
 from app.services import kpi_engine
 
 router = APIRouter(tags=["viajes"])
@@ -293,6 +299,45 @@ def rentabilidad_viaje(
         valor = None
         color = "gris"
         error = str(e)
+
+    return {
+        "valor": valor,
+        "color": color,
+        "formato": formato,
+        "detalle": metricas,
+        "error": error,
+    }
+
+
+@router.post("/viajes/preview-rentabilidad")
+def preview_rentabilidad(
+    body: RentabilidadPreview,
+    session: Session = Depends(get_session),
+    _=lectura,
+):
+    """Rentabilidad estimada antes de crear el viaje (para el semáforo)."""
+    kpi = session.exec(
+        select(Kpi).where(
+            Kpi.activo == True,  # noqa: E712
+            Kpi.uso == "rentabilidad_viaje",
+        )
+    ).first()
+    formula = kpi.formula if kpi else "SI(flete_viaje = 0, 0, margen_viaje / flete_viaje * 100)"
+    reglas = kpi.reglas_color if kpi else []
+    formato = kpi.formato if kpi else "porcentaje"
+
+    try:
+        metricas = kpi_engine.metricas_viaje(
+            session,
+            flete=body.flete_viaje,
+            chofer_id=UUID(body.chofer_id) if body.chofer_id else None,
+            gastos=body.gastos_viaje,
+        )
+        valor = kpi_engine.evaluar_formula(formula, metricas)
+        color = kpi_engine.color_para(valor, reglas)
+        error = None
+    except ValueError as e:
+        metricas, valor, color, error = {}, None, "gris", str(e)
 
     return {
         "valor": valor,

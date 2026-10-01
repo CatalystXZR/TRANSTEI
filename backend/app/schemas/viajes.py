@@ -69,3 +69,9 @@ class GastoCreate(SQLModel):
 class ViajeDetalle(SQLModel):
     viaje: ViajeRead
     gastos: list
+
+
+class RentabilidadPreview(SQLModel):
+    flete_viaje: float
+    chofer_id: str | None = None
+    gastos_viaje: float = 0

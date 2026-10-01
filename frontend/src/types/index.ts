@@ -146,3 +146,83 @@ export interface AlertasDashboard {
   vencimientos: AlertaVencimiento[];
   facturas_vencidas: FacturaVencida[];
 }
+
+// ------------------------------------------------------------
+// KPIs
+// ------------------------------------------------------------
+export type AmbitoKpi = "global" | "viaje";
+export type FormatoKpi = "clp" | "numero" | "porcentaje";
+export type UsoKpi = "dashboard" | "rentabilidad_viaje" | "interno";
+
+export interface ReglaColor {
+  operador: "<" | "<=" | ">" | ">=" | "=";
+  valor: number;
+  color: "rojo" | "amarillo" | "verde" | "azul" | "gris";
+}
+
+export interface Kpi {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  ambito: AmbitoKpi;
+  formula: string;
+  formato: FormatoKpi;
+  periodo: string;
+  reglas_color: ReglaColor[];
+  uso: UsoKpi;
+  activo: boolean;
+  orden: number;
+}
+
+export interface KpiValor {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  formato: FormatoKpi;
+  valor: number | null;
+  color: "rojo" | "amarillo" | "verde" | "azul" | "gris";
+  error: string | null;
+  periodo: string | null;
+}
+
+export interface CatalogoKpis {
+  ambito: AmbitoKpi;
+  metricas: { nombre: string; descripcion: string }[];
+  funciones: { nombre: string; descripcion: string }[];
+  operadores: string[];
+}
+
+export interface PreviewKpi {
+  valor: number | null;
+  metricas: Record<string, number>;
+  error: string | null;
+}
+
+export interface PreviewRentabilidad {
+  valor: number | null;
+  color: "rojo" | "amarillo" | "verde" | "azul" | "gris";
+  formato: FormatoKpi;
+  detalle: Record<string, number>;
+  error: string | null;
+}
+
+export const COLOR_KPI_CLASES: Record<string, string> = {
+  rojo: "bg-red-600 text-white",
+  amarillo: "bg-yellow-500 text-black",
+  verde: "bg-green-600 text-white",
+  azul: "bg-[#2A237A] text-white",
+  gris: "bg-gray-100 text-gray-700",
+};
+
+export function formatValorKpi(valor: number | null, formato: FormatoKpi): string {
+  if (valor === null || valor === undefined) return "—";
+  if (formato === "clp") {
+    return new Intl.NumberFormat("es-CL", {
+      style: "currency",
+      currency: "CLP",
+      maximumFractionDigits: 0,
+    }).format(valor);
+  }
+  if (formato === "porcentaje") return `${valor.toFixed(1)}%`;
+  return new Intl.NumberFormat("es-CL", { maximumFractionDigits: 1 }).format(valor);
+}

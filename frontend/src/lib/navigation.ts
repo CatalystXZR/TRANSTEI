@@ -10,6 +10,7 @@ import {
   Calculator,
   Wallet,
   Settings,
+  Gauge,
   type LucideIcon,
 } from "lucide-react";
 import type { Rol } from "@/types";
@@ -33,5 +34,6 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/cobranzas", label: "Cobranzas", icon: HandCoins, roles: ["admin", "contabilidad"], fase: "Fase 3" },
   { href: "/iva", label: "IVA", icon: Calculator, roles: ["admin", "contabilidad"], fase: "Fase 3" },
   { href: "/liquidaciones", label: "Liquidaciones", icon: Wallet, roles: ["admin", "contabilidad"], fase: "Fase 4" },
+  { href: "/kpis", label: "Indicadores (KPIs)", icon: Gauge, roles: ["admin"], fase: "Fase 6" },
   { href: "/configuracion", label: "Configuración", icon: Settings, roles: ["admin"], fase: "Fase 0" },
 ];

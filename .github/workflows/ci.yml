@@ -21,9 +21,13 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - name: Instalar dependencias
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
       - name: Verificar importación de la app
         run: python -c "from app.main import app; print('OK')"
+      - name: Tests (unitarios; integración se omite sin credenciales)
+        run: python -m pytest
 
   frontend:
     name: Frontend (Next.js)

@@ -21,3 +21,6 @@ build/
 *.log
 .idea/
 .vscode/
+
+# Backups locales
+backups/

@@ -12,11 +12,12 @@ import type {
   Chofer,
   Cliente,
   EstadoViaje,
+  PreviewRentabilidad,
   Rampla,
   Tracto,
   Viaje,
 } from "@/types";
-import { ESTADO_VIAJE_COLOR, ESTADO_VIAJE_LABEL } from "@/types";
+import { ESTADO_VIAJE_COLOR, ESTADO_VIAJE_LABEL, formatValorKpi } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,6 +61,7 @@ export default function ViajesPage() {
 
   const [dialogo, setDialogo] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  const [rentabilidad, setRentabilidad] = useState<PreviewRentabilidad | null>(null);
   const [form, setForm] = useState({
     fecha_inicio: "",
     origen: "",
@@ -73,6 +75,24 @@ export default function ViajesPage() {
   });
 
   const puedeEscribir = usuario?.rol === "admin" || usuario?.rol === "operacion";
+
+  useEffect(() => {
+    if (!dialogo || !form.valor_flete_neto || !form.chofer_id) {
+      const limpiar = setTimeout(() => setRentabilidad(null), 0);
+      return () => clearTimeout(limpiar);
+    }
+    const t = setTimeout(() => {
+      api
+        .post<PreviewRentabilidad>("/viajes/preview-rentabilidad", {
+          flete_viaje: form.valor_flete_neto,
+          chofer_id: form.chofer_id,
+          gastos_viaje: 0,
+        })
+        .then((r) => setRentabilidad(r))
+        .catch(() => setRentabilidad(null));
+    }, 400);
+    return () => clearTimeout(t);
+  }, [dialogo, form.valor_flete_neto, form.chofer_id]);
 
   useEffect(() => {
     let activo = true;
@@ -269,6 +289,27 @@ export default function ViajesPage() {
                   onChange={(v) => setForm({ ...form, valor_flete_neto: v })}
                   placeholder="$ 1.200.000"
                 />
+                {rentabilidad && !rentabilidad.error && (
+                  <div
+                    className={`mt-1 rounded-md border px-3 py-2 text-sm ${
+                      rentabilidad.color === "rojo"
+                        ? "border-red-300 bg-red-50 text-red-700"
+                        : rentabilidad.color === "amarillo"
+                          ? "border-yellow-300 bg-yellow-50 text-yellow-800"
+                          : rentabilidad.color === "verde"
+                            ? "border-green-300 bg-green-50 text-green-800"
+                            : "border-gray-200 bg-gray-50 text-gray-600"
+                    }`}
+                  >
+                    Rentabilidad estimada:{" "}
+                    <strong>{formatValorKpi(rentabilidad.valor, rentabilidad.formato)}</strong>
+                    {rentabilidad.detalle?.margen_viaje !== undefined && (
+                      <span className="ml-1">
+                        (margen {formatCLP(rentabilidad.detalle.margen_viaje)})
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">

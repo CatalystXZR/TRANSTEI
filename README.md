@@ -27,5 +27,6 @@ docs/        # Plan de desarrollo y documentación
 - [x] FASE 3: Facturación + Cobranzas + IVA
 - [x] FASE 4: Sueldos + Mantenimiento + Alertas (+ PDF liquidación)
 - [x] FASE 5: Export/Import CSV + Preparación cloud (docs + CI)
+- [x] FASE 6: Blindaje — motor de KPIs configurables, tests pytest, validaciones duras, docs y backup
 
 Ver `docs/PLAN_DESARROLLO.md` para el detalle completo.
