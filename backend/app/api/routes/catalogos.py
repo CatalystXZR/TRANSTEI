@@ -197,6 +197,11 @@ def actualizar_tracto(
     tracto = session.get(Tracto, tracto_id)
     if not tracto:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Tracto no encontrado")
+    if body.km_actual is not None and body.km_actual < tracto.km_actual:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "El kilometraje no puede ser menor al actual. Regístrelo mediante una mantención.",
+        )
     for campo, valor in body.model_dump(exclude_unset=True).items():
         setattr(tracto, campo, valor)
     session.add(tracto)

@@ -3,6 +3,7 @@ from decimal import Decimal
 from enum import Enum
 from uuid import UUID, uuid4
 
+from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel
 
 
@@ -269,3 +270,22 @@ class Configuracion(SQLModel, table=True):
 
     clave: str = Field(primary_key=True)
     valor: str
+
+
+class Kpi(SQLModel, table=True):
+    __tablename__ = "kpis"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    nombre: str
+    descripcion: str | None = None
+    ambito: str = "global"  # global | viaje
+    formula: str
+    formato: str = "numero"  # clp | numero | porcentaje
+    periodo: str = "mes"
+    reglas_color: list = Field(default_factory=list, sa_column=Column(JSON))
+    uso: str = "dashboard"  # dashboard | rentabilidad_viaje | interno
+    activo: bool = True
+    orden: int = 0
+    created_by: UUID | None = Field(default=None, foreign_key="usuarios.id")
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)

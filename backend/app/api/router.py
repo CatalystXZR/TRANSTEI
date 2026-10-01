@@ -9,6 +9,7 @@ from app.api.routes import (
     facturas,
     finanzas,
     gastos,
+    kpis,
     liquidaciones,
     mantenimiento,
     viajes,
@@ -26,3 +27,4 @@ api_router.include_router(mantenimiento.router)
 api_router.include_router(liquidaciones.router)
 api_router.include_router(configuracion.router)
 api_router.include_router(export.router)
+api_router.include_router(kpis.router)

@@ -13,12 +13,14 @@ from app.models import (
     Cliente,
     EstadoViaje,
     GastoViaje,
+    Kpi,
     Rampla,
     RolUsuario,
     Tracto,
     Viaje,
 )
 from app.schemas.viajes import ViajeCreate, ViajeEstadoUpdate, ViajeRead, ViajeUpdate
+from app.services import kpi_engine
 
 router = APIRouter(tags=["viajes"])
 
@@ -80,6 +82,33 @@ def _validar_recursos(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Rampla no válida o inactiva")
 
 
+def _validar_fechas(fecha_inicio: date | None, fecha_fin: date | None) -> None:
+    if fecha_inicio and fecha_fin and fecha_fin < fecha_inicio:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "La fecha de fin no puede ser anterior a la fecha de inicio",
+        )
+
+
+def _validar_tracto_disponible(
+    session: Session, tracto_id: UUID, excluir_viaje_id: UUID | None = None
+) -> None:
+    stmt = select(Viaje).where(
+        Viaje.tracto_id == tracto_id,
+        Viaje.estado.in_([EstadoViaje.programado, EstadoViaje.en_ruta]),
+    )
+    if excluir_viaje_id is not None:
+        stmt = stmt.where(Viaje.id != excluir_viaje_id)
+    ocupado = session.exec(stmt).first()
+    if ocupado:
+        tracto = session.get(Tracto, tracto_id)
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"El tracto {tracto.patente if tracto else ''} ya está asignado a un viaje activo "
+            f"({ocupado.origen} → {ocupado.destino})",
+        )
+
+
 @router.get("/viajes", response_model=list[ViajeRead])
 def listar_viajes(
     estado: EstadoViaje | None = Query(default=None),
@@ -127,6 +156,8 @@ def crear_viaje(
         UUID(body.tracto_id),
         UUID(body.rampla_id),
     )
+    _validar_fechas(body.fecha_inicio, body.fecha_fin)
+    _validar_tracto_disponible(session, UUID(body.tracto_id))
     viaje = Viaje(
         **body.model_dump(exclude={"cliente_id", "chofer_id", "tracto_id", "rampla_id"}),
         cliente_id=UUID(body.cliente_id),
@@ -166,6 +197,12 @@ def actualizar_viaje(
             datos.get("tracto_id", viaje.tracto_id),
             datos.get("rampla_id", viaje.rampla_id),
         )
+    _validar_fechas(
+        datos.get("fecha_inicio", viaje.fecha_inicio),
+        datos.get("fecha_fin", viaje.fecha_fin),
+    )
+    if "tracto_id" in datos:
+        _validar_tracto_disponible(session, datos["tracto_id"], excluir_viaje_id=viaje.id)
     for campo, valor in datos.items():
         setattr(viaje, campo, valor)
     session.add(viaje)
@@ -223,3 +260,44 @@ def eliminar_viaje(
         )
     session.delete(viaje)
     session.commit()
+
+
+@router.get("/viajes/{viaje_id}/rentabilidad")
+def rentabilidad_viaje(
+    viaje_id: UUID,
+    session: Session = Depends(get_session),
+    _=lectura,
+):
+    """Rentabilidad del viaje evaluada con el KPI de rentabilidad configurable."""
+    viaje = session.get(Viaje, viaje_id)
+    if not viaje:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Viaje no encontrado")
+
+    kpi = session.exec(
+        select(Kpi).where(
+            Kpi.activo == True,  # noqa: E712
+            Kpi.uso == "rentabilidad_viaje",
+        )
+    ).first()
+
+    formula = kpi.formula if kpi else "SI(flete_viaje = 0, 0, margen_viaje / flete_viaje * 100)"
+    reglas = kpi.reglas_color if kpi else []
+    formato = kpi.formato if kpi else "porcentaje"
+
+    metricas = kpi_engine.metricas_viaje(session, viaje_id=viaje_id)
+    try:
+        valor = kpi_engine.evaluar_formula(formula, metricas)
+        color = kpi_engine.color_para(valor, reglas)
+        error = None
+    except ValueError as e:
+        valor = None
+        color = "gris"
+        error = str(e)
+
+    return {
+        "valor": valor,
+        "color": color,
+        "formato": formato,
+        "detalle": metricas,
+        "error": error,
+    }
