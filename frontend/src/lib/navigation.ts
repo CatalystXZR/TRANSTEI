@@ -1,5 +1,9 @@
 import {
   LayoutDashboard,
+  CalendarClock,
+  CalendarDays,
+  Boxes,
+  ClipboardList,
   Truck,
   Users,
   UserRound,
@@ -7,10 +11,18 @@ import {
   Wrench,
   FileText,
   HandCoins,
+  Receipt,
   Calculator,
   Wallet,
   Settings,
   Gauge,
+  ShoppingCart,
+  Smartphone,
+  TrendingUp,
+  Crown,
+  FileClock,
+  KeyRound,
+  ArrowRightLeft,
   type LucideIcon,
 } from "lucide-react";
 import type { Rol } from "@/types";
@@ -32,21 +44,36 @@ const TODOS: Rol[] = ["admin", "operacion", "contabilidad"];
 export const NAV_GRUPOS: NavGrupo[] = [
   {
     titulo: "General",
-    items: [{ href: "/dashboard", label: "Panel de control", icon: LayoutDashboard, roles: TODOS }],
+    items: [
+      { href: "/dashboard", label: "Panel de control", icon: LayoutDashboard, roles: TODOS },
+      { href: "/tablero", label: "Tablero del dueño", icon: Crown, roles: ["admin", "contabilidad"] },
+    ],
   },
   {
     titulo: "Operación",
     items: [
+      { href: "/despacho", label: "Mesa de despacho", icon: CalendarClock, roles: TODOS },
+      { href: "/agenda", label: "Agenda de recursos", icon: CalendarDays, roles: TODOS },
+      { href: "/expediente", label: "Expediente del viaje", icon: ClipboardList, roles: TODOS },
+      { href: "/conductor", label: "Modo conductor", icon: Smartphone, roles: TODOS },
       { href: "/viajes", label: "Viajes", icon: Truck, roles: TODOS },
       { href: "/flota", label: "Flota", icon: Container, roles: ["admin", "operacion"] },
       { href: "/mantenimiento", label: "Mantenimiento", icon: Wrench, roles: ["admin", "operacion"] },
     ],
   },
   {
+    titulo: "Comercial",
+    items: [
+      { href: "/comercial", label: "Tarifas y OC", icon: ShoppingCart, roles: TODOS },
+      { href: "/rentabilidad", label: "Rentabilidad y score", icon: TrendingUp, roles: TODOS },
+    ],
+  },
+  {
     titulo: "Finanzas",
     items: [
       { href: "/facturacion", label: "Facturación", icon: FileText, roles: TODOS },
-      { href: "/cobranzas", label: "Cobranzas", icon: HandCoins, roles: ["admin", "contabilidad"] },
+      { href: "/cobranza", label: "Cobranza núcleo", icon: Receipt, roles: TODOS },
+      { href: "/cobranzas", label: "Cobranzas legacy", icon: HandCoins, roles: ["admin", "contabilidad"] },
       { href: "/iva", label: "IVA mensual", icon: Calculator, roles: ["admin", "contabilidad"] },
       { href: "/liquidaciones", label: "Liquidaciones", icon: Wallet, roles: ["admin", "contabilidad"] },
     ],
@@ -54,6 +81,7 @@ export const NAV_GRUPOS: NavGrupo[] = [
   {
     titulo: "Maestros",
     items: [
+      { href: "/maestros", label: "Maestros núcleo", icon: Boxes, roles: ["admin", "operacion"] },
       { href: "/clientes", label: "Clientes", icon: Users, roles: ["admin", "operacion"] },
       { href: "/choferes", label: "Choferes", icon: UserRound, roles: ["admin", "operacion"] },
     ],
@@ -62,6 +90,9 @@ export const NAV_GRUPOS: NavGrupo[] = [
     titulo: "Sistema",
     items: [
       { href: "/kpis", label: "Indicadores", icon: Gauge, roles: ["admin"] },
+      { href: "/auditoria", label: "Auditoría", icon: FileClock, roles: TODOS },
+      { href: "/permisos", label: "Roles y permisos", icon: KeyRound, roles: TODOS },
+      { href: "/cutover", label: "Cutover legacy", icon: ArrowRightLeft, roles: ["admin", "contabilidad"] },
       { href: "/configuracion", label: "Configuración", icon: Settings, roles: ["admin"] },
     ],
   },

@@ -27,6 +27,17 @@ const bricolage = Bricolage_Grotesque({
 export const metadata: Metadata = {
   title: "Transportes TEI — Sistema de Gestión",
   description: "ERP de gestión operativa y financiera para Transportes TEI SpA",
+  manifest: "/manifest.webmanifest",
+  applicationName: "TEI",
+  appleWebApp: {
+    capable: true,
+    title: "TEI Conductor",
+    statusBarStyle: "black-translucent",
+  },
+};
+
+export const viewport = {
+  themeColor: "#2a237a",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

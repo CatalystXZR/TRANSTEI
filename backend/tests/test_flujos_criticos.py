@@ -4,6 +4,8 @@ Se omiten automáticamente si no hay credenciales TEST_* definidas.
 Cada prueba crea sus propios datos con una etiqueta única y los elimina al final.
 """
 
+from datetime import date
+
 import pytest
 
 API = "/api/v1"
@@ -162,30 +164,105 @@ def test_facturacion_iva_y_pago(client, headers_admin, headers_contabilidad, ent
     assert r.json()["fecha_pago"] is not None
 
 
-def test_liquidacion_calculo(client, headers_admin, headers_contabilidad, entorno):
+def test_liquidacion_calculo(client, headers_admin, headers_contabilidad, entorno, etiqueta):
+    """R-01: la comisión es el 10 % de la facturación del mes.
+
+    El mes no está hardcodeado: se deriva del viaje persistido, que es la clave
+    con que liquida `_comision_chofer` (`coalesce(fecha_fin, fecha_inicio)`).
+    Los viajes se **facturan** antes de liquidar porque, desde R-01, la base de
+    la comisión son los viajes en estado `facturado`; uno solo `finalizado`
+    devenga 0 (caso negativo en la prueba siguiente).
+    """
+    hoy = date.today()
+    viaje_ids = []
     for valor in (1000000, 800000):
-        v = _crear_viaje(client, headers_admin, entorno, valor=valor).json()
-        _finalizar(client, headers_admin, v["id"])
+        r = _crear_viaje(
+            client, headers_admin, entorno, valor=valor, fecha=hoy.isoformat()
+        )
+        assert r.status_code == 201, r.text
+        viaje_id = r.json()["id"]
+        _finalizar(client, headers_admin, viaje_id)
+        viaje_ids.append(viaje_id)
+
+    detalle = client.get(f"{API}/viajes/{viaje_ids[0]}", headers=headers_admin).json()
+    mes = (detalle.get("fecha_fin") or detalle["fecha_inicio"])[:7]
+    assert mes == hoy.strftime("%Y-%m"), (
+        "La finalización debe fechar el viaje en el mes corriente; "
+        f"fecha_fin={detalle.get('fecha_fin')!r}."
+    )
+
+    # Facturar los viajes: la factura los marca `facturado` (base de R-01).
+    r = client.post(
+        f"{API}/facturas",
+        json={
+            "numero_sii": f"FAC-{etiqueta}",
+            "cliente_id": entorno["cliente"],
+            "tipo": "afecta",
+            "viaje_ids": viaje_ids,
+        },
+        headers=headers_admin,
+    )
+    assert r.status_code == 201, r.text
+    assert float(r.json()["monto_neto"]) == 1800000
 
     # anticipo 100.000 y bono 50.000
-    client.post(
-        f"{API}/anticipos?chofer_id={entorno['chofer']}&monto=100000&mes_liquidacion=2026-09",
+    r = client.post(
+        f"{API}/anticipos?chofer_id={entorno['chofer']}&monto=100000&mes_liquidacion={mes}",
         headers=headers_contabilidad,
     )
-    client.post(
-        f"{API}/ajustes?chofer_id={entorno['chofer']}&mes=2026-09&tipo=bono&concepto=Bonus&monto=50000",
+    assert r.status_code == 201, r.text
+    r = client.post(
+        f"{API}/ajustes?chofer_id={entorno['chofer']}&mes={mes}&tipo=bono&concepto=Bonus&monto=50000",
         headers=headers_contabilidad,
     )
+    assert r.status_code == 201, r.text
 
     r = client.post(
-        f"{API}/liquidaciones/calcular?chofer_id={entorno['chofer']}&mes=2026-09",
+        f"{API}/liquidaciones/calcular?chofer_id={entorno['chofer']}&mes={mes}",
         headers=headers_contabilidad,
     )
-    assert r.status_code == 200
+    assert r.status_code == 200, r.text
     liq = r.json()
     # 400.000 base + 10% de 1.800.000 (180.000) + 50.000 - 100.000 = 530.000
     assert float(liq["comision"]) == 180000
     assert float(liq["total_liquido"]) == 530000
+
+
+def test_liquidacion_sin_facturacion_no_genera_comision(
+    client, headers_admin, headers_contabilidad, entorno
+):
+    """R-01 (caso negativo): viajes solo `finalizado`, sin factura → comisión 0.
+
+    Mismos montos que el caso facturado (1.000.000 + 800.000). Si el cálculo
+    volviera a sumar `finalizado`, la comisión sería 180.000 y esta prueba
+    fallaría por la razón correcta.
+    """
+    hoy = date.today()
+    viaje_ids = []
+    for valor in (1000000, 800000):
+        r = _crear_viaje(
+            client, headers_admin, entorno, valor=valor, fecha=hoy.isoformat()
+        )
+        assert r.status_code == 201, r.text
+        viaje_id = r.json()["id"]
+        _finalizar(client, headers_admin, viaje_id)
+        viaje_ids.append(viaje_id)
+
+    detalle = client.get(f"{API}/viajes/{viaje_ids[0]}", headers=headers_admin).json()
+    mes = (detalle.get("fecha_fin") or detalle["fecha_inicio"])[:7]
+
+    r = client.post(
+        f"{API}/liquidaciones/calcular?chofer_id={entorno['chofer']}&mes={mes}",
+        headers=headers_contabilidad,
+    )
+    assert r.status_code == 200, r.text
+    liq = r.json()
+    assert float(liq["comision"]) == 0, (
+        "Un viaje solo finalizado no genera comisión; "
+        f"obtenido {liq['comision']}."
+    )
+    # 400.000 de sueldo base, sin comisión ni anticipos/ajustes.
+    assert float(liq["total_liquido"]) == 400000
 
 
 def test_mantenimiento_estados(client, headers_admin, entorno):

@@ -99,8 +99,9 @@ class Chofer(SQLModel, table=True):
     nombre: str
     rut: str = Field(unique=True)
     sueldo_base: Decimal = Field(default=Decimal("0"), **MONEY)
+    # R-01 (dueño, 2026-10-29): comisión por defecto 10 % de la facturación del mes.
     porcentaje_produccion: Decimal = Field(
-        default=Decimal("0"), max_digits=5, decimal_places=4, ge=0, le=1
+        default=Decimal("0.10"), max_digits=5, decimal_places=4, ge=0, le=1
     )
     vencimiento_licencia: date | None = None
     activo: bool = True

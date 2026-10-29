@@ -1,0 +1,61 @@
+"""Núcleo operacional v2 del ERP Transportes TEI.
+
+Este paquete es deliberadamente independiente del MVP legacy (`app.models`).
+Vive en el schema PostgreSQL `nucleo` y se integra a la API bajo `/api/v1/nucleo`.
+"""
+
+from app.nucleo.models import (
+    Auditoria,
+    Chofer,
+    Cliente,
+    Documento,
+    Empresa,
+    EstadoOC,
+    EstadoRecurso,
+    EstadoViaje,
+    FolioContador,
+    ModalidadTarifa,
+    OrdenCompra,
+    OrdenCompraLinea,
+    Rampla,
+    ReservaRecurso,
+    RolEmpresa,
+    Tarifa,
+    TipoCarga,
+    TipoDocumento,
+    TipoRampla,
+    TipoRecurso,
+    TipoReserva,
+    Tracto,
+    TransicionViaje,
+    UsuarioEmpresa,
+    Viaje,
+)
+
+__all__ = [
+    "Auditoria",
+    "Chofer",
+    "Cliente",
+    "Documento",
+    "Empresa",
+    "EstadoOC",
+    "EstadoRecurso",
+    "EstadoViaje",
+    "FolioContador",
+    "ModalidadTarifa",
+    "OrdenCompra",
+    "OrdenCompraLinea",
+    "Rampla",
+    "ReservaRecurso",
+    "RolEmpresa",
+    "Tarifa",
+    "TipoCarga",
+    "TipoDocumento",
+    "TipoRampla",
+    "TipoRecurso",
+    "TipoReserva",
+    "Tracto",
+    "TransicionViaje",
+    "UsuarioEmpresa",
+    "Viaje",
+]

@@ -8,14 +8,17 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from app.api.deps import get_current_user, require_roles
+from app.api.deps import require_roles
 from app.core.database import get_session
 from app.models import (
     AjusteLiquidacion,
     AnticipoChofer,
     Chofer,
+    EstadoFactura,
     EstadoLiquidacion,
     EstadoViaje,
+    Factura,
+    FacturaViaje,
     Liquidacion,
     RolUsuario,
     TipoAjuste,
@@ -24,7 +27,10 @@ from app.models import (
 
 router = APIRouter(tags=["liquidaciones"])
 
-lectura = Depends(get_current_user)
+# SEC-008 (auditoría 2026-10-29): anticipos, ajustes, resumen y PDF exponen
+# sueldo, comisión y RUT de todos los choferes. La lectura se restringe a los
+# mismos roles que pueden escribir; antes bastaba estar autenticado.
+lectura = Depends(require_roles(RolUsuario.admin, RolUsuario.contabilidad))
 escritura = Depends(require_roles(RolUsuario.admin, RolUsuario.contabilidad))
 
 MES_PATRON = __import__("re").compile(r"^\d{4}-\d{2}$")
@@ -44,14 +50,45 @@ def _rango_mes(mes: str) -> tuple[date, date]:
 
 def _comision_chofer(session: Session, chofer_id: UUID, mes: str) -> tuple[Decimal, list[Viaje]]:
     inicio, fin = _rango_mes(mes)
-    viajes = session.exec(
-        select(Viaje).where(
-            Viaje.chofer_id == chofer_id,
-            Viaje.estado.in_([EstadoViaje.finalizado, EstadoViaje.facturado]),
-            func.coalesce(Viaje.fecha_fin, Viaje.fecha_inicio) >= inicio,
-            func.coalesce(Viaje.fecha_fin, Viaje.fecha_inicio) < fin,
-        )
+    # R-01 (dueño, 2026-10-29): la comisión es el % de la producción facturada
+    # del mes. El mes se atribuye por la FECHA DE EMISIÓN de la factura, no por
+    # la fecha en que se finalizó el viaje (SEC-001): un viaje finalizado en
+    # octubre y facturado en noviembre devenga en noviembre.
+    #
+    # Atribución en dos pasos, explícita: primero los viajes del chofer, luego
+    # la primera emisión de factura no anulada de cada uno. Evita subconsultas
+    # correlacionadas (SEC-001 se coló justamente por una atribución implícita).
+    candidatos = session.exec(
+        select(Viaje).where(Viaje.chofer_id == chofer_id)
     ).all()
+    primera_factura: dict[UUID, date] = {}
+    if candidatos:
+        filas = session.exec(
+            select(FacturaViaje.viaje_id, func.min(Factura.fecha_emision))
+            .join(Factura, Factura.id == FacturaViaje.factura_id)
+            .where(
+                Factura.estado != EstadoFactura.anulada,
+                FacturaViaje.viaje_id.in_([v.id for v in candidatos]),
+            )
+            .group_by(FacturaViaje.viaje_id)
+        ).all()
+        primera_factura = {viaje_id: fecha for viaje_id, fecha in filas if fecha}
+
+    viajes: list[Viaje] = []
+    for viaje in candidatos:
+        fecha = primera_factura.get(viaje.id)
+        if fecha is not None:
+            # Facturado: manda la fecha de emisión.
+            if inicio <= fecha < fin:
+                viajes.append(viaje)
+            continue
+        # Sin factura asociada pero marcado `facturado`: dato inconsistente.
+        # Se atribuye por la fecha del viaje para no perder la comisión.
+        if viaje.estado != EstadoViaje.facturado:
+            continue
+        fecha_viaje = viaje.fecha_fin or viaje.fecha_inicio
+        if inicio <= fecha_viaje < fin:
+            viajes.append(viaje)
     chofer = session.get(Chofer, chofer_id)
     porcentaje = chofer.porcentaje_produccion if chofer else Decimal("0")
     suma = sum((v.valor_flete_neto for v in viajes), Decimal("0"))

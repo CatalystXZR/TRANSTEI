@@ -25,5 +25,10 @@ build/
 # Backups locales
 backups/
 
+# Playwright
+frontend/test-results/
+frontend/playwright-report/
+frontend/.last-run.json
+
 # Prototipos de diseño (referencia local, no versionados)
 design/

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: str = ""
     SUPABASE_JWT_SECRET: str = ""
     DATABASE_URL: str = ""
+    NUCLEO_TEST_DATABASE_URL: str = ""
 
     CORS_ORIGINS: str = "http://localhost:3000"
     FRONTEND_URL: str = "http://localhost:3000"

@@ -16,6 +16,26 @@ export function formatFecha(value: string | Date | null | undefined): string {
   }).format(d);
 }
 
+export function formatFechaHora(value: string | Date | null | undefined): string {
+  if (!value) return "—";
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return new Intl.DateTimeFormat("es-CL", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "America/Santiago",
+  }).format(d);
+}
+
+export function toDatetimeLocal(value: string | Date): string {
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export function limpiarRut(rut: string): string {
   return rut.replace(/[^0-9kK]/g, "").toUpperCase();
 }
