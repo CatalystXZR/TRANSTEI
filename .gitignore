@@ -25,6 +25,26 @@ build/
 # Backups locales
 backups/
 
+# ============================================================
+# Notas privadas — NUNCA versionar
+# ------------------------------------------------------------
+# Regla del proyecto: lo que contenga datos personales,
+# financieros o del dueño NO entra al repo. Vive en
+# docs/_privado/ (ignorado) o directamente fuera del repo.
+#
+# NO se ignora "*.md": la documentación del proyecto ES .md.
+# Ignorarla en bloque rompería el corpus de docs/ y, además,
+# no tendría efecto sobre archivos ya rastreados.
+# ============================================================
+docs/_privado/
+notas-*.md
+*.personal.md
+*.privado.md
+*.confidencial.md
+*.local.md
+*.bak.md
+**/borradores-locales/
+
 # Playwright
 frontend/test-results/
 frontend/playwright-report/
