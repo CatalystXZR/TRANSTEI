@@ -1,7 +1,10 @@
 # Deuda arquitectónica — registro priorizado
 
 > **Pregunta que responde:** ¿qué deuda estructural existe, cuánto cuesta y en qué condición se paga?
-> **Dueño:** arquitectura · **Verificado:** 2026-10-29 · **Método:** consolidación de lectura de código/DDL y de `matriz-plan-vs-codigo.md`, `retiro-legacy.md`, `destino-modular.md`, `seguridad/hallazgos.md` y `estado.md` §5; sin ejecución.
+> **Dueño:** arquitectura · **Verificado:** 2026-10-29 (filas D-01…D-23) y 2026-10-31
+> (filas DEU-24/DEU-25) · **Método:** consolidación de lectura de código/DDL y de
+> `matriz-plan-vs-codigo.md`, `retiro-legacy.md`, `destino-modular.md`,
+> `seguridad/hallazgos.md` y `estado.md` §5; sin ejecución.
 > **Caduca si:** se cierra un ítem, cambia el esquema o se ejecuta el cutover.
 > **Re-verificar con:** `grep -n` de la evidencia citada + `docs/estado.md` §5.
 >
@@ -47,6 +50,7 @@
 | D-15 | **Export legacy vulnerable a inyección de fórmulas y sin paginación.** CSV con `QUOTE_MINIMAL` no neutraliza `= + - @`; listados sin `limit/offset`. | `export.py:29-46`; `viajes.py:118-137`; `facturas.py:73-87` | Medio: ejecución de fórmulas en Excel; lentitud con volumen | **S** | Cuando el export escape celdas y los listados tengan paginación | `matriz-plan-vs-codigo.md` #15/#16 |
 | D-16 | **Export/import y nómina/IVA solo existen en legacy.** El núcleo no exporta ni importa; no tiene liquidaciones ni IVA. | `export.py:49-272`; `liquidaciones.py:278-533`; `finanzas.py:116-185` | Alto para el retiro: borrar el legacy rompe procesos usados | **L** | Cuando esas capacidades tengan equivalente en el núcleo o se declare su retiro | `retiro-legacy.md` M09/M10/M15 |
 | D-17 | **Mantenimiento preventivo inexistente en el núcleo.** Solo hay bloqueo de agenda y alerta de 7 días; no hay pauta por km. | `servicio_alertas.py:165-198`; sin tablas `nucleo.*mantenimiento*` en `0004`–`0019` | Medio: flota sin control preventivo | **L** | Cuando el dueño priorice mantenimiento como módulo del núcleo | `matriz-plan-vs-codigo.md` #11 |
+| DEU-24 | **Sin ruteo número de negocio Meta → empresa.** El runtime O3 no puede fijar `app.empresa_id` antes de leer `contactos_whatsapp`; la búsqueda global por teléfono del contrato §4.1 no es ejecutable bajo RLS (`tei_app` sin contexto → 0 filas). La mitigación actual exige un `empresa_id` que el llamador aún no tiene. | `0021:218-223,799-814`; `backend/app/nucleo/agente/contexto.py:143-189`; `conector-agente-whatsapp.md` §4.1 paso 2; `docs/backend/informes/o2-1-registry-gate-tools.md:102-131` | Alto: O3 bloqueado; una solución por función privilegiada indexada por teléfono sería un enumerador de tenants | **S** (config) / **M** (tabla) | Cuando el dueño apruebe **ADR-0007** y se implemente el webhook (O3.1) | ADR-0007 |
 
 ---
 
@@ -60,6 +64,7 @@
 | D-21 | **Restore drill sin comparación.** Verifica existencia y 6 conteos; no compara antes/después ni prueba la app. | `scripts/restore_drill.sh:42-50` | Medio: un restore "exitoso" puede perder datos | **M** | Cuando el drill compare checksums/conteos y ejecute un smoke de la app | RA-05 |
 | D-22 | **Documentación sin prueba de vigencia.** Los 6 artefactos de `docs/arquitectura/` y `estado.md` dependen de conteos y rutas que cambian sin CI documental. | `docs/INDEX.md:131-135`; este documento | Bajo-medio: decisiones sobre datos viejos | **S** | Cuando un cambio de esquema o de router obligue a actualizar la cabecera y falle un check de enlaces | `docs/INDEX.md` §4 |
 | D-23 | **`matriz-plan-vs-codigo.md` desactualizada.** Afirma 26 routers, 14 migraciones y ausencia de CI; hoy hay 25, 19 y un workflow de CI. | `matriz-plan-vs-codigo.md:62,90,112` vs `router.py:32-56`, `ls supabase/migrations` y `.github/workflows/ci.yml:1-50` | Medio: conclusiones y prioridades apoyadas en cifras viejas | **S** | En la próxima revisión de esa matriz; no se reescribe la historia, se corrige la cabecera y las celdas refutadas | `docs/INDEX.md` §4 |
+| DEU-25 | **`pregunta_resumida` sin control de forma (SEC-033).** El registry persiste el texto del llamador (hasta 500 chars) en una tabla append-only sin purga; la redacción se delega a un runtime que no existe. | `backend/app/nucleo/agente/registry.py:123-130`; `0021:687,729-735`; `docs/seguridad/hallazgos-o2-1.md:234-257` | Medio-alto: PII/financiero escrito en auditoría sin posibilidad de borrado | **S** | Antes de O2.4 si el agente empieza a manejar montos; en todo caso al implementar O3 | SEC-033; `conector-agente-whatsapp.md` §7.3.1 |
 
 ---
 

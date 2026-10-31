@@ -6,6 +6,10 @@
 > Las citas 🟢 son texto leído; lo que depende de estado de base o de ejecución
 > queda 🟡/🔴 y se dice qué lo confirmaría.
 >
+> **Actualizado:** 2026-10-31 — §4.1 (ruteo, ADR-0007 Propuesto), §2.6.4/§6.5
+> (SEC-040), §7.2/§7.3.1 (SEC-033) y handoff 9–10 a `backend`. Las secciones no
+> se reescribieron; el detalle del cambio está en el pie del documento.
+>
 > **Relación:** concreta la frontera de ADR-0003 §4 (el agente lee por tools y
 > crea Solicitudes; nunca ejecuta un estado de negocio), §13 (ACL por número),
 > §14 (aprobación de hoja de ruta) y §16 (ID comercial). Toma de ADR-0004 §3.1.1
@@ -254,13 +258,27 @@ silencio puede ocultar una tool mal declarada.
    migraciones. Si falta `nucleo.modulos_empresa`, el gate queda cerrado y
    `GET /nucleo/agente/estado` reporta `faltantes: ["nucleo.modulos_empresa"]`.
 3. Construir el registry inmutable.
-4. El runtime no debe registrar tools si `manifest.valido=false` o si falta la
-   tabla del gate. La regla es: **sin flag verificable no hay tool**.
+4. El runtime no debe **ejecutar** ninguna tool si `manifest.valido=false`, si
+   falta la tabla del gate o si la empresa no tiene el flag. La regla es: **sin
+   flag verificable no se ejecuta ninguna tool**. Cargar no es habilitar: el
+   registry carga lo que declara un manifiesto válido sin consultar la base
+   (§4.2), y `tools.cargadas` cuenta eso; la habilitación por empresa se lee en
+   `empresa.habilitado` y la impone el gate (llave 1). Esta es la lectura
+   canónica de la aparente contradicción con §6.5 (SEC-040): este paso habla de
+   ejecución, no del conteo de `/estado`.
 
 ### 2.7 Flag por empresa: `nucleo.modulos_empresa` (faltante 🔴)
 
-**Hecho verificado:** no existe tabla de módulos por empresa. `nucleo.empresas`
-no tiene columna de configuración (`supabase/migrations/0004_nucleo_operacional.sql:102-134`);
+> **Nota 2026-10-31 (no reescribe la propuesta):** el repo ya contiene
+> `supabase/migrations/0023_modulos_empresa.sql` con el DDL de esta sección
+> (`0023:183-202`). El **estado de aplicación por entorno** no se verificó en esta
+> sesión (🔴): que el archivo exista no prueba que la tabla exista en la base. Lo
+> que sigue se conserva como el diseño que originó esa migración; la ausencia de
+> tabla sigue cerrando el gate (`42P01` ⇒ `None` ⇒ denegación, `gate.py:188-209`).
+
+**Hecho verificado al 2026-10-30 (antes de `0023`):** no existía tabla de módulos
+por empresa. `nucleo.empresas` no tiene columna de configuración
+(`supabase/migrations/0004_nucleo_operacional.sql:102-134`);
 `nucleo.cutover_control` es otra cosa — controla el congelamiento legacy→núcleo
 (`supabase/migrations/0014_cutover.sql:8-31`) — y reutilizarlo acoplaría dos flags
 sin relación. Una búsqueda en `supabase/migrations/` por
@@ -455,13 +473,28 @@ class ContextoAgente:
 
 Resolución, en orden:
 
-1. El runtime entrega el teléfono E.164 del mensaje y `wa_message_id`.
+1. El runtime entrega el teléfono E.164 del mensaje, `wa_message_id` y el
+   `phone_number_id` del número de negocio que recibió el mensaje (metadato del
+   webhook, no del cuerpo del usuario).
 2. Se busca `nucleo.contactos_whatsapp` por `telefono` con `activo=true`
    (`uq_contactos_telefono_activo`, `0021:222-223`). Si hay 0 filas → no hay
    contexto: respuesta genérica de enrolamiento, log del runtime, **sin fila de
    auditoría** (§7.6). Si hay >1 → integridad rota (el índice global lo impide);
    se deniega y se registra `ERROR`.
-3. `empresa_id` sale de la fila del contacto, nunca del DI ni del body
+   **Límite verificado:** esa búsqueda es *global* en la intención, pero **no es
+   ejecutable** con el rol `tei_app`: `contactos_whatsapp` tiene RLS por empresa
+   (`0021:799-814`) y sin `app.empresa_id` devuelve 0 filas; medido en `tei_test`
+   (sin contexto 0 / empresa dueña 1 / empresa ajena 0,
+   `docs/backend/informes/o2-1-registry-gate-tools.md:108-113`). Por eso el
+   runtime **primero** resuelve `empresa_id` desde el número de negocio de Meta y
+   **después** llama a `resolver_contacto(empresa_id, telefono)`, que es
+   fail-closed (`contexto.py:143-189`). Cómo se obtiene ese `empresa_id` es el
+   objeto de **ADR-0007** (`adr/ADR-0007-ruteo-numero-meta-a-empresa.md`),
+   **Propuesto**: hasta que el dueño lo apruebe, la mitigación vigente es la
+   función con `empresa_id` explícito, no una lectura global.
+3. `empresa_id` **no** sale del DI ni del body: sale del ruteo del número de
+   negocio (ADR-0007) y la fila del contacto debe pertenecer a esa empresa; una
+   fila de otra empresa es invisible (0 filas) y no hay fallback a otra
    (ADR-0003 §3.4; ADR-0006 §Decisión 1).
 4. `entidad_id`: `cliente_id` para `cliente_final`, `chofer_id` para `conductor`,
    `None` para `admin` (`ck_contacto_entidad`, `0021:210-214`).
@@ -1092,8 +1125,20 @@ permiso `agente:aprobar`.
 - Es un endpoint de diagnóstico, no de operación. No expone secretos ni la lista
   de contactos.
 - `tools.cargadas` cuenta las tools **efectivamente cargadas** desde el
-  manifiesto, no el tamaño del catálogo: hoy 19, porque `A5 mantenimiento` no se
-  declara mientras no exista su ejecutor (§5.7).
+  manifiesto vigente, no el tamaño del catálogo: el ejemplo `19` corresponde al
+  manifiesto objetivo (§5.7: `A5 mantenimiento` no se declara mientras no exista
+  su ejecutor); el manifiesto de O2.1 declara **3** y el endpoint reporta 3
+  (`docs/backend/informes/o2-1-registry-gate-tools.md:164-165`).
+- **El conteo es independiente del flag de empresa y de las tablas faltantes.**
+  Es una propiedad del manifiesto desplegado, no de la empresa del request:
+  `registry.tools_cargadas = len(descriptores)` no consulta la base
+  (`backend/app/nucleo/agente/registry.py:225-227`) y `api.py:106-118` lo publica
+  junto a `empresa` y `faltantes`. Por eso, con `nucleo.modulos_empresa` ausente
+  o con la empresa apagada, el endpoint puede devolver `cargadas=3` **y a la vez**
+  `empresa.habilitado=false` y `faltantes=["nucleo.modulos_empresa"]`; ninguna de
+  esas tools se ejecuta (gate, llave 1). El conteo **no** mide ejecutabilidad ni
+  autorización; para eso están `empresa.habilitado`, `faltantes` y el resultado
+  del gate. Es la lectura canónica de §2.6.4 (SEC-040).
 - Si el manifiesto es inválido, `valido=false`, `tools.cargadas=0`, `motivo` con
   el campo; la respuesta sigue siendo 200.
 - `faltantes` se calcula con `to_regclass`; no ejecuta migraciones.
@@ -1216,13 +1261,19 @@ DELETE y TRUNCATE (`0021:719-735`); `tei_app` solo tiene SELECT/INSERT
    la tool. `fn_auditoria` de las tablas del módulo registra además el cambio en
    `nucleo.auditoria` (INSERT/UPDATE), pero eso es auditoría de datos, no de
    consultas; no se duplica en `auditoria_consultas_agente`.
+6. `pregunta_resumida` la **compone el runtime** y la **valida el registry**
+   (§7.3.1). El registry **no** persiste texto libre del llamador: si el valor no
+   cumple la forma declarada, guarda la derivación determinista
+   (`<herramienta> [<claves>]`) y registra un `WARNING` sin el texto recibido.
+   Esta es la única defensa posible, porque la tabla es append-only y no se purga
+   (hecho `0021:729-735`; D-17 abierta, §9.6).
 
 ### 7.3 Mapeo D-17
 
 | Requisito D-17 (`docs/negocio/preguntas.md:42`) | Columna / convención |
 |---|---|
 | Quién | `empresa_id`, `contacto_id` |
-| Qué preguntó | `pregunta_resumida` (intención + extracto redactado; nunca el audio/foto) |
+| Qué preguntó | `pregunta_resumida` (§7.3.1: intención enumerada + **nombres** de claves; nunca valores, texto libre, audio, foto ni transcripción) |
 | Qué tool/módulo | `componente`, `variable`, `herramienta` |
 | Qué datos tocó | `datos_tocados` = `{ "ids": [...], "total": n, "_meta": { "tool_version": 1, "schema_di": "di/v1" } }` |
 | Respuesta resumida | `respuesta_resumida` (síntesis; no el payload completo) |
@@ -1235,6 +1286,91 @@ DELETE y TRUNCATE (`0021:719-735`); `tei_app` solo tiene SELECT/INSERT
 prohíbe, `0021:714-716`). Se limita a 50 IDs; si hay más, `total` y los primeros
 50. El `_meta` es la única forma de guardar la versión de tool/DI sin una columna
 nueva; no se usa para datos de negocio.
+
+### 7.3.1 Contrato de `pregunta_resumida` (SEC-033)
+
+`pregunta_resumida` **no** es la pregunta del contacto, ni un extracto de su
+mensaje, ni un resumen libre. Es una **etiqueta de auditoría** con dos partes
+cerradas:
+
+| Parte | Contenido | Regla |
+|---|---|---|
+| Intención | `herramienta`: el nombre del descriptor, saneado | Debe coincidir con una tool del registry; si la tool no existe, se usa el nombre saneado por `_nombre_seguro` (`registry.py:111-120`) |
+| Claves | Nombres de las propiedades de `entrada` que el runtime usó, en orden alfabético | Cada clave debe existir en el schema de entrada ya validado (V13, §2.4); una clave no declarada invalida el valor |
+
+Forma canónica: `<herramienta> [<clave>[,<clave>…]]` — p. ej.
+`despacho.mis_fletes [estado,limite]`; sin claves, `despacho.mis_fletes []`.
+Solo `[a-z0-9_.]` para la herramienta y `[a-z0-9_,]` dentro de los corchetes.
+**Excepción declarada:** tool desconocida (`descriptor is None`) ⇒ el valor es solo
+el nombre saneado por `_nombre_seguro` (≤ 120), sin corchetes, porque no hay
+schema contra el cual validar claves; sigue prohibido el texto del llamador.
+
+**Prohibido en el campo, sin excepciones:** valores de la entrada (aunque parezcan
+inofensivos), texto del mensaje, transcripción de voz, texto de OCR/visión, nombre
+de la persona, teléfono, RUT, montos, números de documento, direcciones y
+cualquier texto libre. El campo responde "qué tool y con qué claves", no "qué
+dijo el contacto".
+
+**Quién redacta: el runtime compone, el registry valida.**
+
+1. **Runtime (O3):** arma el valor desde el DI **antes** de `invocar`. No pasa
+   texto del mensaje a este parámetro; si no puede componerlo, pasa `None`. La
+   redacción es su obligación, no una cortesía.
+2. **Registry (implementación actual y futura):** **no confía** en el runtime.
+   Antes de persistir verifica la forma y que cada clave esté declarada; si no
+   cumple, descarta el valor y persiste la derivación determinista
+   `<herramienta> [<claves>]` (`registry.py:123-130`). El registry es la última
+   línea porque el runtime de O3 todavía no existe y el contrato debe valer para
+   cualquier runtime, incluido uno defectuoso.
+3. **Base:** `pregunta_resumida` es `text` sin `CHECK` de longitud ni de forma
+   (`0021:687`). La forma **no** se puede imponer por constraint sin heurísticas
+   (una regex de "parece PII" rechaza claves legítimas y no cubre RUT/teléfonos
+   en todas sus formas); la garantía ejecutable es la whitelist de claves
+   declaradas, que vive en el registry.
+
+**Si el llamador entrega texto libre con datos personales.** El valor **no se
+persiste**: se sustituye por la derivación determinista y se registra
+`WARNING agente.pregunta_no_conforme` **sin** el texto recibido. No se intenta
+"limpiar" ni enmascarar el texto: se descarta, porque la tabla es append-only y
+no se purga (`0021:729-735`; D-17 abierta, §9.6) y un dato escrito no se puede
+retirar. La derivación nunca contiene valores: solo el nombre de la tool y los
+nombres de las claves usadas.
+
+**Límite.** Contrato: **≤ 200 caracteres**. El tope duro de almacenamiento sigue
+siendo 500 (recorte en `registry.py:128` y `_recortar` en `auditoria.py:88`); un
+valor de 201–500 caracteres se considera **no conforme** y se reemplaza por la
+derivación (también acotada a 200). No se agrega un `CHECK` a `0021` (migración
+aplicada; forward-only).
+
+**Criterio de aceptación verificable:**
+
+1. `invocar("despacho.mis_fletes", {"limite": 1}, ctx, pregunta_resumida="+56912345678")`
+   ⇒ fila con `pregunta_resumida = "despacho.mis_fletes [limite]"`, sin el número;
+   el `WARNING` tampoco lo contiene.
+2. `pregunta_resumida="despacho.mis_fletes [estado,limite]"` ⇒ se conserva tal cual.
+3. `pregunta_resumida="despacho.mis_fletes [telefono]"` ⇒ `telefono` no es
+   propiedad declarada ⇒ derivación (no se persiste la clave inventada).
+4. `pregunta_resumida=None` ⇒ derivación (comportamiento actual).
+5. En denegación con tool desconocida (`descriptor is None`) ⇒ solo nombre
+   saneado, sin claves, sin texto del llamador.
+6. Mutación: si se retira la validación, la prueba 1 falla (el número aparece en
+   la fila).
+
+**Handoff a `backend` (esto no está implementado; no se hizo en esta sesión):**
+
+- `backend/app/nucleo/agente/registry.py:123-130`: reemplazar
+  `_pregunta_resumida` por una función que reciba el descriptor (o `None`) y el
+  schema de entrada resuelto (`registry.py:203`), y aplique:
+  `fullmatch(r"^[a-z][a-z0-9_.]{0,63}( \[[a-z0-9_,]{0,300}\])?$")` **y**
+  pertenencia de cada token a las `properties` de ese schema; si falla,
+  derivación; límite 200.
+- `registry.py:276-283`: pasar el descriptor a la función; en el camino
+  `descriptor is None` (tool desconocida) usar solo `_nombre_seguro(nombre)`.
+- `auditoria.py:88`: `_recortar` queda como segunda capa; no cambia la columna.
+- Pruebas: `backend/tests/test_agente_gate.py` (o un
+  `test_agente_auditoria_redaccion.py` nuevo) con los 6 casos; `make unit` verde.
+- **No** cambia el contrato HTTP: `invocar` es interno del paquete; el buzón y
+  `/estado` no exponen este campo.
 
 ### 7.4 Casos de denegación (una fila cada uno)
 
@@ -1541,6 +1677,13 @@ consultar históricamente qué modelo respondió cada mensaje, el DI ya lo guard
    (aprobadores), HTTP (403/404/409/422/501), idempotencia de solicitud,
    `rechazar` sin escritura de negocio, paridad de al menos una tool por
    componente.
+9. **SEC-033:** aplicar §7.3.1 (validación de `pregunta_resumida` en
+   `registry.py:123-130,276-283` y prueba de regresión con un teléfono/RUT en el
+   parámetro). No cambia el contrato HTTP.
+10. **Ruteo:** no implementar una resolución global por teléfono. Mientras
+    ADR-0007 esté **Propuesto**, `resolver_contacto` sigue exigiendo `empresa_id`
+    explícito y el runtime debe obtenerlo del número de negocio (configuración o
+    tabla, según lo que apruebe el dueño).
 
 #### A `frontend`
 
@@ -1621,3 +1764,8 @@ consultar históricamente qué modelo respondió cada mensaje, el DI ya lo guard
 ni ADR-0006. Si cambia el esquema del módulo, el catálogo de tools o la decisión
 D-18, se actualiza este contrato o se reemplaza por uno nuevo; no se edita la
 historia.*
+
+*Actualizado 2026-10-31: nota de ruteo en §4.1 (ADR-0007, Propuesto); lectura
+canónica §2.6.4/§6.5 (SEC-040); contrato de redacción §7.2 y §7.3.1 (SEC-033);
+handoff 9–10 a `backend`. No se reescribieron las secciones ni las cifras
+históricas.*
