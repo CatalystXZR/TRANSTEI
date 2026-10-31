@@ -1283,3 +1283,44 @@ líneas del commit 1 al 5 con un rebase; queda a decisión del dueño.
 
 **Pendiente inmediato:** los 5 puntos de `docs/desarrollo/backlog.md` §6. El
 primero (este) queda cerrado; sigue el corpus de O0 y la decisión de §4.1.
+
+### [2026-10-31] O2.2 — buzón de solicitudes implementado; SEC-038 y timeout cerrados
+
+Riesgo: **Alto** (aprobación con efecto real, concurrencia, tenant) | Estado: **implementado y probado; revisión independiente pendiente**.
+Informe: `docs/backend/informes/o2-2-buzon-solicitudes.md`
+
+**Hechos confirmados (🟢):**
+
+- `backend/tests/test_agente_o2_2_buzon.py` → **14 passed**.
+- `make test` → **321 passed, 0 failed, 0 skipped**; `make unit` → 125 passed.
+- **Concurrencia real con dos conexiones**: `test_dos_aprobadores_solo_uno_aplica`
+  hace que A tome `FOR UPDATE` y retenga el `commit`; B queda bloqueado y, al
+  reanudar, ve el estado terminal. Se verifica `version=2` (una transición, no dos
+  efectos) — no es una prueba secuencial disfrazada.
+- El `payload` propuesto de la hoja de ruta **no** se reescribe al confirmar; la
+  corrección va a `valores_cargados` (ADR-0003 §14.2, lo impone el trigger).
+
+**Contradicción del contrato resuelta y declarada:** §6.6 asigna el ejecutor de
+`hoja_de_ruta` a O2.5; §6.7 afirma que `confirmar` sobre ese tipo funciona. Se
+implementó el ejecutor (adelanto parcial y acotado de O2.5, no llama servicios
+ajenos) y los otros tres tipos devuelven 501. Si el dueño prefiere 501 puro, se
+retira revirtiendo `EJECUTORES_SOLICITUD` a `{}`.
+
+**Desviación anotada:** `solicitante.nombre` es `null` cuando solicita un usuario,
+porque `nucleo.usuarios_empresa` no tiene columna de nombre.
+
+**Pendientes cerrados en esta pasada:**
+- **SEC-038** (`main.py` registraba `repr(exc)`): ahora `sqlstate` + tipo.
+- **Timeout por tool** (antes 🔴): `pg_sleep` real bajo `statement_timeout=100ms`
+  produce `57014` y se clasifica como `TIMEOUT_TOOL`; `current_setting` confirma
+  que el mecanismo del registry queda en `1500ms`.
+
+**Evidencia que falta:**
+- 🔴 Revisión independiente de O2.2 (`auditor-seguridad`), riesgo Alto.
+- 🔴 Capa HTTP real: no se probó `POST /decidir` con JWT, `X-Empresa-ID` y un
+  usuario sin `agente:aprobar`; el permiso está cubierto solo a nivel unitario.
+- 🔴 Frontend del buzón (O4.3) no existe.
+- 🟡 `resumen` y `diff` probados solo con payloads planos.
+
+**Siguiente:** revisión independiente de O2.2; ADR de §4.1 (delegado a
+`arquitectura`); corpus de O0 y `D-12` siguen en manos del dueño.
