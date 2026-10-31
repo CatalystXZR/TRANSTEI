@@ -1345,3 +1345,52 @@ Suite completa: **347 passed, 0 failed, 0 skipped**.
 **En curso (delegado, no consolidado):** `auditor-seguridad` revisando O2.2 sin la
 conclusión del autor; `frontend` construyendo la pantalla del buzón sobre el
 contrato HTTP real. Nada de eso se da por bueno hasta verificarlo.
+
+### [2026-10-31] O2.2 — revisión independiente revalidada y pantalla construida
+
+Riesgo: Alto | Estado: **cerrada con una condición documentada**.
+Informes: `docs/seguridad/hallazgos-o2-2.md` (§10 revalidación),
+`docs/backend/informes/o2-2-buzon-solicitudes.md`.
+
+**Revisión independiente (2 pasadas).** El auditor trabaja **sin shell** (permiso
+denegado en ambas sesiones): todo su informe es estático y lo marcó 🔴. La
+ejecución la aporta el orquestador.
+
+| ID | Sev. | Estado | Evidencia |
+|---|---|---|---|
+| SEC-041 | alta | **cerrado** | `confirmar` usaba el `payload` original tras un `modificar`. Ahora: request > `valores_modificados` persistidos > payload. 2 pruebas; **mutación probada en ambas direcciones** |
+| SEC-042 | media | **parcial** | `{}` y no-objetos rechazados. La validación de tipos y de `faltantes` exige un schema de payload de `hoja_de_ruta` que **no existe** en el contrato: no se inventa |
+| SEC-043 | baja | **cerrado** | El rechazo ahora es fail-closed si la fila existe y no transicionó |
+| SEC-044 | baja | **refutado** | El auditor leyó el fixture HTTP mientras se corregía. La versión commiteada usa un solicitante distinto; 15 pruebas HTTP pasan |
+| SEC-050 | baja | **acotado** | Sin fila de hoja de ruta el rechazo procede; solo falla cerrado si la fila existe y no pudo transicionar |
+| SEC-045…049 | info | abiertos | Aceptados o preexistentes; SEC-049 (`tei_app` con UPDATE directo) sigue siendo el único bloqueante antes de contactos reales (SEC-039 en backlog) |
+
+**Condición documentada (SEC-042 parcial).** El ejecutor `hoja_de_ruta` puede
+marcar `cargado` con valores de tipo incorrecto (`{"km":"doce"}`). Hoy el daño es
+cero porque **nadie consume** `valores_cargados` todavía; pasa a ser bloqueante de
+O2.5 (costo/consumo), donde se define el schema de payload. Opciones si el dueño
+quiere cerrarlo antes: (a) `EJECUTORES_SOLICITUD = {}` → todo `confirmar` da 501,
+(b) encargar el schema a `negocio-finanzas` + `arquitectura`. **No se relajó
+ningún control y no se inventó la regla.**
+
+**Prueba HTTP real (antes era 🔴).** `test_agente_o2_2_http.py` → **15 passed** con
+Supabase Auth y `X-Empresa-ID`: 403 sin membresía, 403 sin `agente:buzon`/
+`agente:aprobar`, 404 cross-tenant, 409 (reintento y versión vieja), 501 sin
+efecto, 403 de autoaprobación, y sin fuga de teléfono/costo/margen.
+
+**Pantalla (O4.3).** `/agente/buzon` con el sistema de diseño existente
+(`PageHeader`, `Panel`, `StatusBadge`, `Dialog`, `Table`, `FilasCargando`), reusa
+el cliente `nucleo`. Verificado por el orquestador: `npx tsc --noEmit` limpio,
+`npm run lint` sin errores, ruta incluida en el build. **El flujo real de datos no
+se pudo ejercitar**: la base de la app no tiene 0021–0023 (comprobado:
+`to_regclass('nucleo.solicitudes')` → `null` en `postgres`, existe en `tei_test`).
+El 500 que vio el subagente es ambiental, no un defecto del buzón.
+
+**Trabajo ajeno detectado en el árbol y NO commiteado:** `.github/workflows/ci.yml`,
+`backend/requirements{,-dev}.txt`, `frontend/package{,-lock}.json`,
+`frontend/src/components/expediente/pod-panel.tsx`,
+`docs/qa/informes/f1-ola6-deps-ci-ui.md` y `frontend/AGENTS.md`. Otro actor los
+modificó durante esta pasada; no se tocaron ni se incluyeron en ningún commit.
+
+**Evidencia ejecutada:** `make unit` 135; `make test` **353 passed, 0 failed, 0
+skipped**; O2.2 20 + 15 pruebas.
