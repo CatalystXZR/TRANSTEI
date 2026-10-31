@@ -584,6 +584,18 @@ def _rechazar_hoja_ruta(
     """
     if solicitud.tipo != "hoja_de_ruta":
         return
+    existente = session.execute(
+        text(
+            "select 1 from nucleo.hoja_ruta "
+            " where empresa_id = :empresa_id "
+            "   and solicitud_id = cast(:solicitud_id as uuid)"
+        ),
+        {"empresa_id": contexto.empresa_id, "solicitud_id": solicitud.id},
+    ).first()
+    if existente is None:
+        # Sin hoja de ruta asociada no hay nada que transicionar: la solicitud
+        # sí puede rechazarse (SEC-050: no dejarla irresoluble).
+        return
     resultado = session.execute(
         text(
             """

@@ -625,3 +625,44 @@ def test_sec_043_rechazo_fail_closed_si_la_hoja_no_transiciona(escenario) -> Non
         ).fetchone()[0]
     assert estado_solicitud == "pendiente", "el rechazo no debe quedar a medias"
     assert estado_hoja == "propuesto"
+
+
+def test_sec_041_el_body_gana_al_persistido(escenario) -> None:
+    """El mutante que invirtiera request/persistido debe fallar aquí."""
+    sid = _nueva(escenario, tipo="hoja_de_ruta", payload={"km": 10})
+    with _conexion(escenario["dsn_app"]) as conn:
+        _fijar(conn, escenario["empresa_id"])
+        hid = _crear_hoja_ruta(
+            conn, empresa_id=escenario["empresa_id"],
+            contacto_id=escenario["contacto_id"], solicitud_id=sid,
+            payload={"km": 10},
+        )
+        conn.commit()
+
+    ctx = _contexto(escenario["empresa_id"], escenario["miembro_auth"])
+    with _sesion(ctx) as session:
+        servicio.decidir(session, ctx, sid, accion="modificar", version=1,
+                         valores_modificados={"km": 12})
+        session.commit()
+    with _sesion(ctx) as session:
+        # El aprobador reenvía un valor distinto: manda el del request.
+        detalle, _ = servicio.decidir(session, ctx, sid, accion="confirmar",
+                                      version=2, valores_modificados={"km": 15})
+        session.commit()
+    with _conexion(escenario["dsn"]) as conn:
+        cargados = conn.execute(
+            "select valores_cargados from nucleo.hoja_ruta where id=%s", (hid,)
+        ).fetchone()[0]
+    assert cargados == {"km": 15}
+    assert detalle["estado"] == "aprobada"
+
+
+def test_sec_050_sin_hoja_de_ruta_la_solicitud_se_puede_rechazar(escenario) -> None:
+    """Sin fila de hoja de ruta no hay transición pendiente: no bloquea el rechazo."""
+    sid = _nueva(escenario, tipo="hoja_de_ruta", payload={"km": 1})
+    ctx = _contexto(escenario["empresa_id"], escenario["miembro_auth"])
+    with _sesion(ctx) as session:
+        detalle, _ = servicio.decidir(session, ctx, sid, accion="rechazar",
+                                      version=1, motivo_rechazo="sin hoja")
+        session.commit()
+    assert detalle["estado"] == "rechazada"
