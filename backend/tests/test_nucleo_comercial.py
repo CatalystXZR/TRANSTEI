@@ -40,6 +40,7 @@ from app.nucleo.schemas import (
 )
 from app.nucleo.servicio_comercial import ServicioComercial
 from app.nucleo.servicio_maestros import ServicioMaestros
+from rut_helpers import rut_empresa
 
 
 def _url() -> str:
@@ -96,7 +97,7 @@ def test_flujo_comercial_completo_en_postgresql():
             empresa = Empresa(
                 codigo=f"COM-{sufijo}",
                 razon_social=f"Empresa Comercial {sufijo}",
-                rut=f"COM-{sufijo}",
+                rut=rut_empresa(),
             )
             session.add(empresa)
             session.commit()

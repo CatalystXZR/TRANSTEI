@@ -59,7 +59,6 @@ from sqlmodel import Session, create_engine, select
 
 from app.api.routes.facturas import cambiar_estado_factura, crear_factura
 from app.api.routes.liquidaciones import calcular_liquidacion
-from app.core.config import settings
 from app.models import (
     Chofer as ChoferLegacy,
     Cliente as ClienteLegacy,
@@ -93,6 +92,7 @@ from app.nucleo.schemas import SolicitudAsignacion
 from app.nucleo.servicio_disponibilidad import ServicioDisponibilidad
 from app.nucleo.tiempo import ahora_utc, fecha_local
 from app.schemas.facturas import FacturaCreate, FacturaEstadoUpdate
+from rut_helpers import rut_empresa
 
 pytestmark = pytest.mark.integracion
 
@@ -103,21 +103,19 @@ MES_ACTUAL = "%Y-%m"
 # Infraestructura de aislamiento
 # ---------------------------------------------------------------------------
 @pytest.fixture
-def sesion_aislada():
+def sesion_aislada(base_url_test):
     """Sesión sobre una transacción que **siempre** se revierte.
 
     `join_transaction_mode="create_savepoint"` hace que los `commit()` de la
     capa de producción liberen solo un SAVEPOINT: nada llega a la base. Un
     `rollback()` interno (por ejemplo el que ejecuta `confirmar_asignacion`
     cuando bloquea) tampoco destruye los datos de la prueba.
-    """
-    if not settings.DATABASE_URL:
-        pytest.skip(
-            "Sin DATABASE_URL: R-01 y R-02 requieren PostgreSQL. "
-            "No se aprueban: quedan como no verificadas."
-        )
 
-    motor = create_engine(settings.DATABASE_URL, future=True)
+    La URL proviene del fixture `base_url_test` (conftest.py): la integración
+    se omite si `NUCLEO_TEST_DATABASE_URL` no está definida o apunta a la base
+    de la aplicación (RA-13).
+    """
+    motor = create_engine(base_url_test, future=True)
     conexion = motor.connect()
     transaccion = conexion.begin()
     sesion = Session(bind=conexion, join_transaction_mode="create_savepoint")
@@ -979,7 +977,7 @@ def test_r02d_empresa_usa_ventana_de_aviso_de_14_dias_por_defecto(
     empresa = Empresa(
         codigo=f"QA-{sufijo}",
         razon_social=f"Empresa QA {etiqueta}",
-        rut=f"QA-{sufijo}",
+        rut=rut_empresa(),
     )
     sesion_aislada.add(empresa)
     sesion_aislada.commit()

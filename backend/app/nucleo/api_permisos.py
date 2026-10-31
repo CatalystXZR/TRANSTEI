@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlmodel import Session
 
-from app.core.database import get_session
+from app.core.database import get_session_nucleo
 from app.nucleo.deps import ContextoEmpresa, get_contexto_empresa
 from app.nucleo.models import RolEmpresa
 from app.nucleo.permisos import ROLES_PERMISOS, permisos_de, requiere_permiso
@@ -64,7 +64,7 @@ def verificar_permiso(
 # Auditoría
 # ---------------------------------------------------------------------------
 def get_servicio_auditoria(
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session_nucleo),
     contexto: ContextoEmpresa = Depends(requiere_permiso("auditoria:leer")),
 ) -> ServicioAuditoria:
     return ServicioAuditoria(session, contexto)

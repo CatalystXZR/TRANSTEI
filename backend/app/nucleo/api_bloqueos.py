@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, status
 from sqlmodel import Session
 
-from app.core.database import get_session
+from app.core.database import get_session_nucleo
 from app.nucleo.deps import ContextoEmpresa
 from app.nucleo.models import TipoRecurso, TipoReserva
 from app.nucleo.permisos import requiere_permiso
@@ -24,14 +24,14 @@ from app.nucleo.servicio_bloqueos import ServicioBloqueos
 router = APIRouter(prefix="/nucleo", tags=["nucleo-agenda"])
 
 def get_servicio_lectura(
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session_nucleo),
     contexto: ContextoEmpresa = Depends(requiere_permiso("agenda:leer")),
 ) -> ServicioBloqueos:
     return ServicioBloqueos(session, contexto)
 
 
 def get_servicio_escritura(
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session_nucleo),
     contexto: ContextoEmpresa = Depends(requiere_permiso("agenda:escribir")),
 ) -> ServicioBloqueos:
     return ServicioBloqueos(session, contexto)

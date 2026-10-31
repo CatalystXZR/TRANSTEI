@@ -25,6 +25,7 @@ from app.nucleo.schemas import (
     TractoCreateNucleo,
 )
 from app.nucleo.servicio_maestros import ServicioMaestros
+from rut_helpers import rut_empresa
 
 pytestmark = pytest.mark.integracion
 
@@ -50,7 +51,7 @@ def test_crud_maestros_y_versionado():
             empresa = Empresa(
                 codigo=f"MAE-{sufijo}",
                 razon_social=f"Empresa Maestros {sufijo}",
-                rut=f"MAE-{sufijo}",
+                rut=rut_empresa(),
             )
             session.add(empresa)
             session.commit()

@@ -38,6 +38,7 @@ from app.nucleo.schemas import (
     RechazarGasto,
 )
 from app.nucleo.servicio_gastos import ServicioGastos
+from rut_helpers import rut_empresa
 
 
 def _url() -> str:
@@ -153,7 +154,7 @@ def test_gastos_combustible_costo_y_aprobacion():
             empresa = Empresa(
                 codigo=f"GAS-{sufijo}",
                 razon_social=f"Empresa Gastos {sufijo}",
-                rut=f"GAS-{sufijo}",
+                rut=rut_empresa(),
             )
             session.add(empresa)
             session.commit()

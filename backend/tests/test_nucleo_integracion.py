@@ -10,13 +10,12 @@ no está definida, la prueba se omite para no romper el CI sin secretos.
 
 from __future__ import annotations
 
-import os
+import contextlib
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-from app.core.config import settings
 from app.nucleo.deps import ContextoEmpresa, RolEmpresa
 from app.nucleo.errores import ConflictoDisponibilidad
 from app.nucleo.models import (
@@ -45,35 +44,50 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session, create_engine
 
+from rut_helpers import rut_empresa
+
 pytestmark = pytest.mark.integracion
 
 
 def _url() -> str:
-    url = os.environ.get("NUCLEO_TEST_DATABASE_URL") or settings.NUCLEO_TEST_DATABASE_URL
-    if not url:
-        pytest.skip("Sin NUCLEO_TEST_DATABASE_URL; se omite integración del núcleo")
-    return url
+    # La URL validada vive en conftest (`_base_url_test`): la integración se
+    # omite si NUCLEO_TEST_DATABASE_URL no está definida o apunta a la base de
+    # la aplicación (RA-13), nunca se conecta a la base de la app.
+    from conftest import _base_url_test
+
+    return _base_url_test()
 
 
 def test_asignacion_y_doble_asignacion_en_postgresql_real():
     engine = create_engine(_url(), future=True)
+    conn = None
+    transaccion = None
     try:
-        with engine.connect() as conn:
+        with engine.connect() as conn_probe:
             try:
-                conn.execute(text("select 1 from nucleo.empresas limit 1"))
+                conn_probe.execute(text("select 1 from nucleo.empresas limit 1"))
             except SQLAlchemyError as exc:  # pragma: no cover - depende del entorno
                 pytest.skip(f"Falta aplicar la migración 0004: {exc}")
+
+        # Limpieza sin residuos: el núcleo es inmutable por diseño
+        # (`trg_reservas_no_delete` impide borrar reservas y la auditoría es
+        # append-only), así que no se puede limpiar con DELETE. Toda la prueba
+        # corre dentro de una transacción que se revierte SIEMPRE: los
+        # `commit()` del cuerpo liberan solo un SAVEPOINT y nada llega a la
+        # base de test (mismo patrón que `sesion_aislada` en test_reglas_negocio).
+        conn = engine.connect()
+        transaccion = conn.begin()
 
         sufijo = uuid4().hex[:8]
         ahora = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
         inicio = ahora + timedelta(days=30)
         fin = inicio + timedelta(hours=4)
 
-        with Session(engine) as session:
+        with Session(bind=conn, join_transaction_mode="create_savepoint") as session:
             empresa = Empresa(
                 codigo=f"TEST-{sufijo}",
                 razon_social=f"Empresa Test {sufijo}",
-                rut=f"TEST-{sufijo}",
+                rut=rut_empresa(),
                 buffer_operacional_min=60,
             )
             # El tenant se persiste primero: no hay relationships ORM que
@@ -273,4 +287,10 @@ def test_asignacion_y_doble_asignacion_en_postgresql_real():
             with pytest.raises(ConflictoDisponibilidad):
                 servicio.confirmar_asignacion(viaje2.id, segunda)
     finally:
+        with contextlib.suppress(Exception):
+            if transaccion is not None:
+                transaccion.rollback()
+        with contextlib.suppress(Exception):
+            if conn is not None:
+                conn.close()
         engine.dispose()

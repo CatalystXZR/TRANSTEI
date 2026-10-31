@@ -38,6 +38,7 @@ from app.nucleo.schemas import (
 )
 from app.nucleo.servicio_gastos import ServicioGastos
 from app.nucleo.servicio_rentabilidad import ServicioRentabilidad
+from rut_helpers import rut_empresa
 
 
 def _url() -> str:
@@ -155,7 +156,7 @@ def test_configuracion_simulador_y_freight_score():
             empresa = Empresa(
                 codigo=f"REN-{sufijo}",
                 razon_social=f"Empresa Rentabilidad {sufijo}",
-                rut=f"REN-{sufijo}",
+                rut=rut_empresa(),
             )
             session.add(empresa)
             session.commit()

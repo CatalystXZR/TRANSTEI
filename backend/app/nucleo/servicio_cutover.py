@@ -6,20 +6,30 @@ POST/PUT/PATCH/DELETE en los routers legacy. El schema `nucleo` sigue operando.
 
 from __future__ import annotations
 
+import logging
 import time
 
 from sqlalchemy import text
 from sqlmodel import Session
 
 from app.nucleo.deps import ContextoEmpresa
+from app.nucleo.errores import ErrorPersistencia
 from app.nucleo.schemas import CutoverEstadoOut
+
+logger = logging.getLogger(__name__)
 
 _CACHE_TTL = 5.0
 _cache: tuple[float, bool] | None = None
 
 
 def legacy_congelado() -> bool:
-    """Consulta cacheada del flag para el middleware."""
+    """Consulta cacheada del flag para el middleware.
+
+    Fail-closed (RA-04): si la lectura falla o la fila de control no existe,
+    se asume CONGELADO. No se puede habilitar la escritura legacy sin haber
+    leído el estado real del cutover; un error silencioso no debe reabrir
+    escrituras que tal vez fueron congeladas deliberadamente.
+    """
     global _cache
     ahora = time.monotonic()
     if _cache is not None and ahora - _cache[0] < _CACHE_TTL:
@@ -34,9 +44,21 @@ def legacy_congelado() -> bool:
                     "where id = true"
                 )
             ).scalar_one_or_none()
-        congelado = bool(valor)
     except Exception:
-        congelado = False
+        logger.exception(
+            "Cutover: no se pudo leer el flag de congelamiento; "
+            "se asume CONGELADO (fail-closed)."
+        )
+        congelado = True
+    else:
+        if valor is None:
+            logger.warning(
+                "Cutover: no existe fila de control en nucleo.cutover_control; "
+                "se asume CONGELADO (fail-closed)."
+            )
+            congelado = True
+        else:
+            congelado = bool(valor)
     _cache = (ahora, congelado)
     return congelado
 
@@ -61,17 +83,29 @@ class ServicioCutover:
         ).mappings().first()
         legacy_abiertos = 0
         try:
-            legacy_abiertos = int(
-                self.session.execute(
-                    text(
-                        "select count(*) from public.viajes "
-                        "where estado in ('programado','cotizado','confirmado',"
-                        "'asignado','en_carga','cargado','en_ruta','en_descarga')"
-                    )
-                ).scalar_one()
-            )
+            # Excepción declarada y única (ADR-0005 §3.2 regla 4): `public` no
+            # está aislado y `tei_app` no tiene GRANT allí. Es una lectura de
+            # plataforma, no de tenant: se usa el engine **legacy** explícito en
+            # su propia sesión, sin contexto, para no depender del rol del
+            # motor del núcleo ni contaminar su transacción.
+            from app.core.database import get_engine as get_engine_legacy
+
+            with Session(get_engine_legacy()) as legacy_session:
+                legacy_abiertos = int(
+                    legacy_session.execute(
+                        text(
+                            "select count(*) from public.viajes "
+                            "where estado in ('programado','cotizado','confirmado',"
+                            "'asignado','en_carga','cargado','en_ruta','en_descarga')"
+                        )
+                    ).scalar_one()
+                )
         except Exception:
-            self.session.rollback()
+            logger.warning(
+                "Cutover: no se pudo contar viajes legacy abiertos; "
+                "se reporta 0 para no bloquear la lectura del estado.",
+                exc_info=True,
+            )
             legacy_abiertos = 0
         nucleo_viajes = int(
             self.session.execute(
@@ -102,7 +136,7 @@ class ServicioCutover:
         )
 
     def congelar(self, motivo: str) -> CutoverEstadoOut:
-        self.session.execute(
+        resultado = self.session.execute(
             text(
                 """
                 update nucleo.cutover_control
@@ -116,12 +150,21 @@ class ServicioCutover:
             ),
             {"auth_id": self.contexto.auth_id, "motivo": motivo.strip()},
         )
+        # SEC-016: sin la fila única de control, el update afecta 0 filas y el
+        # commit "triunfaría" dejando el estado contradictorio (estado() dice
+        # abierto, el middleware fail-closed bloquea). Se falla explícitamente.
+        if resultado.rowcount != 1:
+            self.session.rollback()
+            raise ErrorPersistencia(
+                "No se pudo congelar el legacy: falta la fila única de control "
+                "(nucleo.cutover_control). Aplique la migración 0014."
+            )
         self.session.commit()
         invalidar_cache()
         return self.estado()
 
     def descongelar(self, motivo: str) -> CutoverEstadoOut:
-        self.session.execute(
+        resultado = self.session.execute(
             text(
                 """
                 update nucleo.cutover_control
@@ -135,6 +178,12 @@ class ServicioCutover:
             ),
             {"auth_id": self.contexto.auth_id, "motivo": motivo.strip()},
         )
+        if resultado.rowcount != 1:
+            self.session.rollback()
+            raise ErrorPersistencia(
+                "No se pudo descongelar el legacy: falta la fila única de control "
+                "(nucleo.cutover_control). Aplique la migración 0014."
+            )
         self.session.commit()
         invalidar_cache()
         return self.estado()

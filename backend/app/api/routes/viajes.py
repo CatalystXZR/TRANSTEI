@@ -304,7 +304,7 @@ def rentabilidad_viaje(
         "valor": valor,
         "color": color,
         "formato": formato,
-        "detalle": metricas,
+        "detalle": kpi_engine.metricas_para_json(metricas),
         "error": error,
     }
 
@@ -343,6 +343,6 @@ def preview_rentabilidad(
         "valor": valor,
         "color": color,
         "formato": formato,
-        "detalle": metricas,
+        "detalle": kpi_engine.metricas_para_json(metricas),
         "error": error,
     }

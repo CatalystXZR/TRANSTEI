@@ -33,6 +33,7 @@ from app.nucleo.models import (
 )
 from app.nucleo.schemas import CheckInOutConductor, TransicionConductor
 from app.nucleo.servicio_conductor import ServicioConductor
+from rut_helpers import rut_empresa
 
 
 def _url() -> str:
@@ -145,7 +146,7 @@ def test_conductor_mi_viaje_y_transiciones():
             empresa = Empresa(
                 codigo=f"CON-{sufijo}",
                 razon_social=f"Empresa Conductor {sufijo}",
-                rut=f"CON-{sufijo}",
+                rut=rut_empresa(),
             )
             session.add(empresa)
             session.commit()

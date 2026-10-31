@@ -19,6 +19,7 @@ from app.models import (
     RolUsuario,
     Viaje,
 )
+from app.nucleo.storage import leer_archivo_acotado
 
 router = APIRouter(prefix="/export", tags=["export"])
 
@@ -197,7 +198,8 @@ async def importar_clientes(
     session: Session = Depends(get_session),
     _=escritura,
 ):
-    contenido = await archivo.read()
+    # SEC-019: lectura acotada del CSV (no bufferizar un multipart sin límite).
+    contenido = await leer_archivo_acotado(archivo)
     filas = _leer_csv(contenido)
     if not filas:
         raise HTTPException(400, "El archivo está vacío")
@@ -234,7 +236,8 @@ async def importar_choferes(
     session: Session = Depends(get_session),
     _=escritura,
 ):
-    contenido = await archivo.read()
+    # SEC-019: lectura acotada del CSV (no bufferizar un multipart sin límite).
+    contenido = await leer_archivo_acotado(archivo)
     filas = _leer_csv(contenido)
     if not filas:
         raise HTTPException(400, "El archivo está vacío")

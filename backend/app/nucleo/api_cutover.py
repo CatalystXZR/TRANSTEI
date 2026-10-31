@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
-from app.core.database import get_session
+from app.core.database import get_session_nucleo
 from app.nucleo.deps import ContextoEmpresa
 from app.nucleo.permisos import requiere_permiso
 from app.nucleo.schemas import CutoverAccion, CutoverEstadoOut
@@ -15,14 +15,14 @@ router = APIRouter(prefix="/nucleo/cutover", tags=["nucleo-cutover"])
 
 
 def get_servicio_lectura(
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session_nucleo),
     contexto: ContextoEmpresa = Depends(requiere_permiso("configuracion:leer")),
 ) -> ServicioCutover:
     return ServicioCutover(session, contexto)
 
 
 def get_servicio_escritura(
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session_nucleo),
     contexto: ContextoEmpresa = Depends(requiere_permiso("configuracion:escribir")),
 ) -> ServicioCutover:
     return ServicioCutover(session, contexto)

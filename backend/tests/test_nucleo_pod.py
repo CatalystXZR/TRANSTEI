@@ -37,6 +37,7 @@ from app.nucleo.models import (
 )
 from app.nucleo.schemas import PODUpdate
 from app.nucleo.servicio_pod import ServicioPOD
+from rut_helpers import rut_empresa
 
 PNG_FALSO = (
     b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
@@ -155,7 +156,7 @@ def test_pod_completo_y_gate_facturacion_en_postgresql():
             empresa = Empresa(
                 codigo=f"POD-{sufijo}",
                 razon_social=f"Empresa POD {sufijo}",
-                rut=f"POD-{sufijo}",
+                rut=rut_empresa(),
             )
             session.add(empresa)
             session.commit()

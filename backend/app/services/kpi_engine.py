@@ -106,7 +106,7 @@ def _a_numero(valor) -> float:
     raise ValueError("La fórmula produjo un valor no numérico")
 
 
-def evaluar_formula(formula: str, valores: dict[str, float]) -> float:
+def evaluar_formula(formula: str, valores: dict[str, float | Decimal]) -> float:
     """Evalúa una fórmula de KPI de forma segura y devuelve un float."""
     if not formula or not formula.strip():
         raise ValueError("La fórmula está vacía")
@@ -126,7 +126,7 @@ def evaluar_formula(formula: str, valores: dict[str, float]) -> float:
     return numero
 
 
-def _evaluar(nodo: ast.AST, valores: dict[str, float]):
+def _evaluar(nodo: ast.AST, valores: dict[str, float | Decimal]):
     if isinstance(nodo, ast.Constant):
         if isinstance(nodo.value, bool):
             return nodo.value
@@ -304,7 +304,7 @@ def _dec(valor) -> Decimal:
     return Decimal(str(valor)) if valor is not None else Decimal("0")
 
 
-def metricas_global(session: Session, periodo: str | None = None) -> dict[str, float]:
+def metricas_global(session: Session, periodo: str | None = None) -> dict[str, Decimal]:
     inicio, fin = rango_periodo(periodo)
     hoy = date.today()
     from app.core.settings_db import get_config, get_config_decimal
@@ -438,24 +438,27 @@ def metricas_global(session: Session, periodo: str | None = None) -> dict[str, f
             vencimientos += 1
 
     margen = ingresos - gastos
+    # F-04: los valores de dominio se mantienen en `Decimal` hasta el borde
+    # JSON (`metricas_para_json`), que es el único punto donde se convierten a
+    # float porque el contrato del frontend es `number`.
     return {
-        "ingresos_mes": float(ingresos),
-        "gastos_mes": float(gastos),
-        "margen_bruto": float(margen),
-        "margen_pct": float(margen / ingresos * 100) if ingresos else 0.0,
-        "cuentas_por_cobrar": float(por_cobrar),
-        "cuentas_atrasadas": float(atrasadas),
-        "iva_a_pagar": float(max(debito - credito, Decimal("0"))),
-        "facturacion_mes": float(facturacion),
-        "viajes_mes": float(viajes_mes),
-        "viajes_activos": float(viajes_activos),
-        "flete_promedio": float(ingresos / viajes_mes) if viajes_mes else 0.0,
-        "costo_mantenimiento_mes": float(costo_mant),
-        "mantenimientos_pendientes": float(mantenimientos_pendientes),
-        "vencimientos_30d": float(vencimientos),
-        "comision_total_mes": float(comision_total),
-        "costo_choferes_mes": float(sueldos_base + comision_total),
-        "choferes_activos": float(choferes_activos),
+        "ingresos_mes": ingresos,
+        "gastos_mes": gastos,
+        "margen_bruto": margen,
+        "margen_pct": (margen / ingresos * Decimal("100")) if ingresos else Decimal("0"),
+        "cuentas_por_cobrar": por_cobrar,
+        "cuentas_atrasadas": atrasadas,
+        "iva_a_pagar": max(debito - credito, Decimal("0")),
+        "facturacion_mes": facturacion,
+        "viajes_mes": Decimal(viajes_mes),
+        "viajes_activos": Decimal(viajes_activos),
+        "flete_promedio": (ingresos / Decimal(viajes_mes)) if viajes_mes else Decimal("0"),
+        "costo_mantenimiento_mes": costo_mant,
+        "mantenimientos_pendientes": Decimal(mantenimientos_pendientes),
+        "vencimientos_30d": Decimal(vencimientos),
+        "comision_total_mes": comision_total,
+        "costo_choferes_mes": sueldos_base + comision_total,
+        "choferes_activos": Decimal(choferes_activos),
     }
 
 
@@ -492,36 +495,56 @@ def metricas_viaje(
     session: Session,
     *,
     viaje_id: UUID | None = None,
-    flete: float | None = None,
+    flete: float | Decimal | None = None,
     chofer_id: UUID | None = None,
-    gastos: float | None = None,
-) -> dict[str, float]:
+    gastos: float | Decimal | None = None,
+) -> dict[str, Decimal]:
+    """Métricas del viaje en `Decimal` (F-04).
+
+    El dinero no toca `float` en ningún punto del cálculo: la comisión y el
+    margen salen de aritmética decimal exacta. Los endpoints convierten con
+    `metricas_para_json` recién al serializar. Los parámetros `float` aceptados
+    vienen del contrato HTTP legacy del preview; se convierten por su
+    representación decimal (`_dec`), no por aritmética binaria.
+    """
     if viaje_id is not None:
         viaje = session.get(Viaje, viaje_id)
         if not viaje:
             raise ValueError("Viaje no encontrado")
-        flete = float(viaje.valor_flete_neto)
+        flete_dec = _dec(viaje.valor_flete_neto)
         chofer_id = viaje.chofer_id
-        gastos = float(metricas_gastos_viaje(session, viaje_id))
+        gastos_dec = metricas_gastos_viaje(session, viaje_id)
     else:
-        flete = float(flete or 0)
-        gastos = float(gastos or 0)
+        flete_dec = _dec(flete)
+        gastos_dec = _dec(gastos)
 
     porcentaje = Decimal("0")
     if chofer_id is not None:
         chofer = session.get(Chofer, chofer_id)
         if chofer:
-            porcentaje = chofer.porcentaje_produccion
+            porcentaje = _dec(chofer.porcentaje_produccion)
 
-    comision = flete * float(porcentaje)
-    margen = flete - float(gastos) - comision
+    comision = flete_dec * porcentaje
+    margen = flete_dec - gastos_dec - comision
     return {
-        "flete_viaje": flete,
-        "gastos_viaje": float(gastos),
+        "flete_viaje": flete_dec,
+        "gastos_viaje": gastos_dec,
         "comision_viaje": comision,
         "margen_viaje": margen,
-        "margen_viaje_pct": (margen / flete * 100) if flete else 0.0,
+        "margen_viaje_pct": (
+            margen / flete_dec * Decimal("100") if flete_dec else Decimal("0")
+        ),
     }
+
+
+def metricas_para_json(metricas: dict[str, Decimal]) -> dict[str, float]:
+    """Borde de serialización: `Decimal` → `float` solo para el JSON.
+
+    El consumidor (frontend, `number` en TypeScript) no puede recibir `Decimal`
+    y el contrato vigente devuelve números. La conversión es de presentación:
+    ningún cálculo posterior puede partir de este dict (usar el `Decimal`).
+    """
+    return {nombre: float(valor) for nombre, valor in metricas.items()}
 
 
 def metricas_gastos_viaje(session: Session, viaje_id: UUID) -> Decimal:

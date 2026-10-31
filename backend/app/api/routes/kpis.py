@@ -1,3 +1,4 @@
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -8,6 +9,8 @@ from app.core.database import get_session
 from app.models import Kpi, RolUsuario, Usuario
 from app.schemas.kpis import KpiCreate, KpiPreviewRequest, KpiUpdate, KpiValor
 from app.services import kpi_engine
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["kpis"])
 
@@ -60,6 +63,11 @@ def valores(
     try:
         metricas = kpi_engine.metricas_global(session, periodo)
     except Exception:
+        logger.warning(
+            "KPI valores: no se pudieron calcular métricas globales; "
+            "se entregan KPI sin valor.",
+            exc_info=True,
+        )
         metricas = {}
 
     resultado = []
@@ -113,7 +121,11 @@ def preview(
                 gastos=body.gastos_viaje,
             )
         valor = kpi_engine.evaluar_formula(body.formula, metricas)
-        return {"valor": valor, "metricas": metricas, "error": None}
+        return {
+            "valor": valor,
+            "metricas": kpi_engine.metricas_para_json(metricas),
+            "error": None,
+        }
     except ValueError as e:
         return {"valor": None, "metricas": {}, "error": str(e)}
     except Exception as e:  # noqa: BLE001

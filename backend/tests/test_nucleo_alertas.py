@@ -44,6 +44,7 @@ from app.nucleo.servicio_comercial import ServicioComercial
 from app.nucleo.servicio_expediente import ServicioExpediente
 from app.nucleo.servicio_facturacion import ServicioFacturacion
 from app.nucleo.servicio_gastos import ServicioGastos
+from rut_helpers import rut_empresa
 
 
 def _url() -> str:
@@ -60,7 +61,7 @@ def _base(session: Session, sufijo: str):
     empresa = Empresa(
         codigo=f"ALT-{sufijo}",
         razon_social=f"Empresa Alertas {sufijo}",
-        rut=f"ALT-{sufijo}",
+        rut=rut_empresa(),
     )
     session.add(empresa)
     session.commit()

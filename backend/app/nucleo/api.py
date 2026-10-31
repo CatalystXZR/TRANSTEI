@@ -16,7 +16,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlmodel import Session
 
-from app.core.database import get_session
+from app.core.contexto import fijar_auth_id
+from app.core.database import get_session_nucleo
 from app.core.security import auth_id_from_credentials, bearer_scheme
 from app.nucleo.deps import ContextoEmpresa, get_contexto_empresa
 from app.nucleo.permisos import requiere_permiso
@@ -45,14 +46,14 @@ router = APIRouter(prefix="/nucleo", tags=["nucleo"])
 
 
 def get_servicio_lectura(
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session_nucleo),
     contexto: ContextoEmpresa = Depends(requiere_permiso("operacion:leer")),
 ) -> ServicioDisponibilidad:
     return ServicioDisponibilidad(session, contexto)
 
 
 def get_servicio_escritura(
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session_nucleo),
     contexto: ContextoEmpresa = Depends(requiere_permiso("operacion:escribir")),
 ) -> ServicioDisponibilidad:
     return ServicioDisponibilidad(session, contexto)
@@ -69,10 +70,15 @@ def empresa_actual(
 @router.get("/mis-empresas", response_model=list[EmpresaMembresiaOut])
 def mis_empresas(
     credentials=Depends(bearer_scheme),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session_nucleo),
 ):
     """Empresas activas del usuario, sin exigir X-Empresa-ID."""
     auth_id = auth_id_from_credentials(credentials)
+    # RLS (0020): sin `X-Empresa-ID` no hay `app.empresa_id`, pero la política
+    # `empresas_lectura`/`usuarios_empresa_lectura` resuelve las membresías por
+    # `nucleo.auth_id`. Debe fijarse ANTES de la primera consulta: el listener
+    # `begin` del engine del núcleo lo aplica al abrir la transacción.
+    fijar_auth_id(auth_id)
     return listar_empresas_usuario(session, auth_id)
 
 

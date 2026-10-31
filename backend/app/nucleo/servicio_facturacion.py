@@ -705,8 +705,15 @@ class ServicioFacturacion:
             estado="pendiente",
             notas=data.notas,
         )
-        self.session.add(promesa)
-        self.session.commit()
+        try:
+            self.session.add(promesa)
+            self.session.commit()
+        except IntegrityError as exc:
+            self.session.rollback()
+            raise traducir_integrity_error(exc) from exc
+        except Exception:
+            self.session.rollback()
+            raise
         return self.obtener_factura(factura.id)
 
     def aging(self) -> AgingOut:

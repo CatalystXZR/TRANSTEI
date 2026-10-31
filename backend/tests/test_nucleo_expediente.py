@@ -41,6 +41,7 @@ from app.nucleo.schemas import (
     ParadaUpdate,
 )
 from app.nucleo.servicio_expediente import ServicioExpediente
+from rut_helpers import rut_empresa
 
 
 def _url() -> str:
@@ -69,7 +70,7 @@ def test_expediente_completo_en_postgresql():
             empresa = Empresa(
                 codigo=f"EXP-{sufijo}",
                 razon_social=f"Empresa Expediente {sufijo}",
-                rut=f"EXP-{sufijo}",
+                rut=rut_empresa(),
             )
             session.add(empresa)
             session.commit()

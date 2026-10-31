@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
-from app.core.database import get_session
+from app.core.database import get_session_nucleo
 from app.nucleo.deps import ContextoEmpresa
 from app.nucleo.permisos import requiere_permiso
 from app.nucleo.schemas import (
@@ -22,14 +22,14 @@ from app.nucleo.servicio_rentabilidad import ServicioRentabilidad
 router = APIRouter(prefix="/nucleo", tags=["nucleo-rentabilidad"])
 
 def get_servicio_lectura(
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session_nucleo),
     contexto: ContextoEmpresa = Depends(requiere_permiso("rentabilidad:leer")),
 ) -> ServicioRentabilidad:
     return ServicioRentabilidad(session, contexto)
 
 
 def get_servicio_config(
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session_nucleo),
     contexto: ContextoEmpresa = Depends(requiere_permiso("rentabilidad:configurar")),
 ) -> ServicioRentabilidad:
     return ServicioRentabilidad(session, contexto)

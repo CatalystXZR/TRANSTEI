@@ -8,8 +8,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from sqlmodel import Session
 
-from app.core.database import get_session
+from app.core.database import get_session_nucleo
 from app.nucleo.deps import ContextoEmpresa
+from app.nucleo.errores import DatosInvalidos
 from app.nucleo.permisos import requiere_permiso
 from app.nucleo.schemas import (
     AprobarGasto,
@@ -21,25 +22,26 @@ from app.nucleo.schemas import (
     RechazarGasto,
 )
 from app.nucleo.servicio_gastos import ServicioGastos
+from app.nucleo.storage import detectar_content_type, leer_archivo_acotado
 
 router = APIRouter(prefix="/nucleo", tags=["nucleo-gastos"])
 
 def get_servicio_lectura(
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session_nucleo),
     contexto: ContextoEmpresa = Depends(requiere_permiso("gastos:leer")),
 ) -> ServicioGastos:
     return ServicioGastos(session, contexto)
 
 
 def get_servicio_escritura(
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session_nucleo),
     contexto: ContextoEmpresa = Depends(requiere_permiso("gastos:escribir")),
 ) -> ServicioGastos:
     return ServicioGastos(session, contexto)
 
 
 def get_servicio_aprobacion(
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session_nucleo),
     contexto: ContextoEmpresa = Depends(requiere_permiso("gastos:aprobar")),
 ) -> ServicioGastos:
     return ServicioGastos(session, contexto)
@@ -67,7 +69,7 @@ def precio_vigente(
 )
 def crear_precio(
     body: PrecioDieselCreate,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session_nucleo),
     contexto: ContextoEmpresa = Depends(requiere_permiso("comercial:escribir")),
 ):
     return ServicioGastos(session, contexto).crear_precio(body)
@@ -108,12 +110,19 @@ async def adjuntar_comprobante(
     archivo: UploadFile = File(...),
     servicio: ServicioGastos = Depends(get_servicio_escritura),
 ):
-    contenido = await archivo.read()
+    # SEC-019: lectura acotada; SEC-018: content-type fijado por el servidor.
+    contenido = await leer_archivo_acotado(archivo)
+    content_type = detectar_content_type(contenido)
+    if content_type is None:
+        raise DatosInvalidos(
+            "El contenido del comprobante no es un formato permitido "
+            "(PDF, JPG, JPEG, PNG, WEBP o HEIC)."
+        )
     return servicio.adjuntar_comprobante(
         gasto_id,
         nombre_archivo=archivo.filename or "comprobante",
         contenido=contenido,
-        content_type=archivo.content_type,
+        content_type=content_type,
     )
 
 

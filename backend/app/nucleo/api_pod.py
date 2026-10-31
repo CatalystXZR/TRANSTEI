@@ -9,24 +9,47 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from sqlmodel import Session
 
-from app.core.database import get_session
+from app.core.database import get_session_nucleo
 from app.nucleo.deps import ContextoEmpresa
+from app.nucleo.errores import DatosInvalidos
 from app.nucleo.permisos import requiere_permiso
 from app.nucleo.schemas import PODOut, PODUpdate
-from app.nucleo.servicio_pod import ServicioPOD
+from app.nucleo.servicio_pod import MAX_FOTOS, ServicioPOD
+from app.nucleo.storage import (
+    MAX_BYTES,
+    detectar_content_type,
+    detectar_content_type_imagen,
+    leer_archivo_acotado,
+)
 
 router = APIRouter(prefix="/nucleo/expediente/viajes", tags=["nucleo-pod"])
 
+MAX_FIRMA_BYTES = 5 * 1024 * 1024
+
+
+def _validar_cantidad_fotos(fotos: list[UploadFile] | None) -> None:
+    """SEC-023: corta por CANTIDAD antes de leer un solo byte de las fotos.
+
+    FastAPI ya bufferizó el multipart (SEC-021, ver informe), pero leer cientos
+    de fotos de 10 MB a memoria en `leer_archivo_acotado` es lo que agotaba el
+    worker. `MAX_FOTOS` es la misma constante que revalida `servicio_pod`.
+    """
+    if fotos and len(fotos) > MAX_FOTOS:
+        raise DatosInvalidos(
+            f"El POD admite como máximo {MAX_FOTOS} fotos por envío; "
+            f"se recibieron {len(fotos)}."
+        )
+
 
 def get_servicio_lectura(
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session_nucleo),
     contexto: ContextoEmpresa = Depends(requiere_permiso("pod:leer")),
 ) -> ServicioPOD:
     return ServicioPOD(session, contexto)
 
 
 def get_servicio_escritura(
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session_nucleo),
     contexto: ContextoEmpresa = Depends(requiere_permiso("pod:escribir")),
 ) -> ServicioPOD:
     return ServicioPOD(session, contexto)
@@ -57,14 +80,23 @@ async def crear_pod(
     fotos: list[UploadFile] | None = File(default=None),
     servicio: ServicioPOD = Depends(get_servicio_escritura),
 ):
-    firma_contenido = await firma.read()
+    _validar_cantidad_fotos(fotos)
+    firma_contenido = await leer_archivo_acotado(firma, MAX_FIRMA_BYTES)
+    # La firma es SOLO imagen: el PDF/HEIC renombrado .jpg se rechaza acá y en
+    # el servicio (`_validar_firma`), que vuelve a validar por firma detectada.
+    firma_content_type = detectar_content_type_imagen(firma_contenido)
+    if firma_content_type is None:
+        raise DatosInvalidos(
+            "La firma no es una imagen válida (PNG, JPG, JPEG o WEBP)."
+        )
     fotos_leidas: list[tuple[str, bytes, str | None]] = []
     for foto in fotos or []:
+        contenido = await leer_archivo_acotado(foto, MAX_BYTES)
         fotos_leidas.append(
             (
                 foto.filename or "foto",
-                await foto.read(),
-                foto.content_type,
+                contenido,
+                detectar_content_type(contenido),
             )
         )
     return servicio.crear(
@@ -79,7 +111,7 @@ async def crear_pod(
         observaciones=observaciones,
         firma_nombre=firma.filename or "firma.png",
         firma_contenido=firma_contenido,
-        firma_content_type=firma.content_type,
+        firma_content_type=firma_content_type,
         fotos=fotos_leidas,
     )
 
@@ -100,14 +132,27 @@ async def actualizar_pod(
     fotos: list[UploadFile] | None = File(default=None),
     servicio: ServicioPOD = Depends(get_servicio_escritura),
 ):
-    firma_contenido = await firma.read() if firma is not None else None
+    _validar_cantidad_fotos(fotos)
+    firma_contenido = (
+        await leer_archivo_acotado(firma, MAX_FIRMA_BYTES) if firma is not None else None
+    )
+    firma_content_type = (
+        detectar_content_type_imagen(firma_contenido)
+        if firma_contenido is not None
+        else None
+    )
+    if firma is not None and firma_content_type is None:
+        raise DatosInvalidos(
+            "La firma no es una imagen válida (PNG, JPG, JPEG o WEBP)."
+        )
     fotos_leidas: list[tuple[str, bytes, str | None]] = []
     for foto in fotos or []:
+        contenido = await leer_archivo_acotado(foto, MAX_BYTES)
         fotos_leidas.append(
             (
                 foto.filename or "foto",
-                await foto.read(),
-                foto.content_type,
+                contenido,
+                detectar_content_type(contenido),
             )
         )
     return servicio.actualizar(
@@ -125,6 +170,6 @@ async def actualizar_pod(
         ),
         firma_nombre=firma.filename if firma is not None else None,
         firma_contenido=firma_contenido,
-        firma_content_type=firma.content_type if firma is not None else None,
+        firma_content_type=firma_content_type,
         fotos=fotos_leidas,
     )

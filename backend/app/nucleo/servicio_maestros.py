@@ -50,6 +50,7 @@ from app.nucleo.schemas import (
     RamplaCreateNucleo,
     TractoCreateNucleo,
 )
+from app.nucleo.storage import content_type_para, firma_valida
 from app.nucleo.tiempo import ahora_utc
 
 BUCKET = "respaldos"
@@ -361,6 +362,55 @@ class ServicioMaestros:
         modelo = MODELO_RECURSO[recurso_tipo]
         return self._get(modelo, recurso_id)
 
+    def _bloquear_recurso(self, recurso_tipo: TipoRecurso, recurso_id: UUID) -> None:
+        """Bloquea la fila del recurso dueño del documento (idempotencia).
+
+        Dos altas simultáneas del MISMO documento compiten por este lock: la
+        segunda espera el commit de la primera y, al re-consultar, ve la fila
+        creada. Sin constraint de BD nueva el lock es lo que hace determinista
+        la deduplicación (`nucleo.documentos` no tiene unicidad por contenido).
+        """
+        modelo = MODELO_RECURSO[recurso_tipo]
+        self.session.execute(
+            select(modelo.id)
+            .where(
+                modelo.id == recurso_id,
+                modelo.empresa_id == self.empresa.id,
+            )
+            .with_for_update()
+        ).first()
+
+    def _documento_identico(
+        self,
+        recurso_tipo: TipoRecurso,
+        recurso_id: UUID,
+        tipo: TipoDocumento,
+        numero: str | None,
+        entidad_emisora: str | None,
+        emitido_en: date | None,
+        vence_en: date,
+        hash_sha: str,
+    ) -> Documento | None:
+        """Documento vigente con exactamente el mismo contenido y metadatos."""
+        campo = CAMPO_RECURSO[recurso_tipo]
+        return self.session.exec(
+            select(Documento)
+            .where(
+                Documento.empresa_id == self.empresa.id,
+                Documento.recurso_tipo == recurso_tipo,
+                getattr(Documento, campo) == recurso_id,
+                Documento.tipo == tipo,
+                Documento.numero == numero,
+                Documento.entidad_emisora == entidad_emisora,
+                Documento.emitido_en == emitido_en,
+                Documento.vence_en == vence_en,
+                Documento.hash_sha256 == hash_sha,
+                Documento.es_vigente == True,  # noqa: E712
+            )
+            .order_by(Documento.created_at.desc())
+            .limit(1)
+        ).first()
+
     def listar_documentos(
         self, recurso_tipo: TipoRecurso, recurso_id: UUID
     ) -> list[DocumentoOutNucleo]:
@@ -411,8 +461,12 @@ class ServicioMaestros:
         observaciones: str | None,
         nombre_archivo: str,
         contenido: bytes,
-        content_type: str | None = None,
-    ) -> DocumentoOutNucleo:
+    ) -> tuple[DocumentoOutNucleo, bool]:
+        """Sube y registra un documento.
+
+        Devuelve `(documento, creado)`. Si ya existe un documento vigente con
+        el mismo contenido, tipo y metadatos, devuelve ese registro con
+        `creado=False` en vez de duplicar (doble clic / reintento)."""
         self._validar_recurso(recurso_tipo, recurso_id)
         if len(contenido) == 0:
             raise DatosInvalidos("El archivo está vacío.")
@@ -423,21 +477,48 @@ class ServicioMaestros:
             raise DatosInvalidos(
                 "Formato no permitido. Use PDF, JPG, JPEG, PNG, WEBP o HEIC."
             )
+        if not firma_valida(ext, contenido):
+            raise DatosInvalidos(
+                "El contenido del archivo no corresponde al formato indicado "
+                "por la extensión."
+            )
         if emitido_en is not None and vence_en < emitido_en:
             raise DatosInvalidos("La fecha de vencimiento no puede ser anterior a la emisión.")
+
+        numero_limpio = numero.strip() if numero else None
+        entidad_limpia = entidad_emisora.strip() if entidad_emisora else None
+        hash_sha = hashlib.sha256(contenido).hexdigest()
+
+        # Deduplicación determinista: el lock serializa dos altas simultáneas
+        # del mismo recurso y la re-lectura ya ve el commit de la primera.
+        self._bloquear_recurso(recurso_tipo, recurso_id)
+        existente = self._documento_identico(
+            recurso_tipo,
+            recurso_id,
+            tipo,
+            numero_limpio,
+            entidad_limpia,
+            emitido_en,
+            vence_en,
+            hash_sha,
+        )
+        if existente is not None:
+            self.session.rollback()  # libera el lock; no hay nada que guardar
+            return self._documento_out(existente), False
 
         path = (
             f"nucleo/{self.empresa.id}/documentos/{recurso_tipo.value}/"
             f"{recurso_id}/{uuid.uuid4().hex}{ext}"
         )
-        hash_sha = hashlib.sha256(contenido).hexdigest()
 
         storage = self._storage()
         try:
             storage.storage.from_(BUCKET).upload(
                 path,
                 contenido,
-                {"content-type": content_type or "application/octet-stream"},
+                # El content-type lo fija el servidor según la firma detectada;
+                # nunca se usa el declarado por el cliente (F0-05).
+                {"content-type": content_type_para(ext)},
             )
         except Exception as exc:  # pragma: no cover - depende de Storage
             raise ErrorPersistencia(
@@ -450,8 +531,8 @@ class ServicioMaestros:
             recurso_tipo=recurso_tipo,
             **{CAMPO_RECURSO[recurso_tipo]: recurso_id},
             tipo=tipo,
-            numero=(numero.strip() if numero else None),
-            entidad_emisora=(entidad_emisora.strip() if entidad_emisora else None),
+            numero=numero_limpio,
+            entidad_emisora=entidad_limpia,
             emitido_en=emitido_en,
             vence_en=vence_en,
             archivo_url=path,
@@ -463,7 +544,7 @@ class ServicioMaestros:
             self.session.add(documento)
             self.session.commit()
             self.session.refresh(documento)
-            return self._documento_out(documento)
+            return self._documento_out(documento), True
         except IntegrityError as exc:
             self.session.rollback()
             self._eliminar_storage(path)

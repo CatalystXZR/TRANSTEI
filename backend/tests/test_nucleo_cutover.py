@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.nucleo.deps import ContextoEmpresa, RolEmpresa
 from app.nucleo.models import Empresa
 from app.nucleo.servicio_cutover import ServicioCutover, invalidar_cache, legacy_congelado
+from rut_helpers import rut_empresa
 
 
 def _url() -> str:
@@ -36,7 +37,7 @@ def test_congelar_y_descongelar_legacy():
             empresa = Empresa(
                 codigo=f"CUT-{uuid4().hex[:8]}",
                 razon_social="Empresa Cutover",
-                rut=f"CUT-{uuid4().hex[:8]}",
+                rut=rut_empresa(),
             )
             session.add(empresa)
             session.commit()

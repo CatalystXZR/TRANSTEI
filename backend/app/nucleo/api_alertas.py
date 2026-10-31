@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
-from app.core.database import get_session
+from app.core.database import get_session_nucleo
 from app.nucleo.deps import ContextoEmpresa
 from app.nucleo.permisos import requiere_permiso
 from app.nucleo.schemas import TableroOut
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/nucleo/alertas", tags=["nucleo-alertas"])
 
 
 def get_servicio(
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session_nucleo),
     contexto: ContextoEmpresa = Depends(requiere_permiso("alertas:leer")),
 ) -> ServicioAlertas:
     return ServicioAlertas(session, contexto)

@@ -8,8 +8,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
 from sqlmodel import Session
 
-from app.core.database import get_session
+from app.core.database import get_session_nucleo
 from app.nucleo.deps import ContextoEmpresa
+from app.nucleo.errores import DatosInvalidos
 from app.nucleo.models import EstadoViaje
 from app.nucleo.permisos import requiere_permiso
 from app.nucleo.schemas import (
@@ -30,18 +31,19 @@ from app.nucleo.schemas import (
     ViajeExpedienteOut,
 )
 from app.nucleo.servicio_expediente import ServicioExpediente
+from app.nucleo.storage import detectar_content_type, leer_archivo_acotado
 
 router = APIRouter(prefix="/nucleo/expediente", tags=["nucleo-expediente"])
 
 def get_servicio_lectura(
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session_nucleo),
     contexto: ContextoEmpresa = Depends(requiere_permiso("expediente:leer")),
 ) -> ServicioExpediente:
     return ServicioExpediente(session, contexto)
 
 
 def get_servicio_escritura(
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session_nucleo),
     contexto: ContextoEmpresa = Depends(requiere_permiso("expediente:escribir")),
 ) -> ServicioExpediente:
     return ServicioExpediente(session, contexto)
@@ -249,13 +251,22 @@ async def subir_documento(
     archivo: UploadFile = File(...),
     servicio: ServicioExpediente = Depends(get_servicio_escritura),
 ):
-    contenido = await archivo.read()
+    # SEC-019: lectura acotada (no se bufferiza un multipart sin límite).
+    contenido = await leer_archivo_acotado(archivo)
+    # SEC-018: el content-type lo determina el servidor por firma; el header
+    # multipart del cliente se ignora por completo.
+    content_type = detectar_content_type(contenido)
+    if content_type is None:
+        raise DatosInvalidos(
+            "El contenido del archivo no es un formato permitido "
+            "(PDF, JPG, JPEG, PNG, WEBP o HEIC)."
+        )
     return servicio.subir_documento(
         viaje_id,
         tipo=tipo,
         nombre_archivo=archivo.filename or "documento",
         contenido=contenido,
-        content_type=archivo.content_type,
+        content_type=content_type,
         observaciones=observaciones,
     )
 

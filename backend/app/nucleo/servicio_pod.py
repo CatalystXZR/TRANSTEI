@@ -8,7 +8,6 @@ PostgreSQL bloquea el paso del viaje a `facturado`.
 from __future__ import annotations
 
 import hashlib
-import os
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -34,11 +33,13 @@ from app.nucleo.models import (
 )
 from app.nucleo.schemas import PODFotoOut, PODOut, PODUpdate
 from app.nucleo.storage import (
+    detectar_content_type,
     eliminar_archivo,
     ruta_archivo,
     subir_archivo,
     url_firmada,
     validar_archivo,
+    validar_imagen,
 )
 from app.nucleo.tiempo import ahora_utc
 
@@ -48,7 +49,13 @@ ESTADOS_POD = {
     EstadoViaje.descargado,
     EstadoViaje.pod_pendiente,
 }
-EXTENSIONES_FIRMA = {".png", ".jpg", ".jpeg", ".webp"}
+EXTENSIONES_FIRMA = frozenset({".png", ".jpg", ".jpeg", ".webp"})
+MAX_FIRMA_BYTES = 5 * 1024 * 1024
+
+# SEC-023: tope de fotos de evidencia por POD. El router lo valida ANTES de
+# leer bytes (protege RAM/disco del worker) y el servicio lo revalida como
+# regla de dominio (protege también el acumulado de Storage entre actualizaciones).
+MAX_FOTOS = 10
 
 
 class ServicioPOD:
@@ -88,15 +95,38 @@ class ServicioPOD:
             )
         ).first()
 
-    def _validar_firma(self, nombre: str, contenido: bytes) -> str:
-        if not contenido:
-            raise DatosInvalidos("La firma está vacía.")
-        ext = os.path.splitext(nombre)[1].lower()
-        if ext not in EXTENSIONES_FIRMA:
-            raise DatosInvalidos("La firma debe ser PNG, JPG, JPEG o WEBP.")
-        if len(contenido) > 5 * 1024 * 1024:
-            raise DatosInvalidos("La firma no puede superar 5 MB.")
-        return ext
+    @staticmethod
+    def _validar_firma(nombre: str, contenido: bytes) -> tuple[str, str]:
+        """La firma es SOLO imagen: se valida por firma detectada, no por el nombre.
+
+        Devuelve `(extensión, content_type)`; el content-type lo fija el
+        servidor a partir del contenido (nunca el header del cliente).
+        """
+        return validar_imagen(
+            nombre,
+            contenido,
+            max_bytes=MAX_FIRMA_BYTES,
+            extensiones=EXTENSIONES_FIRMA,
+            etiqueta="La firma",
+        )
+
+    @staticmethod
+    def _validar_cantidad_fotos(cantidad: int, existentes: int = 0) -> None:
+        """SEC-023: límite de fotos por envío y del POD completo.
+
+        Se valida en el servicio (no solo en el router) para que cualquier
+        llamador —incluidos los tests y el flujo del conductor— quede cubierto.
+        """
+        if cantidad > MAX_FOTOS:
+            raise DatosInvalidos(
+                f"El POD admite como máximo {MAX_FOTOS} fotos por envío; "
+                f"se recibieron {cantidad}."
+            )
+        if existentes + cantidad > MAX_FOTOS:
+            raise DatosInvalidos(
+                f"El POD ya tiene {existentes} fotos y el máximo es {MAX_FOTOS}; "
+                "no se pueden agregar más."
+            )
 
     def _foto_out(self, foto: dict[str, Any]) -> PODFotoOut:
         path = str(foto.get("path", ""))
@@ -175,7 +205,7 @@ class ServicioPOD:
         observaciones: str | None,
         firma_nombre: str,
         firma_contenido: bytes,
-        firma_content_type: str | None,
+        firma_content_type: str | None = None,  # ignorado: el CT se detecta
         fotos: list[tuple[str, bytes, str | None]],
     ) -> PODOut:
         viaje = self._get_viaje(viaje_id)
@@ -190,7 +220,8 @@ class ServicioPOD:
             )
         if not receptor_nombre.strip():
             raise DatosInvalidos("El nombre del receptor es obligatorio.")
-        ext_firma = self._validar_firma(firma_nombre, firma_contenido)
+        self._validar_cantidad_fotos(len(fotos))
+        ext_firma, ct_firma = self._validar_firma(firma_nombre, firma_contenido)
         for nombre, contenido, _ in fotos:
             validar_archivo(nombre, contenido)
 
@@ -205,10 +236,12 @@ class ServicioPOD:
         )
         subidas: list[str] = [path_firma]
         try:
-            subir_archivo(path_firma, firma_contenido, firma_content_type)
+            # El content-type sale de la firma detectada, no del cliente.
+            subir_archivo(path_firma, firma_contenido, ct_firma)
             metadatos_fotos: list[dict[str, Any]] = []
-            for nombre, contenido, content_type in fotos:
+            for nombre, contenido, _content_type_cliente in fotos:
                 ext = validar_archivo(nombre, contenido)
+                content_type = detectar_content_type(contenido)
                 path = ruta_archivo(
                     "nucleo",
                     str(self.empresa.id),
@@ -283,7 +316,7 @@ class ServicioPOD:
         *,
         firma_nombre: str | None = None,
         firma_contenido: bytes | None = None,
-        firma_content_type: str | None = None,
+        firma_content_type: str | None = None,  # ignorado: el CT se detecta
         fotos: list[tuple[str, bytes, str | None]] | None = None,
     ) -> PODOut:
         viaje = self._get_viaje(viaje_id)
@@ -308,9 +341,10 @@ class ServicioPOD:
         }
         subidas: list[str] = []
         nuevas_fotos = list(pod.fotos or [])
+        self._validar_cantidad_fotos(len(fotos or []), existentes=len(nuevas_fotos))
         try:
             if firma_nombre and firma_contenido:
-                ext = self._validar_firma(firma_nombre, firma_contenido)
+                ext, ct_firma = self._validar_firma(firma_nombre, firma_contenido)
                 path = ruta_archivo(
                     "nucleo",
                     str(self.empresa.id),
@@ -320,12 +354,13 @@ class ServicioPOD:
                     "firma",
                     extension=ext,
                 )
-                subir_archivo(path, firma_contenido, firma_content_type)
+                subir_archivo(path, firma_contenido, ct_firma)
                 subidas.append(path)
                 valores["firma_url"] = path
                 valores["firma_hash"] = hashlib.sha256(firma_contenido).hexdigest()
-            for nombre, contenido, content_type in fotos or []:
+            for nombre, contenido, _content_type_cliente in fotos or []:
                 ext = validar_archivo(nombre, contenido)
+                content_type = detectar_content_type(contenido)
                 path = ruta_archivo(
                     "nucleo",
                     str(self.empresa.id),

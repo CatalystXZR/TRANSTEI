@@ -32,6 +32,7 @@ from app.nucleo.models import (
 )
 from app.nucleo.schemas import BloqueoCreate, BloqueoUpdate, CancelarBloqueo
 from app.nucleo.servicio_bloqueos import ServicioBloqueos
+from rut_helpers import rut_empresa
 
 
 def _url() -> str:
@@ -76,7 +77,7 @@ def test_bloqueos_y_agenda_en_postgresql():
             empresa = Empresa(
                 codigo=f"BLQ-{sufijo}",
                 razon_social=f"Empresa Bloqueos {sufijo}",
-                rut=f"BLQ-{sufijo}",
+                rut=rut_empresa(),
             )
             session.add(empresa)
             session.commit()

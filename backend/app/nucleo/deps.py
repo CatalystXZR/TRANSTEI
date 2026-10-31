@@ -14,7 +14,14 @@ from uuid import UUID
 from fastapi import Depends, Header
 from sqlmodel import Session, select
 
-from app.core.database import get_session
+from app.core.contexto import (
+    aplicar_contexto_sesion,
+    fijar_auth_id,
+    fijar_empresa,
+    fijar_request_id,
+    limpiar_request_id,
+)
+from app.core.database import get_session_nucleo
 from app.core.security import auth_id_from_credentials, bearer_scheme
 from app.nucleo.errores import AccesoDenegado, EmpresaNoEncontrada
 from app.nucleo.models import Empresa, EstadoEmpresa, RolEmpresa, UsuarioEmpresa
@@ -44,13 +51,19 @@ def get_contexto_empresa(
     x_empresa_id: UUID = Header(..., alias="X-Empresa-ID"),
     x_request_id: str | None = Header(default=None, alias="X-Request-ID"),
     credentials=Depends(bearer_scheme),
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session_nucleo),
 ) -> ContextoEmpresa:
     auth_id = auth_id_from_credentials(credentials)
     try:
         auth_uuid = UUID(auth_id)
     except ValueError as exc:
         raise AccesoDenegado("El token no contiene un identificador de usuario válido.") from exc
+
+    # RLS (0020): `nucleo.auth_id` se fija ANTES de la primera consulta —la
+    # membresía se resuelve contra políticas que leen ese GUC— y sobrevive a los
+    # commits intermedios vía listener `begin` (app/core/contexto.py).
+    fijar_auth_id(auth_id)
+    fijar_request_id(x_request_id)
 
     membresia = session.exec(
         select(UsuarioEmpresa).where(
@@ -74,11 +87,18 @@ def get_contexto_empresa(
             contexto={"empresa_id": str(x_empresa_id)},
         )
 
+    # La membresía ya está verificada en el servidor: este es el único punto
+    # donde `app.empresa_id` (GUC de RLS) se rellena. La transacción en curso ya
+    # empezó (consulta de membresía), así que se aplica aquí además de en el
+    # listener `begin` de las transacciones siguientes.
+    fijar_empresa(empresa.id)
+    aplicar_contexto_sesion(session)
+
     return ContextoEmpresa(
         auth_id=auth_id,
         empresa=empresa,
         rol=membresia.rol,
-        request_id=x_request_id,
+        request_id=limpiar_request_id(x_request_id),
     )
 
 

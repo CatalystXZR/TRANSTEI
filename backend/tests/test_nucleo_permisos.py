@@ -20,6 +20,7 @@ from app.nucleo.schemas import ClienteCreateNucleo
 from app.nucleo.servicio_auditoria import ServicioAuditoria
 from app.nucleo.servicio_gastos import ServicioGastos
 from app.nucleo.servicio_maestros import ServicioMaestros
+from rut_helpers import rut_empresa
 
 
 def _url() -> str:
@@ -82,7 +83,7 @@ def test_auditoria_visible_y_filtros():
             empresa = Empresa(
                 codigo=f"AUD-{sufijo}",
                 razon_social=f"Empresa Auditoría {sufijo}",
-                rut=f"AUD-{sufijo}",
+                rut=rut_empresa(),
             )
             session.add(empresa)
             session.commit()

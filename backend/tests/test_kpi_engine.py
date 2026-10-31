@@ -1,5 +1,9 @@
 """Pruebas unitarias del motor seguro de KPIs (sin base de datos)."""
 
+import uuid
+from decimal import Decimal
+from types import SimpleNamespace
+
 import pytest
 
 from app.services import kpi_engine as ke
@@ -89,3 +93,51 @@ def test_nombres_y_validacion_metricas():
     with pytest.raises(ValueError):
         ke.validar_metricas("metrica_falsa", "global")
     ke.validar_metricas("ingresos_mes", "global")  # no lanza
+
+
+# ---------------------------------------------------------------------------
+# F-04 (2026-10-30): el dinero no pasa por float dentro del cálculo
+# ---------------------------------------------------------------------------
+
+
+class _SesionConChofer:
+    """Sesión mínima: `metricas_viaje` solo hace `session.get(Chofer, id)`."""
+
+    def __init__(self, porcentaje: Decimal):
+        self._porcentaje = porcentaje
+
+    def get(self, modelo, ident):
+        return SimpleNamespace(porcentaje_produccion=self._porcentaje)
+
+
+def test_metricas_viaje_no_pierde_centavos():
+    """0.30 − 0.10 − comisión 10 % = 0.17 exacto, no 0.16999999999999998.
+
+    El camino anterior (`float(viaje.valor_flete_neto)` + `flete * float(...)`)
+    producía `0.16999999999999998`; el valor de dominio ahora es `Decimal`.
+    """
+    metricas = ke.metricas_viaje(
+        _SesionConChofer(Decimal("0.10")),
+        flete=0.3,
+        gastos=0.1,
+        chofer_id=uuid.uuid4(),
+    )
+
+    assert all(isinstance(v, Decimal) for v in metricas.values()), metricas
+    assert metricas["flete_viaje"] == Decimal("0.3")
+    assert metricas["gastos_viaje"] == Decimal("0.1")
+    assert metricas["comision_viaje"] == Decimal("0.03")
+    assert metricas["margen_viaje"] == Decimal("0.17")
+    # La resta en float difiere: la prueba falla si alguien reintroduce float().
+    assert metricas["margen_viaje"] != Decimal(str(0.3 - 0.1 - 0.3 * 0.1))
+    assert float(metricas["margen_viaje_pct"]) == pytest.approx(56.6667, abs=1e-3)
+
+
+def test_metricas_para_json_convierte_solo_en_el_borde():
+    """El borde JSON sigue devolviendo `number` (contrato del frontend)."""
+    salida = ke.metricas_para_json(
+        {"margen_viaje": Decimal("0.17"), "flete_viaje": Decimal("100000.00")}
+    )
+
+    assert salida == {"margen_viaje": 0.17, "flete_viaje": 100000.0}
+    assert all(isinstance(v, float) for v in salida.values())

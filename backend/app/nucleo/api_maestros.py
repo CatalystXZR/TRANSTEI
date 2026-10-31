@@ -10,10 +10,10 @@ from __future__ import annotations
 from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
 from sqlmodel import Session
 
-from app.core.database import get_session
+from app.core.database import get_session_nucleo
 from app.nucleo.deps import ContextoEmpresa
 from app.nucleo.permisos import requiere_permiso
 from app.nucleo.models import (
@@ -33,19 +33,20 @@ from app.nucleo.schemas import (
     TractoCreateNucleo,
 )
 from app.nucleo.servicio_maestros import ServicioMaestros
+from app.nucleo.storage import leer_archivo_acotado
 
 router = APIRouter(prefix="/nucleo", tags=["nucleo-maestros"])
 
 
 def get_servicio_lectura(
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session_nucleo),
     contexto: ContextoEmpresa = Depends(requiere_permiso("maestros:leer")),
 ) -> ServicioMaestros:
     return ServicioMaestros(session, contexto)
 
 
 def get_servicio_escritura(
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session_nucleo),
     contexto: ContextoEmpresa = Depends(requiere_permiso("maestros:escribir")),
 ) -> ServicioMaestros:
     return ServicioMaestros(session, contexto)
@@ -217,6 +218,7 @@ def listar_documentos(
     status_code=status.HTTP_201_CREATED,
 )
 async def subir_documento(
+    response: Response,
     recurso_tipo: TipoRecurso = Form(...),
     recurso_id: UUID = Form(...),
     tipo: TipoDocumento = Form(...),
@@ -228,8 +230,8 @@ async def subir_documento(
     archivo: UploadFile = File(...),
     servicio: ServicioMaestros = Depends(get_servicio_escritura),
 ):
-    contenido = await archivo.read()
-    return servicio.subir_documento(
+    contenido = await leer_archivo_acotado(archivo)
+    documento, creado = servicio.subir_documento(
         recurso_tipo=recurso_tipo,
         recurso_id=recurso_id,
         tipo=tipo,
@@ -240,8 +242,12 @@ async def subir_documento(
         observaciones=observaciones,
         nombre_archivo=archivo.filename or "documento",
         contenido=contenido,
-        content_type=archivo.content_type,
     )
+    if not creado:
+        # Reenvío idéntico (doble clic / reintento): 200 con el registro
+        # existente. 201 queda reservado a una creación real.
+        response.status_code = status.HTTP_200_OK
+    return documento
 
 
 @router.get("/documentos/{documento_id}/url", response_model=DocumentoUrlOut)

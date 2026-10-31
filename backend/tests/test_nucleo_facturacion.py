@@ -21,6 +21,7 @@ from app.nucleo.models import (
     Documento,
     Empresa,
     EstadoViaje,
+    FacturaNucleo,
     ModalidadTarifa,
     OrdenCompra,
     Rampla,
@@ -38,10 +39,12 @@ from app.nucleo.schemas import (
     NotaCreditoCreate,
     PagoCreate,
     PODUpdate,
+    PromesaPagoCreate,
 )
 from app.nucleo.servicio_expediente import ServicioExpediente
 from app.nucleo.servicio_facturacion import ServicioFacturacion
 from app.nucleo.servicio_pod import ServicioPOD
+from rut_helpers import rut_empresa
 
 PNG_FALSO = (
     b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
@@ -162,7 +165,7 @@ def test_factura_pagos_parciales_nota_y_aging():
             empresa = Empresa(
                 codigo=f"FAC-{sufijo}",
                 razon_social=f"Empresa Factura {sufijo}",
-                rut=f"FAC-{sufijo}",
+                rut=rut_empresa(),
             )
             session.add(empresa)
             session.commit()
@@ -278,5 +281,90 @@ def test_factura_pagos_parciales_nota_y_aging():
             assert aging.total_cxc == Decimal("0.00")
             assert aging.facturas_abiertas == 0
             assert len(aging.buckets) == 5
+    finally:
+        engine.dispose()
+
+
+def test_crear_promesa_rechazo_db_traducido_409():
+    """F-03: el commit de `crear_promesa` traduce IntegrityError → ErrorNucleo.
+
+    La tabla de promesas no tiene unicidad natural (solo el check `monto > 0`
+    como defensa de la base); se fuerza un 23514 saltando la validación Pydantic
+    con `model_construct` para ejercer la traducción y verificar el rollback.
+    """
+    engine = create_engine(_url(), future=True)
+    try:
+        with engine.connect() as conn:
+            try:
+                conn.execute(text("select 1 from nucleo.promesas_pago_nucleo limit 1"))
+            except SQLAlchemyError as exc:  # pragma: no cover
+                pytest.skip(f"Falta aplicar la migración 0013: {exc}")
+
+        sufijo = uuid4().hex[:8]
+        with Session(engine) as session:
+            empresa = Empresa(
+                codigo=f"PRO-{sufijo}",
+                razon_social=f"Empresa Promesa {sufijo}",
+                rut=rut_empresa(),
+            )
+            session.add(empresa)
+            session.commit()
+            session.refresh(empresa)
+            cliente = Cliente(
+                empresa_id=empresa.id,
+                razon_social=f"Cliente Promesa {sufijo}",
+                rut=f"PRO-CLI-{sufijo}",
+                dias_pago=30,
+            )
+            session.add(cliente)
+            session.commit()
+            session.refresh(cliente)
+            factura = FacturaNucleo(
+                empresa_id=empresa.id,
+                numero_factura=f"FAC-{sufijo}",
+                cliente_id=cliente.id,
+                fecha_vencimiento=date.today() + timedelta(days=30),
+                neto=Decimal("100000"),
+                iva=Decimal("19000"),
+                estado="emitida",
+            )
+            session.add(factura)
+            session.commit()
+            session.refresh(factura)
+
+            contexto = ContextoEmpresa(
+                auth_id=str(uuid4()), empresa=empresa, rol=RolEmpresa.contador
+            )
+            servicio = ServicioFacturacion(session, contexto)
+
+            promesa = servicio.crear_promesa(
+                factura.id,
+                PromesaPagoCreate(
+                    fecha_prometida=date.today() + timedelta(days=10),
+                    monto=Decimal("50000"),
+                    notas="Primera promesa",
+                ),
+            )
+            assert len(promesa.promesas) == 1
+
+            invalida = PromesaPagoCreate.model_construct(
+                fecha_prometida=date.today() + timedelta(days=12),
+                monto=Decimal("-1"),
+                notas=None,
+            )
+            with pytest.raises(ReglaNegocioViolada) as info:
+                servicio.crear_promesa(factura.id, invalida)
+            assert info.value.status_code == 409
+            assert info.value.codigo == "REGLA_NEGOCIO_VIOLADA"
+
+            # El rollback dejó la sesión usable: una promesa válida posterior entra.
+            otra = servicio.crear_promesa(
+                factura.id,
+                PromesaPagoCreate(
+                    fecha_prometida=date.today() + timedelta(days=15),
+                    monto=Decimal("10000"),
+                ),
+            )
+            assert len(otra.promesas) == 2
     finally:
         engine.dispose()

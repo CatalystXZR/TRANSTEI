@@ -10,6 +10,7 @@ from app.api.deps import get_current_user, require_roles
 from app.core.config import settings
 from app.core.database import get_session
 from app.models import CategoriaGasto, GastoViaje, RolUsuario, Viaje
+from app.nucleo.storage import leer_archivo_acotado_sync
 from app.schemas.viajes import GastoCreate
 
 router = APIRouter(tags=["gastos"])
@@ -70,7 +71,8 @@ def crear_gasto(
 
     respaldo_url = None
     if archivo is not None and archivo.filename:
-        contenido = archivo.file.read()
+        # SEC-019: lectura acotada (ruta legacy síncrona).
+        contenido = leer_archivo_acotado_sync(archivo)
         if contenido:
             respaldo_url = _upload_respaldo(contenido, archivo.filename, viaje_id)
 

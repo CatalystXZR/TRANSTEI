@@ -97,7 +97,8 @@ def test_cliente_rut_duplicado(client, headers_admin, db, etiqueta):
     r1 = client.post(f"{API}/clientes", json=body, headers=headers_admin)
     assert r1.status_code == 201
     r2 = client.post(f"{API}/clientes", json=body, headers=headers_admin)
-    assert r2.status_code == 400, "El RUT duplicado debe ser rechazado"
+    # AGENTS.md §8: unique_violation (23505) → 409, ya no el 400 genérico anterior.
+    assert r2.status_code == 409, "El RUT duplicado debe ser rechazado con 409"
     with db.cursor() as cur:
         cur.execute("delete from clientes where rut=%s", (rut,))
         db.commit()

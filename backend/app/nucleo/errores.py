@@ -127,6 +127,7 @@ def _constraint(exc: IntegrityError) -> str | None:
 
 
 def _mensaje_primario(exc: IntegrityError) -> str | None:
+    """Mensaje crudo de PostgreSQL. Solo para logs: nunca se envía al cliente."""
     orig = getattr(exc, "orig", None)
     diag = getattr(orig, "diag", None)
     return getattr(diag, "message_primary", None)
@@ -135,7 +136,6 @@ def _mensaje_primario(exc: IntegrityError) -> str | None:
 def traducir_integrity_error(exc: IntegrityError) -> ErrorNucleo:
     state = _sqlstate(exc)
     constraint = _constraint(exc)
-    mensaje_db = _mensaje_primario(exc)
 
     if state == "23P01" or (constraint or "").startswith("ex_reserva_"):
         mensaje = _MENSAJES_EXCLUSION.get(
@@ -163,8 +163,11 @@ def traducir_integrity_error(exc: IntegrityError) -> ErrorNucleo:
         return RegistroDuplicado(mensaje, contexto={"constraint": constraint})
 
     if state == "23514":
+        # SEC-017: nunca se interpola el `message_primary` de PostgreSQL (revela
+        # schema/tabla/constraint internos). Mensaje de dominio, status actual.
         return ReglaNegocioViolada(
-            mensaje_db or "La operación viola una regla de negocio de la base de datos.",
+            "La operación no cumple una regla de negocio de la base de datos. "
+            "Revise los datos ingresados e intente nuevamente.",
             contexto={"constraint": constraint},
         )
 
