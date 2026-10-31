@@ -89,7 +89,7 @@ E2E no se ejecutaron).
 
 ### 6.1 Lo urgente (riesgo de pérdida, no es código)
 
-- [ ] **1. Poner el árbol en orden con commits por ola.**
+- [x] **1. Poner el árbol en orden con commits por ola.** — hecho 2026-10-31: 6 commits (`9fb4f20`…`b69d9f3`). `make unit` falla en los commits 1–4 (ver registro); HEAD verde.
   Hay ~65 archivos modificados y ~3.000 líneas sin commitear que mezclan cuatro
   frentes: migraciones `0021`–`0023` (Ola 1), documentos de F2.1, el código de
   O2.1 y trabajo previo de F1 (`storage.py`, `servicio_pod.py`, `main.py`/SEC-021).
@@ -123,6 +123,8 @@ E2E no se ejecutaron).
   Recomendación del orquestador: **(a) para el piloto, migrando a (b) antes del
   segundo cliente**. La decisión es de `arquitectura`, no del orquestador.
   *Dueño: `arquitectura` (ADR) → `datos` si implica migración.*
+  **Estado 2026-10-31:** `ADR-0007` **Propuesto** (`docs/arquitectura/adr/`).
+  Recomienda A para el piloto y B1 como destino; falta decisión del dueño (P-1…P-4).
   **Corrección registrada:** esto **no bloquea O2.2** (el buzón usa
   `agente:buzon`/`agente:aprobar` con `ContextoEmpresa`, §6.2–§6.4). Bloquea el
   runtime real (O3) y la resolución en producción.
@@ -137,7 +139,7 @@ E2E no se ejecutaron).
 
 ### 6.5 Siguiente trabajo técnico
 
-- [ ] **5. O2.2 — buzón de solicitudes** (`GET /nucleo/agente/solicitudes`,
+- [x] **5. O2.2 — buzón de solicitudes** — hecho 2026-10-31 (`233e380`): 14 pruebas de integración, concurrencia real con dos conexiones. **Falta revisión independiente.** Activa: revisión de O2.2 (`GET /nucleo/agente/solicitudes`,
   `GET …/{id}`, `POST …/{id}/decidir`, contrato §6.1–§6.4).
   No depende de §4.1 y es lo que el dueño ve. Riesgo **Alto** (aprobación con efecto
   real sobre datos): prueba roja antes, revisión independiente después.
@@ -147,11 +149,11 @@ E2E no se ejecutaron).
 
 | ID | Sev. | Qué | Dueño |
 |---|---|---|---|
-| SEC-033 | baja | `pregunta_resumida` se persiste sin redacción propia; la redacción se delega a un runtime que no existe. Cerrar antes de O2.4 (primera tool con montos) | `arquitectura` + `backend` |
-| SEC-038 | info | `manejador_integrity_error` registra `repr(exc)` (`main.py:262-266`): el mensaje de SQLAlchemy incluye SQL y parámetros ligados. **Preexistente**, no de O2.1 | `backend` |
-| SEC-039 | info | El rol `tei_app` puede escribir identidad, ACL y flag que el gate consume | `datos` + `arquitectura` |
-| SEC-040 | info | Discrepancia §2.6.4 vs §6.5 del contrato (tools "cargadas" con el flag ausente) | `arquitectura` |
-| — | 🔴 | `statement_timeout` → `57014` → `TIMEOUT_TOOL`: la clasificación está probada, el corte real no | `qa` |
+| ~~SEC-033~~ ✅ | baja | **Cerrado** (`5fd401c`): el registry valida la forma y descarta el texto libre; contrato §7.3.1. Verificado por mutación | — |
+| ~~SEC-038~~ ✅ | info | **Cerrado** (`5fd401c`): registra sqlstate + tipo, nunca el `repr` | — |
+| SEC-039 | **media** | El rol `tei_app` puede escribir identidad, ACL y flag que el gate consume. **Sigue abierto** y es el único que debe cerrarse antes de cualquier contacto real | `datos` + `arquitectura` |
+| ~~SEC-040~~ ✅ | info | **Cerrado** (`c36791d`): lectura canónica "cargar no es habilitar" anotada en ambas secciones | — |
+| ~~timeout~~ ✅ | — | **Cerrado** (`5fd401c`): `pg_sleep` real bajo `statement_timeout` produce 57014 → `TIMEOUT_TOOL` | — |
 
 ### 6.7 Decisión del dueño aún abierta (transversal)
 
@@ -162,8 +164,9 @@ E2E no se ejecutaron).
 
 ### 6.8 Orden recomendado
 
-1. Commits por ola (**hoy**; es el único riesgo irreversible).
-2. Arrancar el corpus en paralelo (lo más lento).
-3. O2.2 mientras `arquitectura` resuelve §4.1.
+1. ~~Commits por ola~~ ✅.
+2. **Revisión independiente de O2.2** (`auditor-seguridad`) — riesgo Alto.
+3. Arrancar el corpus en paralelo (lo más lento y lo único que no hace un agente).
 4. SEC-039 antes de cualquier contacto real.
-5. Encender el módulo solo con `D-12` (OTP) cerrada y corpus disponible.
+5. Decisión del dueño sobre ADR-0007 (P-1…P-4) para desbloquear O3.
+6. Encender el módulo solo con `D-12` (OTP) cerrada y corpus disponible.
