@@ -1213,3 +1213,73 @@ ruff (paquete nuevo + pruebas)                   -> solo 3 × B008 (patrón Fast
 resolver el contacto) sigue **abierto** y bloquea O2.2. Es de `arquitectura`;
 opciones (a) config por número de Meta, (b) tabla de ruteo, (c) función
 `SECURITY DEFINER` acotada.
+
+### [2026-10-31] Árbol de trabajo ordenado en 5 commits
+
+Riesgo: Medio (historia, no código) | Estado: **cerrada**.
+Autorización: explícita del dueño ("ataquemos el primer punto"). **Sin push.**
+
+**Situación de partida:** 150 archivos sin commitear (84 nuevos, 66 modificados)
+que mezclaban cuatro frentes: F1 olas 2–5, Ola 1 del agente (0020–0023), F2.1
+(contrato/ADR) y O2.1 (código). Todo el trabajo de riesgo Alto de varias sesiones
+existía solo en el disco.
+
+**Resultado:**
+
+| Commit | Contenido | Archivos |
+|---|---|---|
+| `9fb4f20` | `feat(db)`: RLS multiempresa y motor dual (0020) + infra de tests aislados | 23 |
+| `3638c7f` | `feat(agente)`: esquema WhatsApp 0021–0023 + pruebas SQL | 17 |
+| `2932f39` | `docs(agente)`: contrato del conector y ADRs 0003–0006 | 13 |
+| `51b6797` | `fix(f1)`: olas 2–5 (storage/POD, Decimal, handlers, suites) | 66 |
+| `f2cd2f0` | `feat(agente)`: O2.1 registry, gate y tools de lectura | 30 |
+
+**Verificación de HEAD (la única que se hizo):**
+
+```text
+make unit  -> 124 passed
+make test  -> 304 passed, 0 failed, 0 skipped
+git status -> solo frontend/AGENTS.md (no commiteado a propósito)
+```
+
+**Defecto conocido de este split (verificado, no supuesto):** el `Makefile` del
+commit `9fb4f20` referencia `tests/test_agente_manifest.py` y
+`tests/test_agente_gate.py`, que no existen hasta `f2cd2f0`:
+
+```text
+git show 9fb4f20:Makefile | grep -c test_agente      -> 2
+git ls-tree 9fb4f20 backend/tests/ | grep -c test_agente -> 0
+```
+
+Por lo tanto **`make unit` falla en los commits 1 a 4**. No afecta a HEAD ni a
+ningún despliegue (rama local, sin publicar), pero rompe un `bisect` limpio. La
+causa es estructural: el `Makefile` sirve a dos frentes (infra de `tei_test` en el
+commit 1, lista de `unit` en el 5) y partirlo exigía cortar hunks a mano, algo que
+se descartó por riesgo. Si se quiere historia perfecta, el arreglo es mover esas 2
+líneas del commit 1 al 5 con un rebase; queda a decisión del dueño.
+
+**Hunks mezclados, documentados en cada mensaje de commit:**
+- `Makefile`: `test-db`/`DB_URL_TEST` (F1) + lista de `unit` (O2.1).
+- `core/database.py`: motor dual (F1) + `sesion_nucleo()` (O2.1).
+- `main.py`: handlers de F1 + `manejador_programming_error` (O2.1).
+- `docs/datos/{invariantes,catalogo-migraciones,garantias}.md`,
+  `docs/qa/matriz-trazabilidad.md`, `registro.md`: documentos acumulativos.
+
+**Exclusiones deliberadas:**
+- `frontend/AGENTS.md` **no** se commitea: lo regenera `next dev` (`AGENTS.md` §5).
+  Tampoco se revierte: no se descarta trabajo ajeno.
+- `backend/.env.example`: se commiteó por ser el archivo de ejemplo (+3/−1, solo
+  placeholders), pero **su contenido no fue inspeccionado** — el guard de
+  herramientas bloquea rutas `.env*`. 🟡 Verificar a mano que solo tenga
+  placeholders.
+
+**Evidencia que falta:**
+- 🔴 Los commits intermedios no se verificaron individualmente (y los 1–4 no
+  pasan `make unit`, ver arriba).
+- 🔴 `frontend/package-lock.json`: no se ejecutó `npm install`; el bump
+  `next 16.3.7 → 16.4.3` es real pero la consistencia del lock no está verificada.
+- 🟡 `docs/PLAN_DESARROLLO.md` quedó en `docs/` aunque `AGENTS.md` indica que los
+  planes históricos van a `docs/_archivo/`. No se movió por iniciativa.
+
+**Pendiente inmediato:** los 5 puntos de `docs/desarrollo/backlog.md` §6. El
+primero (este) queda cerrado; sigue el corpus de O0 y la decisión de §4.1.
