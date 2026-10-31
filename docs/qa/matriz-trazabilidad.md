@@ -216,3 +216,54 @@ prueba: `INV-D07` lo tiene y sigue parcial.
 6. **SEC-002:** emitir, agregar un bono, regenerar el PDF y comparar líneas vs
    total almacenado. Hoy el defecto está confirmado por lectura
    (`liquidaciones.py:515` vs `:466`).
+
+---
+
+## 13. Módulo agente WhatsApp — O1.2 (0021) y O1.3 (0021+0022, rollback)
+
+> **Verificado:** 2026-10-30 en `tei_test` (PostgreSQL 17.11). O1.2: `0021`
+> aplicada. O1.3: `0022` aplicada y ciclo completo de rollback (`0022_99` →
+> `0021_99`) y re-aplicación (`0021` → `0022`). Informes:
+> `docs/qa/informes/2026-10-31-o1.2-invariantes-agente.md` y
+> `docs/qa/informes/2026-10-31-o1.3-rollback-reaplicacion.md`.
+> **Roles:** `0021_01`/concurrencia con `postgres` (BYPASSRLS), RLS con `tei_app`,
+> mutación y rollback con `supabase_admin`.
+
+| Invariante | Dónde se impone | Prueba (`archivo:línea`) | ¿Existe? | Cobertura |
+|---|---|---|---|---|
+| R-04 contador atómico por (empresa, cliente), sin duplicados ni saltos | `INSERT ... ON CONFLICT DO UPDATE` `supabase/migrations/0021:628-632` | `supabase/tests/0021_02_concurrencia_id_comercial.py:115` (C1, 8 conexiones + barrera) | sí | completa (mutada: función no atómica ⇒ falla) |
+| R-04 un `ROLLBACK` no consume número | transacción del contador | `0021_02_concurrencia_id_comercial.py:240` (C1b) | sí | completa |
+| R-04 árbitro final `(empresa, cliente, código)` | `uq_viajes_id_comercial` `0021:555-557` | `supabase/tests/0021_04_mutacion.sql:222` (M4); base `0021_01_smoke.sql:675` (C11G) | sí | completa (mutada) |
+| R-04 formato `PREFIJO-00001` | `ck_viaje_id_comercial_flete` `0021:551-553` | `0021_01_smoke.sql:665` (C11E) | sí | completa (smoke) |
+| **D3** contador comercial monótono no decreciente | `trg_contador_10_no_retrocede` + `fn_contador_no_retrocede` `supabase/migrations/0022:284-307` | `0021_04_mutacion.sql:305` (M6); `0021_01_smoke.sql:648` (C11D, `greatest`) | sí | completa (mutada: sin trigger 500→0 se acepta) |
+| **D2** ID comercial inmutable una vez asignado (incluido el paso a NULL); asignar desde NULL sigue permitido | `trg_viajes_10_id_comercial_inmutable` + `fn_viaje_id_comercial_inmutable` `0022:315-341` | `0021_01_smoke.sql:684` (C11H desasignar ⇒ 23514) y `:690` (C11H2 NULL ⇒ valor permitido); `0021_04_mutacion.sql:341` (M7) | sí | completa (mutada: sin trigger QAM-00001→QAM-00002 se acepta) |
+| **D9** tope de 5 dígitos fail-closed (99999) | `nucleo.obtener_siguiente_id_comercial_flete` `0022:401-444` | `0021_04_mutacion.sql:449` (M9); rollback `0022_99_rollback.sql:60-91` restaura el comportamiento previo (`SQM-10000`, verificado) | sí | completa (mutada: sin tope emite `SQM-10000` y deja 100000) |
+| **D5** máquina de estados de `hoja_ruta` (propuesto→solicitud_creada→cargado/rechazado; terminales) + `payload` inmutable | `trg_hoja_ruta_10_transicion` + `fn_hoja_ruta_transicion` `0022:349-392` | `0021_01_smoke.sql:544-596` (C10A-F; C10E recorre la ruta legal); `0021_04_mutacion.sql:389` (M8) | sí | completa (mutada: sin trigger se aceptan transición ilegal y cambio de payload) |
+| D-10 decisión definitiva de la solicitud | `trg_solicitudes_10_transicion` `0021:458-483` | `0021_02_concurrencia_id_comercial.py:325` (C2a/C2b, 2 conexiones); `0021_04_mutacion.sql:125` (M2); `0021_01_smoke.sql:489` (C9G/H) | sí | completa (mutada) |
+| D-10 idempotencia de creación (`clave_idempotencia`) | `uq_solicitud_idempotencia` `0021:437-438` | `0021_01_smoke.sql:443` (C9B) | sí | completa (smoke) |
+| Webhook idempotente por `wa_message_id` | `uq_mensaje_wa_message_id` `0021:346-347` | `0021_02_concurrencia_id_comercial.py:424` (C3, 2 conexiones); `0021_04_mutacion.sql:80` (M1) | sí | completa (mutada) |
+| Mensaje pertenece a la conversación de su contacto | `fn_mensaje_validar` `0021:361-379` | `0021_01_smoke.sql:408` (C8) | sí | completa (smoke) |
+| Auditoría de consultas append-only | triggers `0021:729-735` + REVOKE UPDATE/DELETE `0021:863-864` | `0021_03_rls_tei_app.sql:421` (rol real, 42501); `0021_04_mutacion.sql:171` (M3); `0021_01_smoke.sql:722` (postgres, 23514) | sí | completa (mutada) |
+| RLS multiempresa de las 8 tablas (fail-closed, WITH CHECK, FORCE) | políticas + FORCE `0021:799-850` | `0021_03_rls_tei_app.sql:217` (A/B/C/E) y `0021_04_mutacion.sql:264` (M5) | sí | completa con `tei_app` (una sesión; 2 conexiones del patrón: `0020_02`) |
+| ACL deny-by-default por ausencia de fila | **sin mecanismo de base**: gate del backend O2.2 | — | no | sin cobertura (no es DB) |
+| Cierre de conversación por inactividad (15 min) | **sin mecanismo de base**: orquestador O3.5 | — | no | sin cobertura |
+| OTP: emisión/expiración/revocación | base solo formato/estado `0021:215`; política D-12 en backend | `0021_01_smoke.sql:194` (solo el CHECK) | parcial | parcial (falta backend O2.3) |
+| Teléfono activo único global (anti-ambigüedad de identidad) | `uq_contactos_telefono_activo` `0021:222-223` | `0021_01_smoke.sql:176` (C3F) | sí | completa |
+| Una conversación activa por contacto | `uq_conversacion_activa` `0021:298-299` | `0021_01_smoke.sql:285-313` (C6A-C6E) | sí | completa (smoke) |
+| Hoja de ruta: CHECKs de estado/carga y una carga por solicitud | `ck_hr_*` `0021:520-522`; `uq_hoja_ruta_carga_por_solicitud` `0021:528-529` | `0021_01_smoke.sql:544-596` (C10A-F) | sí | completa (smoke; la transición la cubre D5) |
+| Contador nunca retrocede en `registrar_id_comercial_flete` | `greatest(...)` `0021:640-669` | `0021_01_smoke.sql:648` (C11D) | sí | completa (smoke) |
+| RLS de `nucleo.viajes.id_comercial_flete` | hereda la política de `viajes` (0020) | — | no específica | parcial (tabla cubierta por `0020_01`) |
+| **D7** rollback de 0021/0022 ejecutable y re-aplicación limpia | scripts `supabase/tests/0022_99_rollback.sql` y `0021_99_rollback.sql` (orden 0022→0021) | ejecutados 2026-10-30: 0 triggers/funciones de 0022, 0 objetos del módulo, 35 políticas, re-aplicación `0021`+`0022` limpia y 4 suites verdes | sí | completa en `tei_test`; **no probado con datos reales** (ver informe O1.3 §6) |
+
+**Hallazgo O1.3 (reproducibilidad, no invariante):** tras re-aplicar `0021` como
+`supabase_admin` (rol necesario para el índice sobre `usuarios_empresa`), el rol
+`postgres` solo conserva `SELECT` (vía `pg_read_all_data`); las suites
+`0021_01`/`0021_02`, documentadas para `postgres`, fallan con `42501`. El clon
+previo tenía GRANTs de escritura para `postgres` que no están en `0021`.
+En `tei_test` se restauraron con `GRANT ALL` sobre las 8 tablas + secuencia.
+Decisión pendiente de `datos`/`orquestador`: incluirlos en `0021` o cambiar el
+rol de las suites. Ver informe O1.3 §7.
+
+**Residuo:** 0 filas en las 8 tablas del módulo tras las 4 suites; `nucleo.viajes`
+conserva 220 filas. Solo creció `nucleo.auditoria` (append-only, 8519 filas al
+cierre) por las transacciones commiteadas de concurrencia y M9.

@@ -1,9 +1,17 @@
 # Registro de invariantes — estado real por invariante
 
 > **Pregunta que responde:** ¿qué invariante existe, qué lo impone y qué sigue sin garantía?
-> **Dueño:** agente `datos` · **Verificado:** 2026-10-29 · **Método:** lectura de DDL
+> **Dueño:** agente `datos` · **Verificado:** 2026-10-29 (cuerpo) · 2026-10-30 (adenda §11, catálogo de `tei_test`) · **Método:** lectura de DDL + `psql` (solo `0020`/`0021`)
 > **Caduca si:** se agrega o edita una migración, o se ejecutan pruebas contra una base real.
 > **Re-verificar con:** `ls supabase/migrations/` + `grep -n "create trigger\|create or replace function"`.
+
+> **Adenda 2026-10-30.** El módulo agente WhatsApp (`0021`) se registra en §11 con
+> IDs `INV-AW01`…`INV-AW16` (alias `AW-01`…`AW-16`, los que cita la migración
+> aplicada). Para esas 16 filas **sí** hay aplicación verificada, y `0021` está
+> aplicada y probada en el clon desechable `tei_test`; el resto del registro sigue
+> con la advertencia de §0 ("`impuesto (DDL)`" = escrito, no en vigor). El contrato
+> completo (mecanismo, SQLSTATE, escritores, defectos) está en
+> `docs/datos/agente-esquema.md`.
 
 > Este registro contiene **todos** los invariantes identificados, estén o no
 > impuestos. Los que tienen mecanismo citan `archivo:línea`; los que no, declaran
@@ -70,7 +78,7 @@
 | INV-L04 | En `public.facturas`, una factura emitida no se borra | **ausente** | — · `DELETE` físico · `facturas.py:241-263` | 23514 | — |
 | INV-L05 | En `public.liquidaciones`, `total_liquido` es coherente y no se recalcula tras emitir | **ausente** | — · columna plana · `0001:179`; cálculo en Python · `liquidaciones.py:295-299` | 23514 | — |
 | INV-L06 | En `public.viajes`, `fecha_fin >= fecha_inicio` | **solo servicio** | router `viajes.py:91-96` | 23514 | — |
-| INV-T01 | Ningún rol de aplicación lee o escribe filas de otra empresa | **ausente** | RLS habilitado, **cero políticas** en `nucleo` · `0004:1867-1881`; sin `FORCE RLS` | 42501 | RA-03; `0015`–`0019` no agregan políticas |
+| INV-T01 | Ningún rol de aplicación lee o escribe filas de otra empresa | **diseñado y probado en `tei_test`; no aplicado en la app** | `0020`: rol `tei_app` (NOBYPASSRLS) + 35 políticas + `FORCE` + `app.empresa_id` por transacción (31 tablas) · probado en el clon 2026-10-30 | 42501 | `docs/datos/rls-multiempresa.md` §7; `supabase/tests/0020_*`; RA-03 abierto hasta cambiar el rol del backend |
 | INV-T02 | Una reserva no apunta a un viaje de otra empresa | **parcial (DDL)** | `fn_reserva_validar` · `0004:1669-1676`, **solo si `activa`**; FK simple `0004:727-728` | 23503 | Una reserva desactivada puede cruzar empresas |
 | INV-T03 | Una membresía apunta a un usuario de Auth existente | **ausente** | `auth_id` sin FK · `0004:142` | 23503 | — |
 | INV-T04 | `public` no acepta escrituras cuando el cutover está congelado | **ausente** | solo middleware HTTP · `main.py:36-56`; ningún trigger ni privilegio | 23514 | Scripts/`psql`/jobs no pasan por el middleware |
@@ -638,13 +646,24 @@ Cero políticas en `nucleo` (`grep -rn "create policy" supabase/migrations/` →
 (recursión de la política sobre `usuarios_empresa`, pooler en modo transacción) en
 `garantias.md` §14.2.
 
+> **Actualización 2026-10-30.** El mecanismo está escrito y probado: migración
+> `0020_rls_multiempresa.sql`, rol **`tei_app`** (el nombre `nucleo_app` de este
+> párrafo era un borrador), GUC **`app.empresa_id`**. Aplicado y verificado con
+> dos conexiones **solo en el clon `tei_test`**; en la base de la app sigue
+> ausente y es inerte mientras el backend conecte como `postgres`. Diseño,
+> decisión y evidencia: `docs/datos/rls-multiempresa.md`. El texto de abajo se
+> conserva como registro de lo que faltaba.
+
 **SQLSTATE.** `42501` (`insufficient_privilege`) — no es un conflicto de negocio;
 el backend debe devolver **403/404 sin filtrar existencia**, no 500. Handoff.
 
-**Prueba.** Rol `nucleo_app`, contexto empresa A: `SELECT * FROM
+**Prueba.** Rol `tei_app`, contexto empresa A: `SELECT * FROM
 nucleo.viajes WHERE id = <viaje de B>` ⇒ 0 filas; `INSERT` con `empresa_id = B`
-⇒ `42501` (o `WITH CHECK` violation). Mutación: `ALTER TABLE … NO FORCE ROW LEVEL
-SECURITY` ⇒ las filas de B aparecen.
+⇒ `42501` (o `WITH CHECK` violation). Mutación (probada el 2026-10-30):
+`ALTER ROLE tei_app BYPASSRLS` ⇒ aparecen los viajes de B; `ALTER POLICY …
+USING (true)` ⇒ aparecen los clientes de B. **`NO FORCE` no sirve como mutación**:
+para un rol que no es dueño, FORCE es irrelevante (verificado en
+`docs/datos/rls-multiempresa.md` §7.5).
 
 ### INV-T02 — Reserva ligada a viaje de la misma empresa
 
@@ -849,3 +868,104 @@ de "no hay prueba" a "hay prueba, falta correrla y mutarla" (🔴). Siguen sin
 prueba: solapamiento de **tracto** y **chofer** con dos conexiones, transiciones
 completas, folio atómico, OC concurrente, POD, auditoría append-only y **todos los
 invariantes que siguen ausentes en §1**.
+
+---
+
+## 11. Adenda 2026-10-30 — módulo agente WhatsApp (`0021`)
+
+> **Autor:** agente `datos`. **Naturaleza:** sección nueva; no reescribe §0–§10.
+> **Aplicación:** `0021_agente_whatsapp.sql` está aplicada **solo** en el clon
+> desechable `tei_test` (verificado por catálogo el 2026-10-30). En la base de la
+> app no está verificada (🔴). Por eso, en esta sección `impuesto (DDL)` significa
+> además **"aplicado y leído del catálogo de `tei_test`"**, no solo "escrito".
+> **Contrato completo** (precondiciones, inventario, decisiones, defectos,
+> verificación post): `docs/datos/agente-esquema.md`.
+
+### 11.1 Reconciliación de IDs
+
+La migración aplicada cita `AW-01`…`AW-16` (`0021:87-88`) y **no se puede
+editar**. Para no duplicar invariantes con dos IDs:
+
+- **Canónico:** `INV-AW01`…`INV-AW16` (categoría `AW`; precedente: `INV-DOC04`,
+  `INV-R02-NN`). Es la forma que se cita en `docs/datos/**`.
+- **Alias estable:** `AW-NN`, uno a uno con el canónico. Se mantiene en el `.sql`
+  aplicado y en los comentarios de `supabase/tests/0021_*`; no se renombra nada
+  en la base.
+- **Sin colisión:** no existía ningún `INV-AW*` antes de esta sección
+  (`git grep -o 'INV-AW[0-9]*' HEAD -- docs/` → 0; y hoy solo aparece en
+  `agente-esquema.md` e `invariantes.md`).
+- **Citación:** `INV-AWNN` en documentos; `AW-NN` es aceptable en código/pruebas y
+  significa lo mismo.
+
+### 11.2 Registro
+
+| ID | Alias | Invariante (una frase) | Estado en base | Mecanismo | SQLSTATE | Prueba |
+|---|---|---|---|---|---|---|
+| INV-AW01 | AW-01 | Un `wa_message_id` entra una sola vez en toda la base; todo entrante lo trae | impuesto (DDL) + aplicado | `uq_mensaje_wa_message_id` parcial · `0021:346-347`; `ck_mensaje_entrante_idempotente` · `:338-340` | 23505 / 23514 | `0021_01` C7A/C7C/C7E ✅; concurrencia (2 conexiones) **en curso `0021_02`** |
+| INV-AW02 | AW-02 | Un número activo resuelve a un solo contacto en todo el sistema; desactivar libera | impuesto (DDL) + aplicado | `uq_contactos_telefono_activo (telefono) where activo` · `:222-223` | 23505 | `0021_01` C3A–C3F ✅ (incluye cross-tenant C3F, reactivación C3E) |
+| INV-AW03 | AW-03 | Contacto coherente: E.164, nombre, una entidad por rol, OTP verificado con fecha | impuesto (DDL) + aplicado | CHECKs `:208-215` | 23514 | `0021_01` C1, C2A–C2D, C3A, C4 ✅ |
+| INV-AW04 | AW-04 | Un mensaje solo pertenece a una conversación de su contacto y su empresa | impuesto (DDL) + aplicado | `fn_mensaje_validar` `:361-379` + trigger `:762-763`; FK compuesta `:334-335` | 23514 / 23503 | `0021_01` C8A ✅ (23514); otra empresa ⇒ 23503 (sonda propia). `UPDATE` de `contacto_id`: **sin cobertura** |
+| INV-AW05 | AW-05 | A lo sumo una conversación activa por contacto; cerrada exige `cerrada_en` | impuesto (DDL) + aplicado | `uq_conversacion_activa` `:298-299`; `ck_conversacion_cierre` `:292` | 23505 / 23514 | `0021_01` C6A–C6E ✅; concurrencia **en curso `0021_02`** |
+| INV-AW06 | AW-06 | Una fila ACL por (contacto, componente, variable-NULL); nada en blanco | impuesto (DDL) + aplicado | `uq_permisos_contacto_valor` `:262-263`; CHECKs `:258-259` | 23505 / 23514 | `0021_01` C5A–C5F ✅ |
+| INV-AW07 | AW-07 | Sin fila en `permisos_contacto` no hay acceso (deny-by-default) | **solo servicio** (la base no puede imponer una ausencia) | ninguno; lo resuelve el gate O2.2 · `0021:267-270` | n/a (403/404) | **sin cobertura de base**; prueba prevista **O2.2** |
+| INV-AW08 | AW-08 | Ninguna fila del módulo referencia una entidad de otra empresa | impuesto (DDL) + aplicado | FK compuestas `(empresa_id,id)` `:202-207,256-257,290-291,334-337,415-420,512-519,582-585,693-698` + `uq_usuarios_empresa_empresa` `:170-171` | 23503 | parcial ✅ C5D/C5F/C11B + sonda de mensajes; solicitudes/hoja_ruta/auditoría **en curso `0021_02`/`0021_04`** |
+| INV-AW09 | AW-09 | Toda solicitud tiene exactamente un solicitante humano (contacto xor usuario) | impuesto (DDL) + aplicado | `ck_solicitud_solicitante` `:421-423` | 23514 | `0021_01` C9C/C9D ✅ |
+| INV-AW10 | AW-10 | Estado terminal documentado y definitivo: no se reabre ni reclasifica | impuesto (DDL) + aplicado | CHECKs `:424-432` + `fn_solicitud_transicion` `:458-483` + trigger `:771-772` | 23514 | `0021_01` C9E–C9H, C9J ✅; dos aprobadores **en curso `0021_02`** |
+| INV-AW11 | AW-11 | Rechazar solo registra la decisión: no muta el destino | **parcial** (la base exige motivo+fecha; el "no mutar" es del servicio O2.5) | `ck_solicitud_rechazada` `:427-429` | 23514 | **sin cobertura** (ningún caso de `0021_01` rechaza). Previsto `0021_02` + O2.5 |
+| INV-AW12 | AW-12 | La misma `clave_idempotencia` no crea dos solicitudes en una empresa | impuesto (DDL) + aplicado | `uq_solicitud_idempotencia` `:437-438` | 23505 | `0021_01` C9B ✅; doble clic concurrente **en curso `0021_02`** |
+| INV-AW13 | AW-13 | Hoja de ruta con estado coherente y a lo sumo una carga confirmada por solicitud | impuesto (DDL) + aplicado | CHECKs `:520-522`; `uq_hoja_ruta_carga_por_solicitud` `:528-529`; máquina de estados + `payload` inmutable `0022:349-392` | 23514 / 23505 | `0021_01` C10A–C10D ✅; sondas `0022` ✅ (C10E quedó obsoleta, `agente-esquema.md` §8.1) |
+| INV-AW14 | AW-14 | Código comercial `PREFIJO-00000`, único por (empresa, cliente), generado sin carrera | impuesto (DDL) + aplicado | CHECK `:551-553`; `uq_viajes_id_comercial` `:555-557`; funciones `:603-636` y `:640-670`; inmutabilidad `0022:315-341`; contador monótono `0022:284-307`; tope de 5 dígitos `0022:401-444` | 23514 / 23505 | `0021_01` C11A–C11G ✅; `0021_02` C1/C1b ✅ (8 conexiones); sondas `0022` ✅. **D4 sigue abierto** (prefijo por cliente) |
+| INV-AW15 | AW-15 | Auditoría de consultas append-only, incluso para el dueño; `tei_app` sin UPDATE/DELETE | impuesto (DDL) + aplicado | triggers `:729-735`; `revoke`/`grant` `:863-864` | 23514 / 42501 | `0021_01` C12A–C12D ✅; `DELETE` como `tei_app` ⇒ 42501 (sonda propia) |
+| INV-AW16 | AW-16 | Cada fila del módulo es invisible e inescribible fuera de `app.empresa_id`; sin contexto, cero filas | impuesto (DDL) + aplicado | políticas `:799-825`; `ENABLE`+`FORCE` `:833-850`; GRANTs `:855-868`; `nucleo.ctx_empresa()` (`0020`) | 42501 / 0 filas | parcial ✅ sondas propias (sin contexto 0 filas y `INSERT` 42501; cross-tenant 42501); matriz con rol real **en curso `0021_03`** |
+
+### 11.3 Deuda de prueba del bloque
+
+`0021_01_smoke.sql` corre **secuencial y con rol `BYPASSRLS`**: prueba
+constraints, triggers y funciones, **no** concurrencia ni RLS. Estado real:
+
+| Prueba | Estado 2026-10-30 |
+|---|---|
+| `0021_01_smoke.sql` | **escrita y ejecutada** (14/14 OK, corrida propia); `BEGIN/ROLLBACK` por caso, sin residuo |
+| `0021_02` (concurrencia, 2 conexiones) | **no existe todavía** (prevista, `qa` O1.2) |
+| `0021_03` (RLS con rol `tei_app`) | **no existe todavía** (prevista, `qa` O1.2) |
+| `0021_04` (mutación) | **no existe todavía** (prevista, `qa` O1.2) |
+| `0021_99_rollback.sql` | **no existía** aunque la migración lo cita (`0021:79`) ⇒ defecto D1 |
+
+> **Adenda 2026-10-30 (O1.3; no reescribe la foto anterior).** Las tres suites
+> ya existen y corrieron verdes (`0021_02` con 8+2+2 conexiones reales,
+> `0021_03` con `tei_app`, `0021_04` M1–M9), y `0021_99`/`0022_99` existen
+> (**untracked**) y se ejecutaron en el ciclo rollback → re-aplicación
+> (`docs/qa/informes/2026-10-31-o1.3-rollback-reaplicacion.md:94-403`).
+
+Las filas de la tabla conservan la foto previa a O1.3; las suites ejecutadas se
+citan con su salida real en el informe enlazado.
+
+### 11.4 Escritores cubiertos
+
+| Mecanismo | Cubre | **No** cubre |
+|---|---|---|
+| Constraints/triggers de `0021` | Todo escritor sobre las 8 tablas y sobre `viajes.id_comercial_flete`: backend futuro, scripts, seeds, `psql`, `tei_app` cuando se cablee | `public` (legacy no escribe `nucleo`); DDL (un superusuario puede deshabilitar un trigger) |
+| AW-16 (RLS) | Solo el rol `tei_app` (NOBYPASSRLS) | `postgres` y `supabase_admin` (BYPASSRLS/dueños). 🟡 **No verificado** qué rol usa hoy la app: el backend prefiere `NUCLEO_DATABASE_URL` (`tei_app`) y cae a `DATABASE_URL` con el marcador `RLS inerte` (`backend/app/core/database.py:24-32,110-135`) — RA-03 |
+| AW-07 / AW-11 | Nada en la base: dependen del gate (O2.2) y del servicio de rechazo (O2.5) | Cualquier escritor directo por `psql`/script que no pase por el backend |
+
+### 11.5 Defectos del bloque: estado (D2/D3/D5/D9 cerrados por `0022`)
+
+`0021` está aplicada y sus defectos **no se editan**: se corrigen con una
+migración nueva. `0022` (2026-10-30, aplicada solo en `tei_test`) cierra **D2,
+D3, D5 y D9**; D4, D6 y D8 siguen abiertos. D1 quedó resuelto en el árbol de
+trabajo (scripts `0021_99`/`0022_99`, untracked, ejecutados) y D7 quedó
+**probado en clon (2026-10-30)**; D10 se registra como riesgo de proceso local.
+Detalle, mecanismo y evidencia medida en `docs/datos/agente-esquema.md` §8,
+§8.1 y §8.2.
+
+| ID | Defecto | Invariante afectado | Estado |
+|---|---|---|---|
+| D1 | `supabase/tests/0021_99_rollback.sql` no existía aunque la migración lo cita (`0021:79`) | rollback de todo el bloque | 🟢 script creado y ejecutado en O1.3 (2026-10-30); **untracked**, falta versionarlo. `0022_99` ídem |
+| D2 | `viajes.id_comercial_flete` se puede **reasignar** contra el `COMMENT` (`0021:566-570`) | INV-AW14 | 🟢 cerrado por `0022:315-341` |
+| D3 | El contador puede **retroceder** por `UPDATE` directo (`tei_app` tiene `UPDATE`) | INV-AW14 (parcial: la `UNIQUE` evita el duplicado asignado) | 🟢 cerrado por `0022:284-307` |
+| D4 | La resolución `(empresa, código)` **no es única**: dos clientes pueden compartir prefijo | INV-AW14 / tool de lectura §16.2 | 🔴 abierto: decisión de negocio (D-16 no la fijó) |
+| D5 | `hoja_ruta` **no tiene máquina de estados** (`rechazado → cargado` y `cargado → propuesto` aceptados) | INV-AW13 | 🟢 cerrado por `0022:349-392` |
+| D6 | "Rechazo solo-logra" no es garantía de base | INV-AW11 | 🔴 abierto (backend O2.5) |
+| D7 | `0021` se editó tras una primera aplicación en `tei_test` (`0021:844-845`): aceptable en clon, **prohibido** en cualquier otra base | proceso forward-only | 🟡 probado en clon (2026-10-30: rollback + re-aplicación + 4 suites verdes); regla vigente: no editar una migración aplicada |
+| D8 | `wa_message_id` único global permite "reservar" un id ajeno (DoS entre tenants, baja probabilidad) | INV-AW01 | 🟡 aceptado y documentado; sin cambio de índice |
+| D9 | Tope duro de 99.999 códigos por (empresa, cliente); al llegar a 100.000 `lpad` trunca y **reutiliza** `SQM-10000` | INV-AW14 | 🟢 cerrado por `0022:401-444` |

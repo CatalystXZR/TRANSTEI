@@ -1,7 +1,7 @@
-# Catálogo de migraciones — `supabase/migrations/0001`–`0019`
+# Catálogo de migraciones — `supabase/migrations/0001`–`0023`
 
 > **Pregunta que responde:** ¿qué hace cada migración, cuánto riesgo tiene y está aplicada?
-> **Dueño:** agente `datos` · **Verificado:** 2026-10-29 · **Método:** lectura de DDL + `git`
+> **Dueño:** agente `datos` · **Verificado:** 2026-10-29 (cuerpo) · 2026-10-30 (`0020`, `0021`, `0022` y `0023`, catálogo de `tei_test`) · **Método:** lectura de DDL + `git` + `psql`
 > **Caduca si:** se agrega, edita o reordena una migración, o se aplica alguna.
 > **Re-verificar con:** `ls supabase/migrations/` · `git ls-tree HEAD supabase/migrations/` · `git status --short supabase/migrations/`
 
@@ -9,9 +9,12 @@
 
 ## 0. Cómo leer este catálogo
 
-1. **"Aplicada en base" es 🔴 en las 19 filas.** No hubo acceso a PostgreSQL en esta
+1. **"Aplicada en base" es 🔴 en 0001–0019.** No hubo acceso a PostgreSQL en esa
    sesión. Lo único que se afirma es que **el archivo existe en disco** y qué
    contiene. Que el DDL esté en el repo no significa que esté en vigor.
+   **Excepción fechada:** `0020` se aplicó y probó en el clon desechable
+   `tei_test` el 2026-10-30 (🟡, ver la fila y `docs/datos/rls-multiempresa.md`);
+   en la base de la app sigue 🔴.
 2. **El repo tiene dos registros posibles de aplicación y ninguno sirve hoy:**
    - `public._migraciones` se crea en `0002_config_cobranza.sql:6-10` y **ninguna
      migración la popula** (`grep -rn "_migraciones" supabase/migrations/` → solo
@@ -52,6 +55,10 @@
 | `0017_default_comision_chofer.sql` | R-01: default de comisión 10 % | `choferes.porcentaje_comision` default 0→**0.10** (`:47`); sin backfill | Bajo en ejecución / **Alto en dinero** (define lo que gana un chofer nuevo) | untracked (`??`) | 🔴 |
 | `0018_carga_licencia_clase_a5.sql` | Cargar `licencia_clase='A5'` en choferes TEI sin clase | `UPDATE` de filas en `nucleo.choferes` (`:67-113`), solo empresa `TEI`, solo con documento `licencia_conducir` vigente; imprime RUTs en `NOTICE` | **Alto** (dato declarado, no contrastado con licencia física) | untracked (`??`) | 🔴 |
 | `0019_comision_piloto_10.sql` | R-01: alinear a 10 % los choferes TEI en 0 | `UPDATE` de filas en `nucleo.choferes` (`:44-66`), solo empresa `TEI`, activos y `porcentaje_comision = 0` | **Alto** (dinero: reescribe la base de pago) | untracked (`??`) | 🔴 |
+| `0020_rls_multiempresa.sql` | INV-T01: aislamiento por empresa impuesto en PostgreSQL | rol `tei_app` (NOBYPASSRLS, sin contraseña), `nucleo.ctx_empresa/ctx_auth_id/empresas_del_usuario`, 35 políticas en 31 tablas, `FORCE RLS`, GRANTs mínimos | **Alto** (aislamiento multiempresa; inerte hasta cambiar el rol de conexión) | untracked (`??`) | 🟡 solo `tei_test` (2026-10-30) |
+| `0021_agente_whatsapp.sql` | Persistencia del módulo agente WhatsApp (F2.5/F2.6, ADR-0003/0004): contactos, ACL, conversaciones, mensajes, solicitudes, hoja de ruta, R-04 y auditoría de consultas | **ADD-only:** 8 tablas (`contactos_whatsapp`…`auditoria_consultas_agente`), columna `viajes.id_comercial_flete` + `CHECK` + `UNIQUE` parcial, 8 `enum`, 5 funciones, 25 triggers, 32 índices en las tablas nuevas, 9 políticas RLS con `ENABLE`+`FORCE`, GRANTs a `tei_app`; única excepción estructural: `UNIQUE (empresa_id, id)` en `usuarios_empresa` (habilita FKs compuestas) | **Alto** (identidad, aislamiento, idempotencia del webhook, numeración comercial; módulo apagado) | untracked (`??`) | 🟡 solo `tei_test` (2026-10-30, 14/14 smoke) |
+| `0022_agente_whatsapp_endurecimiento.sql` | Cerrar en la base 4 defectos verificados de `0021` (D2, D3, D5, D9 de `docs/datos/agente-esquema.md` §8): ID comercial inmutable, contador monótono no decreciente, máquina de estados + `payload` inmutable de `hoja_ruta`, y tope de 5 dígitos fail-closed | 3 funciones de trigger + 3 triggers (`trg_contador_10_no_retrocede`, `trg_viajes_10_id_comercial_inmutable`, `trg_hoja_ruta_10_transicion`) y `create or replace` de `obtener_siguiente_id_comercial_flete` con el tope. **Cero cambios de tablas, columnas, índices, políticas o datos** | **Alto** (R-04: numeración comercial, identidad inmutable y estados; módulo apagado) | untracked (`??`) | 🟡 solo `tei_test` (2026-10-30); rollback probado con `0022_99` (2026-10-30) |
+| `0023_modulos_empresa.sql` | Llave 1 del gate del conector: flag de módulo activo **por empresa** (`nucleo.modulos_empresa`), fail-closed | **ADD-only:** 1 tabla nueva (`modulos_empresa`), PK `(empresa_id, modulo_id)`, FK a `nucleo.empresas` `on delete restrict`, 3 `CHECK`, 2 triggers (`fn_touch`/`fn_version` de `0004`), RLS `ENABLE`+`FORCE`, 1 política `tenant_empresa`, GRANT `select, insert, update` a `tei_app` (sin `delete`). **0 filas: no siembra** | Bajo en datos (tabla vacía, sin reescritura) / a vigilar en comportamiento: escribir `habilitado=true` enciende la llave 1 del agente | untracked (`??`) | 🟡 solo `tei_test` (2026-10-30); rollback `0023_99` ejecutado + re-aplicación |
 
 **Nota (a) — única declaración de aplicación en el repo:** `docs/qa/informes/2026-10-29-r01-r02-suite-verde.md:1-45`
 reporta PostgreSQL local arriba y el trigger de `0016` activo (los fixtures sin
@@ -63,6 +70,67 @@ hay ninguna declaración.
 **Nota (b) — migraciones de datos:** `0015` (backfill de reservas), `0018` y
 `0019` escriben filas, no solo esquema. En un entorno con datos reales exigen
 precondiciones ejecutadas y conteos antes/después, no solo `psql -f`.
+
+**Nota (c) — `0020` (2026-10-30):** crea un rol **a nivel de clúster** (`tei_app`)
+y políticas RLS. Es **inerte** mientras el backend conecte como `postgres`
+(BYPASSRLS gana sobre FORCE: probado). Se aplicó y probó solo en `tei_test`. Antes
+de aplicarla a otra base: ejecutar las precondiciones P1–P6 del encabezado
+(0 filas) y leer `docs/datos/rls-multiempresa.md` §5.3 (orden de despliegue) y
+§8 (handoff a `backend`). Rollback: borrar políticas + `NO FORCE` + revocar
+GRANTs; no borra datos.
+
+**Nota (d) — `0021` (2026-10-30):** contrato documental completo en
+`docs/datos/agente-esquema.md`. **Requiere `0020` aplicada antes** (usa
+`nucleo.ctx_empresa`, el rol `tei_app` y exige ≥35 políticas: si no, aborta con
+`23514`, `0021:132-138`). Se aplicó **solo** en `tei_test`, donde se midió:
+8 tablas vacías, 218 viajes existentes con `id_comercial_flete` nulo, `CHECK`
+validado sin violaciones, 9 políticas nuevas (44 totales) y `FORCE RLS` en las 8
+tablas. La aplicación fue **en una sola transacción** con las precondiciones
+dentro (`0021:92-870`), así que P1–P3 valían 0 y P4 valía exactamente 35 al
+aplicar. Rollback: descrito en `0021:78-85`, pero **el script
+`supabase/tests/0021_99_rollback.sql` que cita no existía** al documentar esta
+nota (defecto D1 del contrato). **Adenda 2026-10-30:** el script ya existe
+(`supabase/tests/0021_99_rollback.sql`, **untracked**) junto con
+`0022_99_rollback.sql`, y ambos se ejecutaron en el ciclo O1.3; D1 queda
+resuelto en el árbol de trabajo, **no en `HEAD`**. En la base de la app sigue 🔴
+no aplicada/no verificada.
+
+**Nota (e) — `0022` (2026-10-30):** migración **correctiva** de `0021`, no
+estructural. Cierra D2 (ID comercial inmutable: trigger `BEFORE UPDATE` que
+también rechaza el paso a `NULL`), D3 (contador no retrocede: trigger), D5
+(`propuesto → solicitud_creada → cargado|rechazado`, terminales, `payload`
+inmutable) y D9 (tope `> 99999` ⇒ `23514` sin quemar el número, formato
+intacto). Aplicada **solo** en `tei_test`; precondiciones P1-P4 dentro de la
+transacción (`0022:186-274`); no toca filas. **Regresión (al aplicar):**
+`0021_02`, `0021_03` y `0021_04` verdes; `0021_01_smoke.sql` **no** daba 14/14
+porque sus aserciones C10E (`:566-578`) y C11H (`:669-670`) describían el
+comportamiento anterior a D5/D2 — es de `qa` y no se editó en ese momento
+(detalle en `docs/datos/agente-esquema.md` §8.1). D4, D6 y D8 siguen abiertos.
+Rollback: drop de 3 triggers + 3 funciones y restaurar la función de
+`0021:603-636`; completo en `0022:133-168`. No pierde datos y reabre los 4
+defectos.
+
+> **Adenda 2026-10-30 (O1.3 — rollback probado).** `qa` ejecutó el ciclo
+> `0022_99_rollback.sql` → `0021_99_rollback.sql` → cero objetos →
+> re-aplicación de `0021`/`0022` como `supabase_admin` → **4 suites verdes**,
+> incluido `0021_01` **14/14 (63 `NOTICE OK`)** con C10E/C11H ya adaptadas y
+> `0021_04` M1–M9 (`docs/qa/informes/2026-10-31-o1.3-rollback-reaplicacion.md:94-403`;
+> `supabase/tests/README.md:145-170`). Con eso **D7 queda probado en clon** y
+> el rollback de `0022` deja de ser teórico: el script existe y revierte sin
+> pérdida de datos. D1 queda resuelto en el árbol de trabajo (no en `HEAD`).
+> **Cautela medida (D10):** la re-aplicación no reproduce el ACL de `postgres`
+> (ver §2, adenda O1.3 y `agente-esquema.md` §8.2).
+
+> **Nota 2026-10-30 (`0023`).** `nucleo.modulos_empresa` **no** forma parte del
+> módulo de `0021`: es la **llave 1 del gate** del conector
+> (`docs/arquitectura/conector-agente-whatsapp.md` §2.7, `:260-311`), la tabla
+> que desbloquea F2.1/O2.1. Nace **vacía**: aplicar `0023` no enciende nada y la
+> ausencia de fila = módulo apagado (fail-closed). El rollback
+> (`supabase/tests/0023_99_rollback.sql`) es `drop table` y se **ejecutó** en
+> `tei_test` seguido de re-aplicación; pérdida = 0 filas (no hay semilla).
+> Evidencia: catálogo + sonda con `tei_app` + las 4 suites de `0021` en verde
+> (2026-10-30). Invariante: `INV-AW17` (`docs/datos/invariantes.md` §12);
+> inventario: `docs/datos/agente-esquema.md` §10.
 
 ---
 
@@ -100,6 +168,36 @@ Consecuencia operativa: **`HEAD` no reproduce el esquema.** Un clon del
 repositorio aplica 3 migraciones y obtiene solo el legacy `public`; las 16
 restantes no están versionadas en ningún commit. Esto no es un detalle de
 higiene: cualquier `supabase db reset` sobre `HEAD` deja un sistema sin `nucleo`.
+
+> **Adenda 2026-10-30 (no reescribe la salida anterior).** Hoy hay **21**
+> archivos en `supabase/migrations/` (medido con `ls | wc -l`). Se agregaron
+> `0020_rls_multiempresa.sql` y `0021_agente_whatsapp.sql`, ambos **untracked**
+> (`??`), verificado con `git status --short supabase/migrations/`. Los conteos
+> `19` de arriba corresponden a la corrida del 2026-10-29 y se conservan como
+> registro.
+
+> **Adenda 2026-10-30 (0022).** `ls supabase/migrations/ | wc -l` = **22**;
+> `0022_agente_whatsapp_endurecimiento.sql` es **untracked** (`??`). Las 3
+> nuevas (`0020`, `0021`, `0022`) siguen fuera de `HEAD`: el esquema del núcleo
+> y del módulo no se reproduce desde un clon.
+
+> **Adenda 2026-10-30 (O1.3 — reproducibilidad medida y D10).** El ciclo
+> `0022_99` → `0021_99` → re-aplicación de `0021`/`0022` como `supabase_admin`
+> → 4 suites verdes demuestra que las migraciones reconstruyen el esquema en
+> un clon (`docs/qa/informes/2026-10-31-o1.3-rollback-reaplicacion.md:94-403`).
+> **Límite medido (D10):** la re-aplicación **no** reproduce el ACL de
+> `postgres` en las 8 tablas del módulo (solo `SELECT` vía
+> `pg_read_all_data`), porque `0021:855-868` otorga únicamente a `tei_app`.
+> En un clon local hay que restaurar ese ACL o correr las suites con
+> `supabase_admin`; **el rol que aplica migraciones debe ser el mismo en todos
+> los entornos**. Clasificación: riesgo de proceso local (clon), no de
+> producción por este mecanismo — el rol previsto del núcleo es `tei_app` y el
+> ACL real de la base de la app no se verificó (🟡) (`agente-esquema.md` §8.2).
+
+> **Adenda 2026-10-30 (`0023`).** `ls supabase/migrations/ | wc -l` = **23**;
+> `0023_modulos_empresa.sql` es **untracked** (`??`). `HEAD` sigue teniendo solo
+> `0001`–`0003`: 20 de los 23 archivos están fuera del commit (11 `A` + 9 `??`).
+> Aplicada **solo** en `tei_test` (clon desechable).
 
 ---
 
