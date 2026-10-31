@@ -1324,3 +1324,24 @@ porque `nucleo.usuarios_empresa` no tiene columna de nombre.
 
 **Siguiente:** revisión independiente de O2.2; ADR de §4.1 (delegado a
 `arquitectura`); corpus de O0 y `D-12` siguen en manos del dueño.
+
+### [2026-10-31] O2.2 — capa HTTP verificada con JWT real
+
+Riesgo: Alto | Estado: **cerrada la verificación de transporte; revisión independiente en curso**.
+
+`backend/tests/test_agente_o2_2_http.py` → **15 passed** con Supabase Auth real y
+`X-Empresa-ID`. Cubre lo que el servicio no podía: membresía por empresa (403 si no
+lo es), autoridad de permisos (403 sin `agente:buzon`/`agente:aprobar`), 422 sin
+`X-Empresa-ID`, 404 para id de otra empresa, 409 en reintento y versión vieja, 501
+sin efecto y 403 de autoaprobación.
+
+**Hallazgo durante la escritura (no era defecto):** la primera versión del fixture
+usaba al aprobador como solicitante, así que **todas** las decisiones devolvían 403
+`AUTOAPROBACION`. Era la regla funcionando por HTTP. Se corrigió el fixture, no el
+código.
+
+Suite completa: **347 passed, 0 failed, 0 skipped**.
+
+**En curso (delegado, no consolidado):** `auditor-seguridad` revisando O2.2 sin la
+conclusión del autor; `frontend` construyendo la pantalla del buzón sobre el
+contrato HTTP real. Nada de eso se da por bueno hasta verificarlo.
