@@ -12,6 +12,11 @@ from app.nucleo.deps import ContextoEmpresa, get_contexto_empresa
 from app.nucleo.errores import AccesoDenegado
 from app.nucleo.models import RolEmpresa
 
+# AB-02 (docs/estado.md §5): permisos del módulo agente. `admin` los hereda de
+# `TODOS_LOS_PERMISOS`; `gerente` queda **excluido** hasta que el dueño ratifique
+# AB-02. Deny-by-default: no se conceden por conveniencia.
+PERMISOS_AGENTE = {"agente:buzon", "agente:aprobar", "agente:contactos"}
+
 TODOS_LOS_PERMISOS = {
     "maestros:leer",
     "maestros:escribir",
@@ -41,7 +46,7 @@ TODOS_LOS_PERMISOS = {
     "configuracion:escribir",
     "roles:leer",
     "usuarios:administrar",
-}
+} | PERMISOS_AGENTE
 
 LECTURA_OPERATIVA = {
     "maestros:leer",
@@ -57,7 +62,9 @@ LECTURA_OPERATIVA = {
 
 ROLES_PERMISOS: dict[RolEmpresa, set[str]] = {
     RolEmpresa.admin: set(TODOS_LOS_PERMISOS),
-    RolEmpresa.gerente: set(TODOS_LOS_PERMISOS) - {"usuarios:administrar"},
+    RolEmpresa.gerente: set(TODOS_LOS_PERMISOS)
+    - {"usuarios:administrar"}
+    - PERMISOS_AGENTE,
     RolEmpresa.despacho: {
         "maestros:leer",
         "maestros:escribir",

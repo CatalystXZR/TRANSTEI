@@ -1,0 +1,17 @@
+{
+  "nombre": "despacho.mis_fletes",
+  "componente": "despacho",
+  "variable": "viajes.cliente",
+  "permiso": "despacho:viajes.cliente",
+  "tipo": "lectura",
+  "alcance": "propio",
+  "roles": ["cliente_final"],
+  "descripcion": "Lista los fletes del cliente del contacto, con ID comercial y estado.",
+  "entrada": { "$ref": "schemas/despacho.mis_fletes.entrada.json" },
+  "salida": { "$ref": "schemas/despacho.mis_fletes.salida.json" },
+  "ejecutor": "despacho_mis_fletes",
+  "idempotencia": { "modo": "ninguna", "campo": null },
+  "timeout_ms": 1500,
+  "max_filas": 50,
+  "version": 1
+}

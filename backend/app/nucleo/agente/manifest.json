@@ -1,0 +1,53 @@
+{
+  "schema": "agente-modulo/v1",
+  "modulo_id": "agente-whatsapp",
+  "version": "0.1.0",
+  "habilitado_por_defecto": false,
+  "schema_di": "di/v1",
+  "migraciones": [
+    "0021_agente_whatsapp.sql",
+    "0022_agente_whatsapp_endurecimiento.sql",
+    "0023_modulos_empresa.sql"
+  ],
+  "roles": ["admin", "cliente_final", "conductor"],
+  "componentes": ["despacho"],
+  "permisos_modulo": ["agente:buzon", "agente:aprobar", "agente:contactos"],
+  "aprobacion": { "modo": "solicitud", "autoaprobacion": false },
+  "modalidades": {
+    "texto": true,
+    "voz": false,
+    "imagen": false,
+    "pdf": false
+  },
+  "modelos": {
+    "orquestador": {
+      "proveedor": "anthropic",
+      "modelo": "claude-opus-4.7",
+      "revision": "configurada-en-deploy",
+      "prompt_version": "pendiente-o3"
+    },
+    "asr": {
+      "proveedor": "openai",
+      "modelo": "whisper-3",
+      "revision": "configurada-en-deploy",
+      "prompt_version": "n/a"
+    },
+    "vision": {
+      "proveedor": "openai",
+      "modelo": "gpt-5.x",
+      "revision": "configurada-en-deploy",
+      "prompt_version": "pendiente-o3"
+    },
+    "pdf": {
+      "proveedor": "anthropic",
+      "modelo": "claude-opus-4.7",
+      "revision": "configurada-en-deploy",
+      "prompt_version": "pendiente-o3"
+    }
+  },
+  "tools": [
+    { "$ref": "tools/despacho.mis_fletes.json" },
+    { "$ref": "tools/despacho.mis_viajes_asignados.json" },
+    { "$ref": "tools/despacho.viajes_del_dia.json" }
+  ]
+}

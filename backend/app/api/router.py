@@ -15,6 +15,7 @@ from app.api.routes import (
     viajes,
 )
 from app.nucleo.api import router as nucleo_router
+from app.nucleo.agente.api import router as nucleo_agente_router
 from app.nucleo.api_alertas import router as nucleo_alertas_router
 from app.nucleo.api_bloqueos import router as nucleo_bloqueos_router
 from app.nucleo.api_comercial import router as nucleo_comercial_router
@@ -42,6 +43,7 @@ api_router.include_router(configuracion.router)
 api_router.include_router(export.router)
 api_router.include_router(kpis.router)
 api_router.include_router(nucleo_router)
+api_router.include_router(nucleo_agente_router)
 api_router.include_router(nucleo_maestros_router)
 api_router.include_router(nucleo_comercial_router)
 api_router.include_router(nucleo_bloqueos_router)

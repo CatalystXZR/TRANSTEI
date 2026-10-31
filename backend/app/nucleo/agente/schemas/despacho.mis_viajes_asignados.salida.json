@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "despacho.mis_viajes_asignados salida",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["items", "total", "truncado"],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["viaje_id", "id_comercial_flete", "cliente_nombre", "origen", "destino", "fecha", "estado"],
+        "properties": {
+          "viaje_id": { "type": "string", "format": "uuid" },
+          "id_comercial_flete": { "type": ["string", "null"] },
+          "cliente_nombre": { "type": "string" },
+          "origen": { "type": "string" },
+          "destino": { "type": "string" },
+          "fecha": { "type": "string", "format": "date-time" },
+          "estado": { "type": "string" }
+        }
+      }
+    },
+    "total": { "type": "integer", "minimum": 0 },
+    "truncado": { "type": "boolean" }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "nombre": "despacho.mis_viajes_asignados",
+  "componente": "despacho",
+  "variable": "viajes.propios",
+  "permiso": "despacho:viajes.propios",
+  "tipo": "lectura",
+  "alcance": "propio",
+  "roles": ["conductor"],
+  "descripcion": "Lista los viajes asignados al chofer del contacto.",
+  "entrada": { "$ref": "schemas/despacho.mis_viajes_asignados.entrada.json" },
+  "salida": { "$ref": "schemas/despacho.mis_viajes_asignados.salida.json" },
+  "ejecutor": "despacho_mis_viajes_asignados",
+  "idempotencia": { "modo": "ninguna", "campo": null },
+  "timeout_ms": 1500,
+  "max_filas": 50,
+  "version": 1
+}

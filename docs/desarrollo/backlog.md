@@ -1,7 +1,7 @@
 # Backlog — qué se está construyendo y qué sigue
 
 > **Pregunta que responde:** ¿en qué va el plan de trabajo y qué es lo próximo?
-> **Dueño:** `orquestador` · **Verificado:** 2026-10-29 · **Método:** lectura de código + planes archivados
+> **Dueño:** `orquestador` · **Verificado:** 2026-10-31 (§6, módulo agente) / 2026-10-29 (§2–§3, sin re-verificar) · **Método:** lectura de código + planes archivados + suites ejecutadas
 > **Caduca si:** se cierra un P0, cambia el alcance o se abre un frente nuevo.
 > **Re-verificar con:** `ls frontend/src/app/\(app\)` y `ls backend/app/nucleo`
 
@@ -41,6 +41,9 @@ E2E no se ejecutaron).
 
 ## 3. Lo próximo, en orden
 
+> Este orden cubre el **P0 legacy**. El módulo agente WhatsApp tiene su propio
+> orden por olas en [§6.8](#68-orden-recomendado).
+
 | # | Trabajo | Por qué primero | Dueño |
 |---|---|---|---|
 | 1 | **Ejecutar `make test` y `make e2e` con base real y registrar la salida** | Sin línea base, todo "terminado" es 🔴 | `qa` |
@@ -73,3 +76,94 @@ E2E no se ejecutaron).
 2. "Existe el endpoint" no es "está terminado": falta UI, permiso y prueba.
 3. Lo que requiere decisión de negocio se mueve a `docs/negocio/preguntas.md`.
 4. Lo que requiere trabajo técnico se refleja en `docs/arquitectura/deuda.md`.
+
+---
+
+## 6. Módulo agente WhatsApp — pendientes
+
+> Frente distinto del P0 legacy. Estado verificado 2026-10-31.
+> Línea base: `make test` → **304 passed, 0 failed, 0 skipped**;
+> `make unit` → 124 passed. Detalle en
+> [`docs/backend/informes/o2-1-registry-gate-tools.md`](../backend/informes/o2-1-registry-gate-tools.md)
+> y [`docs/seguridad/hallazgos-o2-1.md`](../seguridad/hallazgos-o2-1.md).
+
+### 6.1 Lo urgente (riesgo de pérdida, no es código)
+
+- [ ] **1. Poner el árbol en orden con commits por ola.**
+  Hay ~65 archivos modificados y ~3.000 líneas sin commitear que mezclan cuatro
+  frentes: migraciones `0021`–`0023` (Ola 1), documentos de F2.1, el código de
+  O2.1 y trabajo previo de F1 (`storage.py`, `servicio_pod.py`, `main.py`/SEC-021).
+  Hoy no hay frontera entre olas: un `git checkout` mal puesto o un conflicto y no
+  se puede reconstruir qué era de qué. **Todo el trabajo de riesgo Alto de estas
+  semanas existe solo en el disco.**
+  Propuesta: commits separados (migraciones · docs · O2.1), no uno solo.
+  *Requiere autorización explícita del dueño* (`git commit` está en "pedir
+  autorización", `AGENTS.md` §10).
+
+### 6.2 No encender el módulo todavía
+
+- [ ] **2. No habilitar `agente-whatsapp` en la base real.**
+  La condición del auditor (SEC-030) ya está cerrada, pero encender exige: `0023`
+  en la base de la app + fila en `nucleo.modulos_empresa` + enrolamiento de
+  contactos + **OTP, que es `D-12` y sigue abierta**. Sin `otp_estado='verificado'`
+  el gate deniega todo por diseño: encender ahora produce un módulo que no
+  funciona.
+  Además, **SEC-039** (el rol `tei_app` puede escribir identidad, ACL y flag que el
+  gate consume) debería resolverse antes de que haya contactos reales.
+  *Dueño: dueño del producto + `datos`.*
+
+### 6.3 Decisión de arquitectura
+
+- [ ] **3. ADR del ruteo `telefono → empresa_id` (hueco §4.1).**
+  El contrato asume búsqueda global de `contactos_whatsapp` por teléfono; bajo RLS
+  con `tei_app` devuelve 0 filas sin `app.empresa_id` (medido en O2.1). No existe
+  tabla ni columna de ruteo `wa_phone_number_id → empresa_id`.
+  Opciones: (a) configuración por número de Meta, (b) tabla de ruteo con política
+  propia, (c) función `SECURITY DEFINER` acotada.
+  Recomendación del orquestador: **(a) para el piloto, migrando a (b) antes del
+  segundo cliente**. La decisión es de `arquitectura`, no del orquestador.
+  *Dueño: `arquitectura` (ADR) → `datos` si implica migración.*
+  **Corrección registrada:** esto **no bloquea O2.2** (el buzón usa
+  `agente:buzon`/`agente:aprobar` con `ContextoEmpresa`, §6.2–§6.4). Bloquea el
+  runtime real (O3) y la resolución en producción.
+
+### 6.4 Camino crítico que ningún agente puede hacer
+
+- [ ] **4. Corpus de O0: 20–30 audios, 20–30 fotos, 10 PDFs reales.**
+  Es la condición (c) de ADR-0004 y sin él no hay umbrales §15 para ASR ni OCR.
+  Es lo que más tarda y lo único que no se acelera escribiendo código: si no
+  arranca en paralelo, se convierte en el cuello de botella de todo el módulo.
+  *Dueño: dueño del producto (material real); `negocio-finanzas`/`qa` lo procesan.*
+
+### 6.5 Siguiente trabajo técnico
+
+- [ ] **5. O2.2 — buzón de solicitudes** (`GET /nucleo/agente/solicitudes`,
+  `GET …/{id}`, `POST …/{id}/decidir`, contrato §6.1–§6.4).
+  No depende de §4.1 y es lo que el dueño ve. Riesgo **Alto** (aprobación con efecto
+  real sobre datos): prueba roja antes, revisión independiente después.
+  *Dueño: `backend` + `qa` + `auditor-seguridad`.*
+
+### 6.6 Hallazgos de la revisión de O2.1 aún abiertos
+
+| ID | Sev. | Qué | Dueño |
+|---|---|---|---|
+| SEC-033 | baja | `pregunta_resumida` se persiste sin redacción propia; la redacción se delega a un runtime que no existe. Cerrar antes de O2.4 (primera tool con montos) | `arquitectura` + `backend` |
+| SEC-038 | info | `manejador_integrity_error` registra `repr(exc)` (`main.py:262-266`): el mensaje de SQLAlchemy incluye SQL y parámetros ligados. **Preexistente**, no de O2.1 | `backend` |
+| SEC-039 | info | El rol `tei_app` puede escribir identidad, ACL y flag que el gate consume | `datos` + `arquitectura` |
+| SEC-040 | info | Discrepancia §2.6.4 vs §6.5 del contrato (tools "cargadas" con el flag ausente) | `arquitectura` |
+| — | 🔴 | `statement_timeout` → `57014` → `TIMEOUT_TOOL`: la clasificación está probada, el corte real no | `qa` |
+
+### 6.7 Decisión del dueño aún abierta (transversal)
+
+- **`D-18` / D4** (prefijo `id_comercial_flete` colisionante vs. resolución siempre
+  con `cliente_id`): regla operativa provisional vigente — resolver siempre con
+  `cliente_id`. No bloquea O2.1/O2.2; sí la generación de IDs al crear viajes desde
+  el agente. *Dueño: dueño del producto.*
+
+### 6.8 Orden recomendado
+
+1. Commits por ola (**hoy**; es el único riesgo irreversible).
+2. Arrancar el corpus en paralelo (lo más lento).
+3. O2.2 mientras `arquitectura` resuelve §4.1.
+4. SEC-039 antes de cualquier contacto real.
+5. Encender el módulo solo con `D-12` (OTP) cerrada y corpus disponible.

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "despacho.mis_viajes_asignados entrada",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "estado": {
+      "type": "string",
+      "enum": [
+        "borrador",
+        "cotizado",
+        "confirmado",
+        "asignado",
+        "en_carga",
+        "cargado",
+        "en_ruta",
+        "en_descarga",
+        "descargado",
+        "pod_pendiente",
+        "cerrado",
+        "facturado",
+        "cobrado",
+        "anulado"
+      ]
+    },
+    "desde": { "type": "string", "format": "date-time" },
+    "hasta": { "type": "string", "format": "date-time" },
+    "limite": { "type": "integer", "minimum": 1, "maximum": 50 }
+  }
+}

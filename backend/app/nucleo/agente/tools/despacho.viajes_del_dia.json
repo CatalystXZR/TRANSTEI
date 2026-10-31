@@ -1,0 +1,17 @@
+{
+  "nombre": "despacho.viajes_del_dia",
+  "componente": "despacho",
+  "variable": "viajes.empresa",
+  "permiso": "despacho:viajes.empresa",
+  "tipo": "lectura",
+  "alcance": "empresa",
+  "roles": ["admin"],
+  "descripcion": "Lista los viajes de la empresa en un dia (America/Santiago).",
+  "entrada": { "$ref": "schemas/despacho.viajes_del_dia.entrada.json" },
+  "salida": { "$ref": "schemas/despacho.viajes_del_dia.salida.json" },
+  "ejecutor": "despacho_viajes_del_dia",
+  "idempotencia": { "modo": "ninguna", "campo": null },
+  "timeout_ms": 2000,
+  "max_filas": 100,
+  "version": 1
+}

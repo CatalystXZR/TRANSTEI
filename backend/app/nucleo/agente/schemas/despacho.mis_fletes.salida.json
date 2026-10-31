@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "despacho.mis_fletes salida",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["items", "total", "truncado"],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id_comercial_flete", "fecha", "origen", "destino", "estado", "tipo_carga"],
+        "properties": {
+          "id_comercial_flete": { "type": ["string", "null"] },
+          "fecha": { "type": "string", "format": "date-time" },
+          "origen": { "type": "string" },
+          "destino": { "type": "string" },
+          "estado": { "type": "string" },
+          "tipo_carga": { "type": "string" }
+        }
+      }
+    },
+    "total": { "type": "integer", "minimum": 0 },
+    "truncado": { "type": "boolean" }
+  }
+}
