@@ -36,6 +36,33 @@
 | **Dos aprobadores simultáneos: un solo efecto** | `test_dos_aprobadores_solo_uno_aplica` — **dos conexiones reales**: A toma el lock y retiene el `commit`; B queda bloqueado en `FOR UPDATE`; al reanudar ve el estado terminal. Se verifica `version=2`, no 3 |
 | Permisos del buzón | `test_permisos_del_buzon_solo_para_admin` (unit) |
 
+### 2.1 Capa HTTP con JWT real (`test_agente_o2_2_http.py`, 15 pruebas)
+
+Lo que el servicio no puede probar: la resolución de membresía y la autoridad de
+permisos del backend.
+
+| Garantía | Prueba |
+|---|---|
+| Listado con JWT de Supabase Auth y `X-Empresa-ID` | `test_listar_con_jwt_real` |
+| Sin token → 401/403 | `test_sin_token_es_401_o_403` |
+| Sin `X-Empresa-ID` → 422 | `test_sin_empresa_es_422` |
+| Rol sin `agente:buzon` (contabilidad) → 403 `ACCESO_DENEGADO` | `test_rol_sin_permiso_no_lee_el_buzon` |
+| JWT válido pero sin membresía en esa empresa → 403 | `test_empresa_ajena_no_es_miembro` |
+| Id de otra empresa con membresía correcta → 404 | `test_detalle_de_otra_empresa_es_404` |
+| Rol sin `agente:aprobar` no decide → 403 | `test_decidir_sin_permiso_es_403` |
+| `version` ausente → 422; acción desconocida → 422 | `test_body_incompleto_es_422`, `test_accion_desconocida_es_422` |
+| Rechazo completo por HTTP | `test_rechazo_completo_por_http` |
+| Reintento tras éxito → 409 `SOLICITUD_YA_DECIDIDA` | `test_reintento_tras_exito_es_409` |
+| `version` vieja → 409 `CONFLICTO_CONCURRENCIA` | `test_version_vieja_es_409` |
+| `confirmar` sin ejecutor → 501 y sin efecto | `test_confirmar_tipo_sin_ejecutor_es_501` |
+| Autoaprobación → 403 `AUTOAPROBACION` | `test_autoaprobacion_es_403` |
+| El detalle no expone teléfono, costos ni margen | `test_no_revela_datos_fuera_del_buzon` |
+
+Hallazgo durante la escritura: la primera versión del fixture usaba al aprobador
+como solicitante y **todas** las decisiones devolvían 403 `AUTOAPROBACION`. No era
+un defecto del código: era la regla funcionando por HTTP. El fixture se corrigió
+para usar un solicitante distinto.
+
 ## 3. Contradicción del contrato y cómo se resolvió
 
 §6.6 dice que el ejecutor de `hoja_de_ruta` "lo implementa O2.5"; §6.7 afirma que
@@ -82,17 +109,14 @@ Esto es un **adelanto parcial de O2.5**, deliberado y acotado. Si el dueño pref
 pytest tests/test_agente_o2_2_buzon.py        -> 14 passed
 pytest tests/test_agente_o2_1_integracion.py  -> 19 passed
 make unit                                     -> 125 passed
-make test                                     -> 321 passed, 0 failed, 0 skipped
+pytest tests/test_agente_o2_2_http.py          -> 15 passed (JWT real)
+make test                                     -> 347 passed, 0 failed, 0 skipped
 ruff (paquete + pruebas)                      -> solo B008 (patrón FastAPI del repo)
 ```
 
 ## 7. No verificado
 
-- 🔴 **Revisión independiente** de O2.2 (riesgo Alto, sin hacer).
-- 🔴 **Capa HTTP real**: las pruebas ejercitan el servicio con un
-  `ContextoEmpresa` armado a mano. No se probó `POST /decidir` con JWT real,
-  `X-Empresa-ID` y un usuario sin `agente:aprobar` (el permiso está cubierto a
-  nivel unitario, no end-to-end). Requiere Supabase Auth local.
+- 🔴 **Revisión independiente** de O2.2 en curso (`auditor-seguridad`).
 - 🔴 **Frontend del buzón** (O4.3): no existe.
 - 🟡 `resumen` y `diff` solo se probaron con payloads planos (un nivel).
 
