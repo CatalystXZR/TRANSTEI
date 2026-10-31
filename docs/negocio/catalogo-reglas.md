@@ -1,7 +1,7 @@
 # Catálogo de reglas de negocio — ERP Transportes TEI SpA
 
 > **Pregunta que responde:** ¿cuál es la regla de negocio `R-0XX`, su fórmula y su estado de implementación?
-> **Dueño:** `negocio-finanzas` · **Verificado:** 2026-10-29 · **Método:** lectura de código + decisión del dueño
+> **Dueño:** `negocio-finanzas` · **Verificado:** 2026-10-30 (R-04; R-01…R-03 sin re-verificar en esta sesión) · **Método:** lectura de código + DDL de migraciones + decisiones del dueño
 > **Caduca si:** cambia una regla, su implementación o se cierra una `D-NN`.
 > **Re-verificar con:** `grep -n "R-0" docs/negocio/catalogo-reglas.md | head`
 
@@ -9,9 +9,10 @@
 Cada regla lleva un ID `R-0XX`, su fuente (quién la definió y cuándo), su estado de
 implementación verificado en código, y los casos numéricos asociados.
 
-Fuente de las reglas de este documento: **dueño del negocio, 2026-10-29**. Las reglas
-tributarias y laborales NO se definen aquí: se registran como pregunta al contador o
-asesor laboral.
+Fuente de las reglas de este documento: **dueño del negocio, 2026-10-29**, más las
+confirmaciones posteriores que cada regla indica (R-04: `D-16`, 2026-10-30). Las
+reglas tributarias y laborales NO se definen aquí: se registran como pregunta al
+contador o asesor laboral.
 
 ---
 
@@ -110,6 +111,100 @@ se imputan al día en que alguien apretó el botón.
 **Pregunta al dueño (`D-03`):** ¿se debe permitir registrar la fecha real de término del
 viaje (por ejemplo, cuando se cierra al día siguiente o a fin de mes)? ¿Quién puede
 corregirla y hasta cuándo?
+
+---
+
+## R-04 — ID comercial de flete por cliente
+
+**Enunciado (dueño, 2026-10-29; confirmado 2026-10-30 en `D-16`):** todo flete
+lleva un **ID comercial por cliente** con formato `<PREFIJO>-NNNNN` —prefijo
+derivado del cliente y **5 dígitos** con relleno de ceros (`SQM-00001`,
+`SQM-00002`, …)—, estable, asignado en **orden creciente**, **sin reutilización**,
+que identifica el flete en las comunicaciones (hoja de ruta, desgloses) en lugar
+del UUID/folio técnico. Identifica, **no autoriza**: todo acceso pasa por la ACL
+del contacto (`0021:566-570`).
+
+**Fórmula:** `siguiente = máximo(dígitos ya asignados para (empresa_id, cliente_id)) + 1`;
+`código = UPPER(prefijo) || '-' || LPAD(siguiente, 5, '0')`.
+Unidades: entero ≥ 1. Base: los dígitos son la parte numérica del código, no el
+folio técnico. Redondeo: **no aplica** (enteros; el relleno con ceros no es
+redondeo). Signo: no aplica. Momento: al **asignar** el ID al viaje (alta o
+backfill), dentro de la misma transacción; el contador se incrementa **antes** de
+devolver el código. Moneda: no aplica. Prefijo: 2–8 caracteres alfanuméricos
+(`0021:614-617`), entregado por el llamador — la base **no** lo deriva del cliente.
+
+**Implementación real (verificada 2026-10-30 en las migraciones en disco; aplicadas solo en `tei_test`):**
+
+| Aspecto | Implementación real | ¿Cumple? |
+|---|---|---|
+| Columna y formato `PREFIJO-00001` | `nucleo.viajes.id_comercial_flete` + `CHECK` `^[A-Z0-9]{2,8}-[0-9]{5}$` (`0021:548-553`) | 🟢 en `tei_test` |
+| Unicidad por (empresa, cliente, código) | índice único parcial `uq_viajes_id_comercial` (`0021:555-557`) | 🟢 |
+| Contador atómico por (empresa, cliente) | tabla `nucleo.id_comercial_contador` (`0021:572-589`); `obtener_siguiente_id_comercial_flete` con `INSERT … ON CONFLICT DO UPDATE` (`0021:603-636`, upsert `:628-634`) | 🟢 |
+| Creciente sin reutilización | el contador no retrocede: trigger `trg_contador_10_no_retrocede` (`0022:284-307`); `registrar_id_comercial_flete` lo alinea con `greatest` (`0021:640-670`, `:668`) | 🟢 |
+| ID inmutable tras asignar (incluido el paso a `NULL`) | trigger `trg_viajes_10_id_comercial_inmutable` (`0022:315-341`); asignar desde `NULL` sigue permitido (backfill) | 🟢 |
+| Tope 99.999 **fail-closed** | guarda `v_numero > 99999` → `23514`; la transacción revierte el incremento (`0022:401-444`, `:434-440`) | 🟢 |
+| "Todo flete lleva ID" | **no impuesto**: columna **nullable**, sin trigger que exija el ID al crear, cerrar o facturar (`0021:548-549`) | 🔴 |
+| Prefijo derivado del cliente | **no existe**: lo entrega el llamador (`0021:606,614-617`); sin tabla ni constraint de prefijo por cliente | 🔴 (`D-18`) |
+| Consumo desde `backend/**` | **ninguno** según el encabezado de `0022:110-113` (grep 2026-10-30): sin escritores ni lectores de la columna | 🔴 |
+
+**Estado de aplicación:** 🟡 `0021` y `0022` están **solo en `tei_test`**
+(`docs/datos/catalogo-migraciones.md:59-60`; `docs/datos/agente-esquema.md:14-15`);
+no se verificaron en la base de la app ni en otro entorno. Este catálogo **no es
+prueba de implementación**: la prueba es el DDL y la base.
+
+**Evidencia ejecutada (en `tei_test`, re-ejecutada por el orquestador):** `0021_02`
+— 8 conexiones con barrera obtuvieron `SQM-00001..00008` sin duplicados ni saltos
+(`docs/orquestacion/registro.md:932`); sondas D3/D2 con el rol real `tei_app`
+(`:951-953`); `0021_04` — mutación M1–M9 y ROLLBACK (`:938-939,971-974`);
+rollback/re-aplicación completa de `0021`+`0022` (`:966-974`). No se ejecutaron
+pruebas en esta sesión: se citan las del registro.
+
+**Clasificación:** **parcial** — numeración, unicidad, monotonía, inmutabilidad y
+tope están impuestas en PostgreSQL y probadas en `tei_test`; faltan (a) aplicar las
+migraciones fuera del clon, (b) imponer que todo flete tenga ID, (c) resolver
+`D-18` (prefijo/resolución) y (d) el consumo desde `backend`.
+
+**Invariantes asociados** (referencia `AW-14` de `docs/datos/agente-esquema.md:190`;
+los IDs `INV-*` los administra `datos`):
+
+- Unicidad del código dentro de `(empresa_id, cliente_id)` — `0021:555-557`.
+- Secuencia creciente sin reutilización — contador monótono no decreciente (`0022:284-307`).
+- ID inmutable una vez asignado — `0022:315-341`.
+- Tope 99.999 fail-closed — `0022:434-440`.
+- **No es invariante hoy:** unicidad del código dentro de `(empresa_id)` — `D-18`.
+
+**Riesgos:**
+
+- **Prefijo colisionante (`D-18`):** dos clientes pueden usar `SQM` y ambos emitir
+  `SQM-00001`; la búsqueda por `(empresa, código)` puede devolver N fletes
+  (`0021:559-564`; verificado en `docs/datos/agente-esquema.md:542,637`). Mientras
+  `D-18` no se responda, la resolución debe llevar **`cliente_id`**.
+- **Tope de 99.999 por cliente:** al agotarse, la emisión falla (`23514`) en vez de
+  continuar con 6 dígitos; el rango es finito y no hay regla para ampliarlo.
+- **Contador adelantable:** `tei_app` conserva `UPDATE` sobre el contador; puede
+  subirlo (no bajarlo) y agotar el rango — falla cerrada, no reutiliza
+  (`docs/datos/agente-esquema.md:675-677`).
+- **Sin enforcement de "todo flete lleva ID"** y sin escritor en `backend/**`:
+  hoy la regla se cumple solo si el llamador invoca las funciones.
+- **Solo `tei_test`:** aplicar las migraciones en la base de la app es riesgo Alto y
+  exige autorización y ventana; ambas están untracked.
+
+**Caso numérico CN-02 — secuencia por (empresa, cliente) y tope fail-closed**
+
+Datos: empresa A; cliente Soquimich con `SQM-00001`, `SQM-00002` y `SQM-00003` ya
+asignados → contador `(A, Soquimich) = 3`.
+Cálculo paso a paso: siguiente = 3 + 1 = 4 → `LPAD('4', 5, '0')` = `00004` →
+**`SQM-00004`**. Otro flete de Soquimich el mismo día: 4 + 1 = 5 → **`SQM-00005`**
+(la secuencia es por cliente, no por fecha). Cliente Cervera en A: contador
+`(A, Cervera) = 0` → 0 + 1 = 1 → **`CER-00001`**. Otra empresa B con un cliente
+homónimo usa su propio contador y arranca en `00001`: la secuencia es por
+(empresa, cliente).
+Borde fail-closed: contador `(A, Soquimich) = 99.998` → 99.999 → **`SQM-99999`**;
+con el contador en 99.999, siguiente = 100.000 → **`23514`**, no se emite código y
+el incremento se revierte (el contador sigue en 99.999; no se quema el número).
+Borde de redondeo: no existe; son enteros y `LPAD` solo rellena ceros (`SQM-00004`,
+nunca `SQM-4`).
+Fuente de la regla: R-04. Pregunta abierta asociada: `D-18`.
 
 ---
 

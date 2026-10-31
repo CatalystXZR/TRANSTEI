@@ -4,6 +4,8 @@
 > **Dueño:** arquitectura · **Verificado:** 2026-10-29 · **Método:** consolidación de lectura de código/DDL y de `matriz-plan-vs-codigo.md`, `retiro-legacy.md`, `destino-modular.md`, `seguridad/hallazgos.md` y `estado.md` §5; sin ejecución.
 > **Caduca si:** se cierra un ítem, cambia el esquema o se ejecuta el cutover.
 > **Re-verificar con:** `grep -n` de la evidencia citada + `docs/estado.md` §5.
+>
+> **Prefijo canónico: `DEU-NN`.** Las 23 filas `D-01…D-23` de este archivo se conservan como alias histórico; **las nuevas deudas usan `DEU-NN`**. El prefijo `D-NN` pertenece a las decisiones del dueño en `docs/negocio/preguntas.md` (`AGENTS.md` §11.2): el `D-18` de este archivo (observabilidad) **no** es el `D-18` de `preguntas.md` (resolución de código de flete).
 
 ---
 

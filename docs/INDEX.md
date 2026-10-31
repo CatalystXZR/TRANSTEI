@@ -32,6 +32,7 @@
 | ¿Cómo se calcula un KPI? | [`negocio/kpis.md`](negocio/kpis.md) | referencia |
 | ¿Qué decisiones están pendientes y de quién? | [`negocio/preguntas.md`](negocio/preguntas.md) | bloqueo |
 | ¿Cuál es el contexto real del negocio? | [`negocio/contexto.md`](negocio/contexto.md) | contexto |
+| ¿Quién es cada rol del agente y qué puede ver? | [`negocio/agente-whatsapp-roles.md`](negocio/agente-whatsapp-roles.md) | regla |
 | ¿Cómo levanto el entorno local? | [`operacion/setup-local.md`](operacion/setup-local.md) | guía |
 | ¿Cómo se hace el cutover sin perder datos? | [`operacion/cutover.md`](operacion/cutover.md) | runbook |
 | ¿Cómo respaldo y restauro? | [`operacion/backup-restore.md`](operacion/backup-restore.md) | runbook |
@@ -39,8 +40,11 @@
 | ¿Qué garantiza PostgreSQL? | [`datos/garantias.md`](datos/garantias.md) | garantía |
 | ¿Qué invariantes NO tienen mecanismo en base? | [`datos/invariantes.md`](datos/invariantes.md) | deuda |
 | ¿Qué hace la migración 00XX? ¿Está aplicada? | [`datos/catalogo-migraciones.md`](datos/catalogo-migraciones.md) | referencia |
+| ¿Qué persiste el agente WhatsApp y qué garantiza? | [`datos/agente-esquema.md`](datos/agente-esquema.md) | diseño + evidencia |
 | ¿Qué prueba cubre esta garantía? | [`desarrollo/pruebas.md`](desarrollo/pruebas.md) | cobertura |
 | ¿Qué se está construyendo? ¿Qué sigue? | [`desarrollo/backlog.md`](desarrollo/backlog.md) | plan |
+| ¿Cómo cerramos el Núcleo, fase por fase? | [`PLAN_DESARROLLO.md`](PLAN_DESARROLLO.md) | plan |
+| ¿Cómo se construye el agente WhatsApp, ola por ola? | [`desarrollo/plan-modulo-agente-whatsapp.md`](desarrollo/plan-modulo-agente-whatsapp.md) | plan |
 | ¿Qué deuda técnica hay y cuánto cuesta? | [`arquitectura/deuda.md`](arquitectura/deuda.md) | deuda |
 | ¿Cómo se escribe código en este repo? | [`desarrollo/guia.md`](desarrollo/guia.md) | guía |
 | ¿En qué estado está la suite? | [`qa/linea-base.md`](qa/linea-base.md) | evidencia |
@@ -73,18 +77,22 @@
 | `negocio/catalogo-reglas.md` | ¿cuál es la regla? | 2026-10-29 | lectura + auditoría |
 | `negocio/implementacion.md` | ¿dónde se implementa? | 2026-10-29 | lectura de código |
 | `negocio/kpis.md` | ¿cómo se calcula? | 2026-10-29 | lectura de código |
-| `negocio/preguntas.md` | ¿qué está bloqueado? | 2026-10-29 | consolidación |
+| `negocio/preguntas.md` | ¿qué está bloqueado? | 2026-10-31 | consolidación |
 | `negocio/contexto.md` | ¿cuál es el negocio? | 2026-10-29 | fuente: dueño |
 | `operacion/setup-local.md` | ¿cómo levanto? | 2026-10-29 | lectura + ejecución |
 | `operacion/cutover.md` | ¿cómo migro? | 2026-10-29 | lectura de scripts |
 | `operacion/backup-restore.md` | ¿cómo respaldo? | 2026-10-29 | lectura de scripts |
 | `operacion/deploy-cloud.md` | ¿cómo despliego? | 2026-10-29 | lectura |
 | `datos/garantias.md` | ¿qué garantiza la DB? | 2026-10-29 | lectura de DDL |
-| `datos/invariantes.md` | ¿qué no está garantizado? | 2026-10-29 | lectura de DDL |
-| `datos/catalogo-migraciones.md` | ¿qué hace cada migración? | 2026-10-29 | lectura de DDL |
+| `datos/invariantes.md` | ¿qué no está garantizado? | 2026-10-30 | lectura de DDL |
+| `datos/catalogo-migraciones.md` | ¿qué hace cada migración? | 2026-10-30 | lectura de DDL |
+| `datos/agente-esquema.md` | ¿qué persiste el agente? | 2026-10-30 | catálogo + ejecución |
+| `negocio/agente-whatsapp-roles.md` | ¿quién puede qué en el agente? | 2026-10-30 | fuente: dueño |
 | `desarrollo/guia.md` | ¿cómo codeo acá? | 2026-10-29 | lectura |
 | `desarrollo/pruebas.md` | ¿qué prueba cubre qué? | 2026-10-29 | lectura |
 | `desarrollo/backlog.md` | ¿qué sigue? | 2026-10-29 | consolidación |
+| `desarrollo/plan-modulo-agente-whatsapp.md` | ¿cómo se construye el agente? | 2026-10-31 | consolidación |
+| `PLAN_DESARROLLO.md` | ¿cómo cerramos el Núcleo? | 2026-10-29 | consolidación |
 | `qa/linea-base.md` | ¿estado de la suite? | 2026-10-29 | ejecución |
 | `qa/matriz-trazabilidad.md` | ¿cobertura por invariante? | 2026-10-29 | consolidación |
 | `qa/uat-piloto.md` | ¿escenarios de aceptación? | 2026-10-29 | lectura |
