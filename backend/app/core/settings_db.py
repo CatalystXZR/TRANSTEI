@@ -1,5 +1,9 @@
+import logging
+
 from app.core.database import get_session
 from app.models import Configuracion
+
+logger = logging.getLogger(__name__)
 
 
 def get_config(session, clave: str, default: str) -> str:
@@ -13,4 +17,9 @@ def get_config_decimal(session, clave: str, default: str):
     try:
         return Decimal(get_config(session, clave, default))
     except Exception:
+        logger.warning(
+            "Configuración %s no es un número válido; se usa el default.",
+            clave,
+            exc_info=True,
+        )
         return Decimal(default)

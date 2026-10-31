@@ -8,13 +8,17 @@ class Settings(BaseSettings):
 
     PROJECT_NAME: str = "ERP Transportes TEI SpA"
     API_V1_PREFIX: str = "/api/v1"
-    DEBUG: bool = True
+    DEBUG: bool = False
 
     SUPABASE_URL: str = ""
     SUPABASE_ANON_KEY: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""
     SUPABASE_JWT_SECRET: str = ""
     DATABASE_URL: str = ""
+    # ADR-0005: DSN del rol `tei_app` (NOBYPASSRLS) para el schema `nucleo`.
+    # Sin esta variable el núcleo cae al motor legacy (un solo motor) y RLS
+    # queda inerte; `get_engine_nucleo()` registra el warning correspondiente.
+    NUCLEO_DATABASE_URL: str = ""
     NUCLEO_TEST_DATABASE_URL: str = ""
 
     CORS_ORIGINS: str = "http://localhost:3000"

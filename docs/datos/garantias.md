@@ -301,6 +301,19 @@ Notas que cambian la lectura de filas anteriores:
 
 ### 14.2 Qué falta (en orden de dependencia)
 
+> **Actualización 2026-10-30 — los puntos 1 a 4 ya tienen migración.**
+> `supabase/migrations/0020_rls_multiempresa.sql` crea el rol `tei_app` (sin
+> `BYPASSRLS`), las funciones de contexto (`nucleo.ctx_empresa`, `ctx_auth_id`,
+> `empresas_del_usuario`), 35 políticas en 31 tablas y `FORCE RLS`; el contexto
+> va por `set_config('app.empresa_id', …, true)`. Verificado con dos conexiones
+> y con mutación **en el clon `tei_test`**; **no aplicada** a la base de la app y
+> **inerte** hasta que el backend conecte como `tei_app` (BYPASSRLS de
+> `postgres` gana sobre FORCE: probado). Diseño, evidencias y handoff:
+> `docs/datos/rls-multiempresa.md`. El punto 5 (FK compuesta de
+> `reservas_recurso`, FK de `auth_id`) **sigue pendiente**, y el punto 6 cambia de
+> forma: la prueba ya existe (`supabase/tests/0020_*`) pero el rol real de la app
+> todavía es `postgres`.
+
 1. **Políticas explícitas** `USING` + `WITH CHECK` por tabla y por operación
    (`SELECT/INSERT/UPDATE/DELETE`), con defecto seguro: sin contexto ⇒ 0 filas.
    Ojo con la recursión: una política sobre `nucleo.usuarios_empresa` que consulte
