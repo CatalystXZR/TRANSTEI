@@ -191,3 +191,32 @@ def traducir_integrity_error(exc: IntegrityError) -> ErrorNucleo:
 
 async def manejador_error_nucleo(request: Request, exc: ErrorNucleo) -> JSONResponse:
     return JSONResponse(status_code=exc.status_code, content=exc.to_dict())
+
+
+class SolicitudYaDecidida(ErrorNucleo):
+    """La solicitud está en estado terminal: no se reabre ni se reclasifica.
+
+    Complementa el trigger `fn_solicitud_transicion` (0021/0022): el trigger es
+    la garantía, este error es la traducción honesta a HTTP 409.
+    """
+
+    status_code = 409
+    codigo = "SOLICITUD_YA_DECIDIDA"
+
+
+class Autoaprobacion(ErrorNucleo):
+    """El aprobador es el solicitante (contrato §6.4, D-13)."""
+
+    status_code = 403
+    codigo = "AUTOAPROBACION"
+
+
+class TipoSinEjecutor(ErrorNucleo):
+    """`confirmar` sobre un tipo cuyo ejecutor todavía no está registrado.
+
+    501 explícito en vez de un 200 que deja la solicitud aprobada sin efecto
+    (contrato §6.6).
+    """
+
+    status_code = 501
+    codigo = "TIPO_SIN_EJECUTOR"

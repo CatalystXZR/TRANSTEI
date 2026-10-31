@@ -367,3 +367,22 @@ def test_sec_036_registry_no_lanza_si_la_carga_falla_de_otra_forma(
     assert cargado.tools_cargadas == 0
     assert "RuntimeError" in (cargado.motivo or "")
     reg._registry = None
+
+
+# ---------------------------------------------------------------------------
+# O2.2 — permisos del buzón (§6.1)
+# ---------------------------------------------------------------------------
+
+
+def test_permisos_del_buzon_solo_para_admin() -> None:
+    from app.nucleo.models import RolEmpresa
+    from app.nucleo.permisos import ROLES_PERMISOS, permisos_de
+
+    assert "agente:buzon" in permisos_de(RolEmpresa.admin)
+    assert "agente:aprobar" in permisos_de(RolEmpresa.admin)
+    # AB-02: `gerente` sigue excluido hasta que el dueño lo ratifique.
+    assert "agente:buzon" not in ROLES_PERMISOS[RolEmpresa.gerente]
+    assert "agente:aprobar" not in ROLES_PERMISOS[RolEmpresa.gerente]
+    for rol in RolEmpresa:
+        if rol is not RolEmpresa.admin:
+            assert "agente:aprobar" not in ROLES_PERMISOS[rol]
