@@ -1394,3 +1394,14 @@ modificó durante esta pasada; no se tocaron ni se incluyeron en ningún commit.
 
 **Evidencia ejecutada:** `make unit` 135; `make test` **353 passed, 0 failed, 0
 skipped**; O2.2 20 + 15 pruebas.
+
+#### Fase 1 — cierre y consolidación (2026-10-31)
+Riesgo: Alto | Estado: cerrada (código) | Commit: pendiente de este cierre
+Hechos confirmados:
+- Otra sesión terminó y commiteó su trabajo (agente WhatsApp: 0021–0023, pantalla, tests). Árbol reconciliado.
+- `make db-reset` reproducible: 23 migraciones aplicadas y registradas; 40 tablas nucleo; 45 políticas RLS; 40 FORCE; `tei_app` sin BYPASSRLS. Corregido: `0020` ya no fija NOSUPERUSER desde `postgres` (bootstrap de rol como supabase_admin); `scripts/bootstrap_db_roles.sh`; `test_db_reset.sh` conserva GRANTs.
+- Suites: `make unit` 135 · `make test` **353 passed, 0 skipped ×3** (desde clon limpio, sin re-clonar entre corridas) · `make e2e` 9/9.
+- Pruebas RLS 0020_01–04 OK sobre clon limpio (0020_01/02 autocontenidos: fixture empresa B + cliente; ya no dependen de datos acumulados).
+- Dependencias: pip-audit 0 CVEs; npm audit (prod) 0. CI: job E2E agregado.
+- Servidor local: backend :8000 con dos engines (RLS activa), frontend :3000.
+Pendientes: commit (este cierre); validación del CI en el primer push; pooler real con SET LOCAL + tei_app; decisiones D-2/D-3 del dueño.

@@ -113,9 +113,8 @@ APP="docker exec -i supabase_db_TRANSTEI psql -h 127.0.0.1"
 $ADMIN -d tei_test -v ON_ERROR_STOP=1 \
   < supabase/migrations/0020_rls_multiempresa.sql
 
-# 1) aislamiento en una sesión (rol tei_app)
-$APP -U tei_app -d tei_test -v ON_ERROR_STOP=1 \
-  < supabase/tests/0020_01_aislamiento.sql
+# 1) aislamiento en una sesión (rol tei_app; el runner crea el fixture de la empresa B)
+bash supabase/tests/0020_01_aislamiento.sh
 
 # 2) dos conexiones simultáneas
 PSQL="$APP" ./supabase/tests/0020_02_dos_conexiones.sh

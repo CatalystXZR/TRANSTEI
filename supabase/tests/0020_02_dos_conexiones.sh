@@ -10,7 +10,7 @@
 # Qué se prueba
 #   1. La sesión de A ve filas de A y CERO de otra empresa.
 #   2. La sesión de B ve filas de B y CERO de otra empresa.
-#   3. A no ve el viaje concreto de B; B no ve el de A.
+#   3. A no ve el cliente concreto de B; B no ve el de A.
 #   4. A inserta un cliente SIN commitear y lo ve (1 fila). B, con su propia
 #      conexión, no lo ve (0 filas): ni por RLS ni por aislamiento de
 #      transacción.
@@ -19,15 +19,15 @@
 # Requisitos
 #   · Migración 0020 aplicada y rol tei_app existente SIN contraseña (el script
 #     entra por socket/host con trust en desarrollo).
+#   · Fixture de la empresa B: `supabase/tests/0020_01_aislamiento.sh` lo crea
+#     (empresa B + cliente). Empresas por defecto: A=TEI, B=empresa de pruebas.
+#     Se pueden sobreescribir con TEI_EMPRESA_A / TEI_EMPRESA_B.
 #   · psql disponible o un prefijo que lo envuelva (docker):
 #       PSQL="docker exec -i supabase_db_TRANSTEI psql -h 127.0.0.1" \
 #       ./supabase/tests/0020_02_dos_conexiones.sh
 #     (La variable se usa con word splitting a propósito: es un prefijo.)
-#   · Base `tei_test` (clon desechable) o cualquier base donde existan dos
-#     empresas con datos. Empresas por defecto: A=TEI, B=empresa de pruebas.
-#     Se pueden sobreescribir con TEI_EMPRESA_A / TEI_EMPRESA_B.
 #
-# No modifica datos: la sesión A hace ROLLBACK.
+# No modifica datos: ambas sesiones hacen ROLLBACK.
 # ============================================================================
 set -uo pipefail
 
@@ -55,25 +55,25 @@ fallo() {
 
 echo "0020-2: resolviendo fixtures con el rol de la aplicación (tei_app)"
 
-VIAJE_A="$(run_psql <<SQL | awk -F'|' '/^MARK/{print $2}'
+CLIENTE_BASE_A="$(run_psql <<SQL | awk -F'|' '/^MARK/{print $2}'
 begin;
 select set_config('app.empresa_id', '$EMPRESA_A', true) is not null;
-select 'MARK|' || id from nucleo.viajes order by numero_viaje limit 1;
+select 'MARK|' || id from nucleo.clientes order by razon_social limit 1;
 rollback;
 SQL
 )"
-VIAJE_B="$(run_psql <<SQL | awk -F'|' '/^MARK/{print $2}'
+CLIENTE_BASE_B="$(run_psql <<SQL | awk -F'|' '/^MARK/{print $2}'
 begin;
 select set_config('app.empresa_id', '$EMPRESA_B', true) is not null;
-select 'MARK|' || id from nucleo.viajes order by numero_viaje limit 1;
+select 'MARK|' || id from nucleo.clientes order by razon_social limit 1;
 rollback;
 SQL
 )"
 
-[ -n "${VIAJE_A:-}" ] || fallo "la empresa A ($EMPRESA_A) no tiene viajes visibles para tei_app"
-[ -n "${VIAJE_B:-}" ] || fallo "la empresa B ($EMPRESA_B) no tiene viajes visibles para tei_app"
-echo "  viaje de A: $VIAJE_A"
-echo "  viaje de B: $VIAJE_B"
+[ -n "${CLIENTE_BASE_A:-}" ] || fallo "la empresa A ($EMPRESA_A) no tiene clientes visibles para tei_app"
+[ -n "${CLIENTE_BASE_B:-}" ] || fallo "la empresa B ($EMPRESA_B) no tiene clientes visibles para tei_app"
+echo "  cliente base de A: $CLIENTE_BASE_A"
+echo "  cliente base de B: $CLIENTE_BASE_B"
 
 CLIENTE_A="$(uuidgen | tr 'A-Z' 'a-z')"
 
@@ -86,12 +86,12 @@ select set_config('app.empresa_id', '$EMPRESA_A', true) is not null;
 select 'A|inicio|' || extract(epoch from clock_timestamp());
 insert into nucleo.clientes (id, empresa_id, razon_social, rut)
 values ('$CLIENTE_A', '$EMPRESA_A', 'Cliente rol A (0020)', 'TST20-A');
-select 'A|viajes|' || count(*) from nucleo.viajes;
-select 'A|ajenos|' || count(*) from nucleo.viajes where empresa_id <> '$EMPRESA_A';
-select 'A|viaje_b_visible|' || count(*) from nucleo.viajes where id = '$VIAJE_B';
+select 'A|clientes|' || count(*) from nucleo.clientes;
+select 'A|ajenos|' || count(*) from nucleo.clientes where empresa_id <> '$EMPRESA_A';
+select 'A|cliente_b_visible|' || count(*) from nucleo.clientes where id = '$CLIENTE_BASE_B';
 select 'A|cliente_propio|' || count(*) from nucleo.clientes where id = '$CLIENTE_A';
 select pg_sleep(2);
-select 'A|viajes_tras_sleep|' || count(*) from nucleo.viajes;
+select 'A|clientes_tras_sleep|' || count(*) from nucleo.clientes;
 select 'A|fin|' || extract(epoch from clock_timestamp());
 rollback;
 SQL
@@ -104,12 +104,12 @@ select pg_sleep(0.4);
 begin;
 select set_config('app.empresa_id', '$EMPRESA_B', true) is not null;
 select 'B|inicio|' || extract(epoch from clock_timestamp());
-select 'B|viajes|' || count(*) from nucleo.viajes;
-select 'B|ajenos|' || count(*) from nucleo.viajes where empresa_id <> '$EMPRESA_B';
-select 'B|viaje_a_visible|' || count(*) from nucleo.viajes where id = '$VIAJE_A';
+select 'B|clientes|' || count(*) from nucleo.clientes;
+select 'B|ajenos|' || count(*) from nucleo.clientes where empresa_id <> '$EMPRESA_B';
+select 'B|cliente_a_visible|' || count(*) from nucleo.clientes where id = '$CLIENTE_BASE_A';
 select 'B|cliente_de_a|' || count(*) from nucleo.clientes where id = '$CLIENTE_A';
 select pg_sleep(2.5);
-select 'B|viajes_tras_sleep|' || count(*) from nucleo.viajes;
+select 'B|clientes_tras_sleep|' || count(*) from nucleo.clientes;
 select 'B|cliente_de_a_tras_commit_aparente|' || count(*) from nucleo.clientes where id = '$CLIENTE_A';
 select 'B|fin|' || extract(epoch from clock_timestamp());
 rollback;
@@ -131,24 +131,24 @@ grep -E '^B\|' "$TMPDIR_TEST/b.out" | sed 's/^/  /'
 
 valor() { awk -F'|' -v k="$2" -v s="$1" '$1==s && $2==k {print $3}' "$TMPDIR_TEST/$3.out"; }
 
-A_VIAJES="$(valor A viajes a)"
+A_CLIENTES="$(valor A clientes a)"
 A_AJENOS="$(valor A ajenos a)"
-A_VB="$(valor A viaje_b_visible a)"
+A_CB="$(valor A cliente_b_visible a)"
 A_CLI="$(valor A cliente_propio a)"
-B_VIAJES="$(valor B viajes b)"
+B_CLIENTES="$(valor B clientes b)"
 B_AJENOS="$(valor B ajenos b)"
-B_VA="$(valor B viaje_a_visible b)"
+B_CA="$(valor B cliente_a_visible b)"
 B_CLI="$(valor B cliente_de_a b)"
 B_CLI2="$(valor B cliente_de_a_tras_commit_aparente b)"
 A_INI="$(valor A inicio a)"; A_FIN="$(valor A fin a)"
 B_INI="$(valor B inicio b)"; B_FIN="$(valor B fin b)"
 
-[ -n "$A_VIAJES" ] && [ "$A_VIAJES" -gt 0 ] || fallo "A no ve viajes propios ($A_VIAJES)"
-[ -n "$B_VIAJES" ] && [ "$B_VIAJES" -gt 0 ] || fallo "B no ve viajes propios ($B_VIAJES)"
-[ "$A_AJENOS" = "0" ] || fallo "A ve $A_AJENOS viajes de otra empresa"
-[ "$B_AJENOS" = "0" ] || fallo "B ve $B_AJENOS viajes de otra empresa"
-[ "$A_VB" = "0" ] || fallo "A ve el viaje concreto de B"
-[ "$B_VA" = "0" ] || fallo "B ve el viaje concreto de A"
+[ -n "$A_CLIENTES" ] && [ "$A_CLIENTES" -gt 0 ] || fallo "A no ve clientes propios ($A_CLIENTES)"
+[ -n "$B_CLIENTES" ] && [ "$B_CLIENTES" -gt 0 ] || fallo "B no ve clientes propios ($B_CLIENTES)"
+[ "$A_AJENOS" = "0" ] || fallo "A ve $A_AJENOS clientes de otra empresa"
+[ "$B_AJENOS" = "0" ] || fallo "B ve $B_AJENOS clientes de otra empresa"
+[ "$A_CB" = "0" ] || fallo "A ve el cliente concreto de B"
+[ "$B_CA" = "0" ] || fallo "B ve el cliente concreto de A"
 [ "$A_CLI" = "1" ] || fallo "A no ve su propio cliente sin commitear ($A_CLI)"
 [ "$B_CLI" = "0" ] || fallo "B ve el cliente sin commitear de A ($B_CLI)"
 [ "$B_CLI2" = "0" ] || fallo "B ve el cliente de A después ($B_CLI2)"

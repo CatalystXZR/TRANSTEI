@@ -18,9 +18,11 @@ docker exec "$CONTAINER" psql -U supabase_admin -d template1 \
 echo "== [2/4] creando ${TEST_DB} =="
 docker exec "$CONTAINER" createdb -U supabase_admin -T template0 "$TEST_DB"
 
-echo "== [3/4] copiando esquema+datos desde ${APP_DB} (pg_dump | psql) =="
+echo "== [3/5] copiando esquema+datos desde ${APP_DB} (pg_dump | psql) =="
+# --no-owner: evita fallos de propiedad; se conservan los GRANTs (roles son
+# cluster-wide y ya existen), necesarios para tei_app en las tablas del agente.
 docker exec "$CONTAINER" bash -c \
-  "pg_dump -U supabase_admin -d ${APP_DB} --no-owner --no-privileges \
+  "pg_dump -U supabase_admin -d ${APP_DB} --no-owner \
    | psql -U supabase_admin -d ${TEST_DB} -v ON_ERROR_STOP=1" >/dev/null
 
 echo "== [4/4] permisos para el rol de la app (postgres) =="

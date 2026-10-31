@@ -39,15 +39,27 @@ from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError
 from sqlmodel import Session
 
+from agente_helpers import asegurar_segunda_empresa
+
 pytestmark = pytest.mark.integracion
 
+_CORRIDA = uuid.uuid4().int % 1_000_000
+
+
+def _telefono(n: int) -> str:
+    # Únicos por corrida: los contactos son irrepetibles bajo RLS (auditoría
+    # append-only) y `uq_contactos_telefono_activo` impediría re-ejecutar la
+    # suite sin refrescar `tei_test`.
+    return f"+569{_CORRIDA:06d}{n:02d}"
+
+
 _TELEFONOS = {
-    "cliente": "+56900000101",
-    "chofer": "+56900000102",
-    "admin": "+56900000103",
-    "sin_acl": "+56900000104",
-    "var_false": "+56900000105",
-    "otp_pendiente": "+56900000106",
+    "cliente": _telefono(1),
+    "chofer": _telefono(2),
+    "admin": _telefono(3),
+    "sin_acl": _telefono(4),
+    "var_false": _telefono(5),
+    "otp_pendiente": _telefono(6),
 }
 
 
@@ -223,11 +235,7 @@ def escenario(base_url_test) -> dict:
             pytest.skip("tei_test sin viajes con cliente/chofer; ejecute `make seed`")
         empresa_id, cliente_id, chofer_id, otro_cliente_id = fila
         _fijar_empresa(conn_app, empresa_id)
-        otra_empresa = conn.execute(
-            "select id from nucleo.empresas where id <> %s limit 1", (empresa_id,)
-        ).fetchone()
-        if otra_empresa is None:
-            pytest.skip("tei_test necesita al menos dos empresas para la prueba de aislamiento")
+        otra_empresa = (asegurar_segunda_empresa(conn),)
 
         contactos = {
             "cliente": _contacto(

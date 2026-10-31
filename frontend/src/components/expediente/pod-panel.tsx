@@ -24,6 +24,9 @@ function ahoraLocal(): string {
   return toDatetimeLocal(new Date());
 }
 
+// Debe coincidir con MAX_FOTOS del backend (Ola 3): tope por envío y acumulado del POD.
+const MAX_FOTOS = 10;
+
 export function PODPanel({
   empresaId,
   viaje,
@@ -177,6 +180,26 @@ export function PODPanel({
     if (!pod) return;
     setEditando(false);
     setError(null);
+  }
+
+  const fotosExistentes = pod?.fotos.length ?? 0;
+  const disponibles = Math.max(0, MAX_FOTOS - fotosExistentes);
+
+  function seleccionarFotos(evento: React.ChangeEvent<HTMLInputElement>) {
+    const seleccionados = Array.from(evento.target.files ?? []);
+    if (disponibles <= 0) {
+      toast.error(`El POD ya tiene ${MAX_FOTOS} fotos (máximo permitido).`);
+      evento.target.value = "";
+      return;
+    }
+    if (seleccionados.length > disponibles) {
+      toast.error(
+        `Solo puede adjuntar ${disponibles} foto(s) más (máximo ${MAX_FOTOS} por POD).`,
+      );
+      setArchivos(seleccionados.slice(0, disponibles));
+      return;
+    }
+    setArchivos(seleccionados);
   }
 
   return (
@@ -335,16 +358,22 @@ export function PODPanel({
 
           <div className="space-y-s2 border-t border-borde p-s4">
             <p className="flex items-center gap-2 text-[15px] font-medium">
-              <Camera className="size-4" /> Fotos de evidencia
+              <Camera className="size-4" /> Fotos de evidencia ({fotosExistentes + archivos.length}/{MAX_FOTOS})
             </p>
             <input
               type="file"
               multiple
               aria-label="Fotos de evidencia"
               accept=".pdf,.jpg,.jpeg,.png,.webp,.heic"
-              onChange={(e) => setArchivos(Array.from(e.target.files ?? []))}
-              className="block w-full text-[14px]"
+              disabled={disponibles === 0}
+              onChange={seleccionarFotos}
+              className="block w-full text-[14px] disabled:opacity-50"
             />
+            {disponibles === 0 && (
+              <p className="text-[13px] text-tinta-3">
+                El POD alcanzó el máximo de {MAX_FOTOS} fotos.
+              </p>
+            )}
             {archivos.length > 0 && (
               <p className="text-[13px] text-tinta-3">{archivos.length} archivo(s) seleccionado(s).</p>
             )}

@@ -23,17 +23,17 @@
 -- tienen BYPASSRLS y verían todo. El primer bloque aborta si el rol no es
 -- `tei_app` (AGENTS.md §8, database-safety §5).
 --
--- Datos: usa dos empresas que ya existen en el clon `tei_test`
+-- Datos: la empresa A es la del seed. La empresa B y su cliente los crea el
+-- runner `0020_01_aislamiento.sh` (idempotente, como supabase_admin), de modo
+-- que la prueba funciona sobre un `tei_test` recién clonado.
 --   A = 11111111-1111-1111-1111-111111111111 (Transportes TEI SpA)
 --   B = b0787fc9-ba4e-4005-9371-40cb7c0fbfa4 (empresa de pruebas)
---   viaje de B = 49f2d33e-7791-4fcd-88be-cef5bd366a43
+--   cliente de B = 49f2d33e-7791-4fcd-88be-cef5bd366a43
 -- No crea empresas. Todo INSERT/UPDATE va dentro de una transacción que
 -- termina en ROLLBACK: no deja datos.
 --
 -- Uso:
---   psql "$TEI_APP_URL" -v ON_ERROR_STOP=1 \
---        -f supabase/tests/0020_01_aislamiento.sql
--- donde $TEI_APP_URL conecta como tei_app (ver 0020_02_dos_conexiones.sh).
+--   bash supabase/tests/0020_01_aislamiento.sh
 -- ============================================================================
 
 \set ON_ERROR_STOP on
@@ -115,49 +115,49 @@ do $$
 declare
   v_a uuid := '11111111-1111-1111-1111-111111111111';
   v_b uuid := 'b0787fc9-ba4e-4005-9371-40cb7c0fbfa4';
-  v_viaje_b uuid := '49f2d33e-7791-4fcd-88be-cef5bd366a43';
-  v_viaje_a uuid;
+  v_cliente_b uuid := '49f2d33e-7791-4fcd-88be-cef5bd366a43';
+  v_cliente_a uuid;
   v_n bigint;
   v_ajenas bigint;
 begin
   perform set_config('app.empresa_id', v_a::text, true);
-  select id into v_viaje_a from nucleo.viajes where empresa_id = v_a order by numero_viaje limit 1;
+  select id into v_cliente_a from nucleo.clientes where empresa_id = v_a order by razon_social limit 1;
 
   -- A
   select count(*) filter (where empresa_id <> v_a), count(*)
-    into v_ajenas, v_n from nucleo.viajes;
+    into v_ajenas, v_n from nucleo.clientes;
   if v_n = 0 then
-    raise exception 'FALLO 0020-1B: con empresa A no se ve ninguna fila de A';
+    raise exception 'FALLO 0020-1B: con empresa A no se ve ningún cliente de A';
   end if;
   if v_ajenas <> 0 then
-    raise exception 'FALLO 0020-1B: con empresa A se ven % viajes de OTRA empresa', v_ajenas;
+    raise exception 'FALLO 0020-1B: con empresa A se ven % clientes de OTRA empresa', v_ajenas;
   end if;
-  select count(*) into v_n from nucleo.viajes where id = v_viaje_b;
+  select count(*) into v_n from nucleo.clientes where id = v_cliente_b;
   if v_n <> 0 then
-    raise exception 'FALLO 0020-1B: un viaje de B es visible con contexto A';
+    raise exception 'FALLO 0020-1B: un cliente de B es visible con contexto A';
   end if;
-  select count(*) into v_n from nucleo.clientes where empresa_id <> v_a;
+  select count(*) into v_n from nucleo.viajes where empresa_id <> v_a;
   if v_n <> 0 then
-    raise exception 'FALLO 0020-1B: con empresa A se ven clientes de otra empresa';
+    raise exception 'FALLO 0020-1B: con empresa A se ven viajes de otra empresa';
   end if;
 
   -- B
   perform set_config('app.empresa_id', v_b::text, true);
   select count(*) filter (where empresa_id <> v_b), count(*)
-    into v_ajenas, v_n from nucleo.viajes;
+    into v_ajenas, v_n from nucleo.clientes;
   if v_n = 0 then
-    raise exception 'FALLO 0020-1C: con empresa B no se ve ninguna fila de B';
+    raise exception 'FALLO 0020-1C: con empresa B no se ve ningún cliente de B';
   end if;
   if v_ajenas <> 0 then
-    raise exception 'FALLO 0020-1C: con empresa B se ven % viajes de OTRA empresa', v_ajenas;
+    raise exception 'FALLO 0020-1C: con empresa B se ven % clientes de OTRA empresa', v_ajenas;
   end if;
-  select count(*) into v_n from nucleo.viajes where id = v_viaje_b;
+  select count(*) into v_n from nucleo.clientes where id = v_cliente_b;
   if v_n <> 1 then
-    raise exception 'FALLO 0020-1C: el viaje de B debería ser visible con contexto B (vistos %)', v_n;
+    raise exception 'FALLO 0020-1C: el cliente de B debería ser visible con contexto B (vistos %)', v_n;
   end if;
-  select count(*) into v_n from nucleo.viajes where id = v_viaje_a;
+  select count(*) into v_n from nucleo.clientes where id = v_cliente_a;
   if v_n <> 0 then
-    raise exception 'FALLO 0020-1C: un viaje de A es visible con contexto B';
+    raise exception 'FALLO 0020-1C: un cliente de A es visible con contexto B';
   end if;
 
   raise notice 'OK 0020-1B/C contexto: cada empresa ve solo sus filas y no ve la fila concreta de la otra';
@@ -231,14 +231,14 @@ end $$;
 do $$
 declare
   v_a uuid := '11111111-1111-1111-1111-111111111111';
-  v_viaje_b uuid := '49f2d33e-7791-4fcd-88be-cef5bd366a43';
+  v_cliente_b uuid := '49f2d33e-7791-4fcd-88be-cef5bd366a43';
   v_n bigint;
 begin
   perform set_config('app.empresa_id', v_a::text, true);
-  update nucleo.viajes set observaciones = 'intento cruzado' where id = v_viaje_b;
+  update nucleo.clientes set razon_social = 'intento cruzado' where id = v_cliente_b;
   get diagnostics v_n = row_count;
   if v_n <> 0 then
-    raise exception 'FALLO 0020-1F: UPDATE de un viaje de B afectó % filas con contexto A', v_n;
+    raise exception 'FALLO 0020-1F: UPDATE de un cliente de B afectó % filas con contexto A', v_n;
   end if;
   raise notice 'OK 0020-1F UPDATE ajeno: 0 filas afectadas, sin error (no filtra existencia)';
 end $$;

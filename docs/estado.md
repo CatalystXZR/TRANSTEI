@@ -28,15 +28,15 @@
 
 | Dato | Valor | Comando |
 |---|---|---|
-| Migraciones en disco | **19** (`0001`–`0019`) | `ls supabase/migrations \| wc -l` |
-| Migraciones en `HEAD` | **19** (corrección 2026-10-29: la cifra anterior "3" era una medición errónea de `git ls-tree` sin slash) | `git ls-tree HEAD supabase/migrations/ \| wc -l` |
-| Migraciones aplicadas en la base local | **19** (tras reset F0 2026-10-29; antes del reset el ledger registraba 14 pero el esquema físico ya contenía objetos de 0015–0017, ver RA-14) | `docker exec supabase_db_TRANSTEI psql -U postgres -tA -c "select count(*) from supabase_migrations.schema_migrations"` |
-| Tablas en `nucleo` | **31** | `grep -rh "create table nucleo" supabase/migrations \| wc -l` |
-| Routers montados | **25** (12 legacy + 13 núcleo) | `grep -c include_router backend/app/api/router.py` |
+| Migraciones en disco | **23** (`0001`–`0023`) | `ls supabase/migrations \| wc -l` |
+| Migraciones en `HEAD` | **23** | `git ls-tree HEAD supabase/migrations/ \| wc -l` |
+| Migraciones aplicadas en la base local | **23** (reset reproducible 2026-10-31: `0001`–`0023`) | `docker exec supabase_db_TRANSTEI psql -U postgres -tA -c "select count(*) from supabase_migrations.schema_migrations"` |
+| Tablas en `nucleo` | **40** | `grep -rh "create table nucleo" supabase/migrations \| wc -l` |
+| Routers montados | **27** (12 legacy + 15 núcleo, incluye agente) | `grep -c include_router backend/app/api/router.py` |
 | Pantallas | **28** | `find frontend/src/app -name page.tsx \| wc -l` |
 | Roles del núcleo | **8** | `backend/app/nucleo/models.py` (`RolEmpresa`) |
-| Unitarias | **67 passed** (fase 1, 2026-10-30) | `make unit` |
-| Integración | **230 passed** (fase 1, 2026-10-30) | `make test` (tei_test) |
+| Unitarias | **135 passed** (fase 1, 2026-10-31) | `make unit` |
+| Integración | **353 passed, 0 skipped** (fase 1, 2026-10-31) | `make test` (tei_test) |
 | E2E definidos | **9** | `grep -cE "^\s*test\(" frontend/e2e/tei.spec.ts` |
 | E2E ejecutados | **9/9 passed** | `make e2e` (F0 2026-10-29) |
 
@@ -100,7 +100,7 @@
 |---|---|---|---|
 | RA-01 | "Piloto cerrado y probado" sin evidencia | 🟡 parcial | `qa` |
 | RA-02 | Doble asignación legacy ↔ núcleo (legacy sin `EXCLUDE`) | 🟢 riesgo confirmado, carrera no reproducida | `datos` + `qa` |
-| RA-03 | Aislamiento multiempresa | 🟢 **ACTIVO en `nucleo` (fase 1, 2026-10-30)**: ADR-0005 aceptado; `0020` aplicada (35 políticas, 31 FORCE); app con dos engines — núcleo `tei_app` (NOBYPASSRLS), legacy con el rol actual y **declarado no aislado** hasta su retiro. Pruebas: A no ve ni escribe de B, sin contexto 0 filas, mutación (núcleo→rol legacy) rompe 6 pruebas. Residual: legacy sin aislamiento; pooler real y concurrencia `tei_app` no probados | `datos` + `backend` |
+| RA-03 | Aislamiento multiempresa | 🟢 **ACTIVO (2026-10-31)**: ADR-0005 aceptado; `0020` + `0021` + `0023` aplicadas (**45 políticas**, **40 FORCE** sobre 40 tablas); app con dos engines — núcleo `tei_app` (NOBYPASSRLS), legacy con el rol actual y **declarado no aislado** hasta su retiro. Pruebas: 0020_01–04 OK desde clon limpio (una sesión, dos conexiones con solape, mutación, compatibilidad); pytest 353/0 skipped. Residual: legacy sin aislamiento; pooler real no probado | `datos` + `backend` |
 | RA-04 | Cutover: flag abierto por defecto + `legacy_congelado()` **fail-open** | 🟢 **corregido (fase 1, Ola 2)**: fail-closed en `servicio_cutover.py:46-60` + `congelar`/`descongelar` con rowcount (SEC-016); revalidado por auditor-seguridad. Residual: caché TTL 5 s por proceso | `auditor-seguridad` |
 | RA-05 | Restore drill no compara antes/después | 🟡 | `datos` |
 | RA-06 | Duplicidad de fuentes (`/maestros` vs `/clientes`, `/dashboard` vs `/tablero`, `/cobranza` vs `/cobranzas`) | 🟢 confirmado | `arquitectura` |
@@ -138,4 +138,4 @@
 
 *F0 — Due Diligence y Línea Base (2026-10-29): informe completo en [`docs/qa/informes/F0-due-diligence.md`](qa/informes/F0-due-diligence.md). **Veredicto: A (REFACTOR), ratificado por el dueño (2026-10-29). F0 cerrada.***
 
-*Fase 1 (2026-10-30, en curso): infraestructura (tei_test + CI + aislamiento de tests), cutover fail-closed, SQLSTATE→HTTP, uploads con firma, idempotencia de documentos, límite de cuerpo y contexto por transacción, deps frontend 12→3. Baseline: 67 unit + 219 integración verdes. **Próxima decisión: aceptar ADR-0005 (tenancy con dos engines) para aplicar `0020` y cambiar el rol de la app.** Detalle por ola en `docs/orquestacion/registro.md`.*
+*Fase 1 (cerrada 2026-10-31): infraestructura reproducible (tei_test + CI con PostgreSQL/E2E + aislamiento de tests), cutover fail-closed, SQLSTATE→HTTP, uploads con firma, idempotencia de documentos, límite de cuerpo y contexto por transacción, **RLS multiempresa activa** (ADR-0005: legacy con rol actual / núcleo `tei_app`), dependencias sin CVEs (pip 0, npm prod 0). Baseline: **135 unit + 353 integración (0 skipped) + 9 E2E** verdes, reproducibles desde `make db-reset` (23 migraciones). Detalle por ola en `docs/orquestacion/registro.md`.*

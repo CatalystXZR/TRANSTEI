@@ -154,17 +154,26 @@ begin
 end
 $$;
 
--- Idempotente: fija los atributos aunque el rol existiera con otros.
--- Sin contraseña a propósito (secreto de despliegue, fuera del repo).
-alter role tei_app with
-  login
-  noinherit
-  nosuperuser
-  nobypassrls
-  nocreatedb
-  nocreaterole
-  noreplication
-  connection limit -1;
+-- Idempotente. `nosuperuser` se omite a propósito: solo un superusuario puede
+-- fijar ese atributo, y `supabase db reset` aplica como `postgres` (CREATEROLE,
+-- no superuser). El rol nace NOSUPERUSER por defecto; en una base existente lo
+-- garantiza `scripts/bootstrap_db_roles.sh` (supabase_admin).
+do $$
+begin
+  begin
+    alter role tei_app with
+      login
+      noinherit
+      nobypassrls
+      nocreatedb
+      nocreaterole
+      noreplication
+      connection limit -1;
+  exception when insufficient_privilege then
+    raise notice '0020: sin privilegios para fijar atributos de tei_app; se asume bootstrap previo.';
+  end;
+end
+$$;
 
 comment on role tei_app is
   'Rol de aplicación del núcleo (0020). Sin BYPASSRLS: toda lectura/escritura '

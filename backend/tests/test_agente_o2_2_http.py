@@ -23,6 +23,8 @@ from uuid import UUID
 import pytest
 from app.core.config import settings
 
+from agente_helpers import asegurar_segunda_empresa, asegurar_segunda_empresa_con_membresia
+
 pytestmark = pytest.mark.integracion
 
 API = settings.API_V1_PREFIX
@@ -152,11 +154,7 @@ def test_rol_sin_permiso_no_lee_el_buzon(
 
 def test_empresa_ajena_no_es_miembro(client, headers_admin, db, admin) -> None:
     """El JWT es válido pero el usuario no pertenece a esa empresa: 403."""
-    otra = db.execute(
-        "select id from nucleo.empresas where id <> %s limit 1", (admin["empresa_id"],)
-    ).fetchone()
-    if otra is None:
-        pytest.skip("tei_test necesita dos empresas")
+    otra = (asegurar_segunda_empresa(db),)
     resp = client.get(RUTA, headers=_headers(headers_admin, otra[0]))
     assert resp.status_code == 403, resp.text
     assert resp.json()["codigo"] == "ACCESO_DENEGADO"
@@ -164,18 +162,9 @@ def test_empresa_ajena_no_es_miembro(client, headers_admin, db, admin) -> None:
 
 def test_detalle_de_otra_empresa_es_404(client, headers_admin, db, admin) -> None:
     """Con membresía correcta pero id de otra empresa: 404, no filtración."""
-    ajena = db.execute(
-        """
-        select ue.empresa_id, ue.id
-          from nucleo.usuarios_empresa ue
-         where ue.empresa_id <> %s
-         limit 1
-        """,
-        (admin["empresa_id"],),
-    ).fetchone()
-    if ajena is None:
-        pytest.skip("tei_test necesita una segunda empresa con membresía")
-    empresa_ajena, miembro_ajeno = ajena
+    empresa_ajena, miembro_ajeno = asegurar_segunda_empresa_con_membresia(
+        db, admin["auth_id"]
+    )
 
     sid = db.execute(
         """

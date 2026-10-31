@@ -42,6 +42,8 @@ from app.nucleo.errores import (
 from app.nucleo.models import RolEmpresa
 from sqlmodel import Session
 
+from agente_helpers import asegurar_segunda_empresa
+
 pytestmark = pytest.mark.integracion
 
 
@@ -148,11 +150,7 @@ def escenario(base_url_test) -> dict:
         if fila is None:
             pytest.skip("tei_test sin viajes; ejecute `make seed`")
         empresa_id, cliente_id, viaje_id = fila
-        otra = conn.execute(
-            "select id from nucleo.empresas where id <> %s limit 1", (empresa_id,)
-        ).fetchone()
-        if otra is None:
-            pytest.skip("tei_test necesita dos empresas")
+        otra = (asegurar_segunda_empresa(conn),)
         miembro = conn.execute(
             "select id, auth_id from nucleo.usuarios_empresa where empresa_id=%s limit 1",
             (empresa_id,),
