@@ -26,6 +26,12 @@
   el ejecutor `hoja_de_ruta`** (SEC-041 y SEC-042) y la evidencia HTTP del cambio
   no es ejecutable/consistente (SEC-044). Detalle en §8.
 
+> **Actualización — revalidación 2026-10-31** (commits `b1f18c7` y `a864a39`):
+> SEC-041 y SEC-043 quedaron **cerrados**; SEC-044 quedó **refutado** (el fixture
+> actual usa un solicitante distinto del aprobador y la suite HTTP es consistente);
+> SEC-042 **sigue abierto en parte** (media: la validación de tipos/`faltantes`
+> no se implementó). El veredicto de §8 queda superado por §10.9.
+
 ---
 
 ## 0. Método y limitación
@@ -656,3 +662,277 @@ rol `datos`/`arquitectura`.
    destructivas ni contra producción (no pude ejecutar nada). No modifiqué
    `hallazgos.md`; este informe es un archivo aparte y continúa la numeración
    desde SEC-041 (el máximo registrado en `docs/seguridad/` es SEC-040).
+
+---
+
+## 10. Revalidación 2026-10-31
+
+### 10.1 Método y límite
+
+- **Objeto:** `b1f18c7` (correcciones SEC-041/042/043), `a864a39` (capa HTTP) y el
+  árbol actual, contrastados con el informe original (`81b9ac7`).
+- **Método:** lectura del código actual, `git show b1f18c7`, `git show a864a39`,
+  `git diff a864a39`, `git log -S` y conteo estático de pruebas. **No se ejecutó
+  pytest**: `shell` volvió a responder `permission.rejected` (solo quedó
+  disponible `git`). Los resultados que aporta el orquestador —18 + 15 `passed`;
+  `make test` → 351 `passed`, 0 `skipped`— se tratan como **nivel 3** y no se
+  reproducen aquí.
+- **Conteo estático:** 18 `def test_` en `test_agente_o2_2_buzon.py` y 15 en
+  `test_agente_o2_2_http.py`, consistente con la cifra aportada. `b1f18c7` añade
+  4 pruebas al servicio (14 → 18); eso explica el paso de 347 a 351 en `make test`
+  respecto del informe del autor.
+- **Sigue sin verificarse:** la ejecución real de las 33 pruebas, el rol efectivo
+  de `NUCLEO_DATABASE_URL` y las dos conexiones reales de `rechazar`/`modificar`
+  (§6 #1–#4). La revalidación es de código, no de ejecución.
+
+### 10.2 Tabla de estados
+
+| ID | Estado en la revalidación | Evidencia principal | ¿Bloquea el buzón? |
+|---|---|---|---|
+| SEC-041 | **cerrado** (código) | `solicitudes.py:355-366`; prueba `test_agente_o2_2_buzon.py:519-549` | No |
+| SEC-042 | **sigue abierto (parcial)** — media | `solicitudes.py:355-366`, `:136-142`, `:244-250`; `0021:520-522` | **Sí, con el ejecutor** |
+| SEC-043 | **cerrado** (defecto original) + efecto nuevo SEC-050 | `solicitudes.py:587-609`; prueba `test_agente_o2_2_buzon.py:593-627` | No (efecto nuevo, bajo) |
+| SEC-044 | **refutado / obsoleto** | `test_agente_o2_2_http.py:83,65-67,298-307`; `git diff a864a39` vacío | No |
+| SEC-045..049 | sin cambios en estos commits; no re-auditados | `git show --stat b1f18c7 a864a39` | No (informativa/baja) |
+| SEC-050 | **nuevo, bajo · potencial** (efecto de SEC-043) | `solicitudes.py:587-609`; `0021:500,520`; `test_agente_o2_2_buzon.py:596-597` | No por sí solo |
+
+### 10.3 SEC-041 — **cerrado** (código) · confianza alta
+
+- **Prioridad actual** en `backend/app/nucleo/agente/solicitudes.py:355-366`:
+  (1) `valores_modificados` del request si no es `None`; (2) el persistido en
+  `solicitudes.valores_modificados`; (3) el `payload` de la solicitud. El
+  `_SELECT_BLOQUEO` ya leía ambas columnas (`:98-115`, en particular `:103-104`) y
+  `decidir` pasa el body al ejecutor (`:496-498`); el `UPDATE` conserva la
+  corrección persistida cuando el body no trae valores
+  (`valores_modificados = coalesce(cast(:valores as jsonb), valores_modificados)`,
+  `:529`).
+- **Traza `modificar` → `modificar` → `confirmar`:** cada `modificar` **reemplaza**
+  el objeto persistido (el `coalesce` de `:529` no fusiona claves); el segundo
+  `modificar` deja el último objeto y `confirmar` sin body usa ese último
+  (`:357-358`). No hay un camino donde la corrección persistida se ignore y se
+  cargue el `payload`. Matiz de diseño: si el segundo `modificar` envía un objeto
+  **parcial**, el primero se pierde en el `modificar` (reemplazo de objeto
+  completo, no merge), no en el `confirmar`; el cliente debe enviar el objeto
+  completo, como describe el contrato §7 (`:1211-1213`).
+- **Fallos cerrados, no pérdidas:** si el persistido fuese `{}` o un no-objeto
+  (solo alcanzable por escritura directa a la tabla —SEC-049—, porque `modificar`
+  exige un dict no vacío, `:449-450`), `confirmar` lanza `DatosInvalidos` en
+  `:361-366` y **no** cae al `payload`. La solicitud queda `pendiente` y se
+  resuelve con un `modificar` válido; es el comportamiento correcto.
+- **Prueba de regresión:** `test_sec_041_confirmar_usa_la_correccion_persistida`
+  (`test_agente_o2_2_buzon.py:519-549`) crea `payload={"km":10}`,
+  `modificar({"km":12})`, `confirmar` sin body y afirma `valores_cargados=={"km":12}`
+  y `payload=={"km":10}`. Cubre persistido > payload.
+- **Cobertura que falta:** el caso **body > persistido** (modificar y luego
+  confirmar con otro objeto) no tiene prueba. `test_confirmar_hoja_de_ruta_no_reescribe_el_payload`
+  (`:325-349`) prueba body sin persistido; el test de SEC-041 prueba persistido
+  sin body. Un mutante que intercambiara las ramas 1 y 2 pasaría ambas pruebas.
+  Es una brecha de mutación, no un defecto actual.
+- **Nivel:** 🟢 código; ejecución de la prueba 🔴 en esta sesión.
+
+### 10.4 SEC-042 — **sigue abierto (parcial)** · media · confianza alta
+
+- **Lo que sí se cerró:** `confirmar` ya no acepta `{}` ni un no-objeto. La guarda
+  `if not isinstance(cargados, dict) or not cargados` (`solicitudes.py:361-366`)
+  se ejecuta antes del `UPDATE` de `hoja_ruta`; el endpoint revierte
+  (`api_solicitudes.py:160-174`). Pruebas:
+  `test_sec_042_confirmar_sin_valores_no_carga` y
+  `test_sec_042_confirmar_con_objeto_vacio_se_rechaza` (`:552-591`). El CHECK
+  `ck_hr_carga_registrada` (`0021:522`) ya no es el único filtro.
+- **Lo que sigue abierto:** la única condición es "dict no vacío". No hay schema
+  de campos ni validación de tipos. Pasan `{"km":"doce"}`, `{"km":null}`,
+  `{"foo":1}` y `{"faltantes":["litros"]}`. Además, el ejecutor sigue **sin leer**
+  `hoja_ruta.payload`, que es donde vive `faltantes` (`:117-122` y `:244-250`);
+  `_faltantes` solo se usa para el resumen y el detalle (`:136-142`, `:149-155`).
+  Por tanto no se cumplen ADR-0003 §14.2 invariante 4 ("ninguna carga se ejecuta
+  con evidencia faltante") ni contrato §6.4 ("datos completos", `:1028`).
+- **Escenario concreto que sigue funcionando:** solicitud `hoja_de_ruta` con
+  `payload={"faltantes":["litros"]}` (o `{"km":null}`) y hoja en
+  `solicitud_creada`; `POST /decidir {accion:"confirmar", version:1}` sin body →
+  `cargados` es ese objeto no vacío → `hoja_ruta.estado='cargado'` y
+  `valores_cargados={...}`; el CHECK solo exige "no nulo" (`0021:522`), y el
+  trigger de transición permite `solicitud_creada → cargado` (`0022:361-365`).
+  El payload original queda inmutable, pero la carga se ejecutó con `faltantes`.
+- **Efecto lateral del nuevo `not cargados`:** si `solicitudes.payload={}` y
+  `hoja_ruta.payload={"km":10}` (dos fuentes que el esquema no obliga a
+  coincidir), `confirmar` sin body devuelve 422 aunque la hoja tenga datos. Es
+  fail-closed y se resuelve con `modificar`, pero confirma que el ejecutor usa
+  una fuente distinta de la que muestra el detalle de la hoja.
+- **Severidad:** media se mantiene. El abuso trivial (`{}`) está cerrado; lo que
+  queda exige un aprobador autorizado (`agente:aprobar`, hoy solo `admin`) y un
+  objeto no vacío con tipos/`faltantes` inválidos. El impacto sigue siendo datos
+  financieros incorrectos en una empresa, sin cross-tenant ni escalamiento.
+- **Para cerrar:** schema de campos acordado con `negocio-finanzas`, validación
+  de tipos y de `faltantes` (vacío, o override explícito y auditado), CHECK de
+  respaldo `jsonb_typeof(valores_cargados)='object'` y, si se decide, `<> '{}'`;
+  pruebas 422 por HTTP para `{}`, `{"km":"doce"}` y `faltantes` no vacío.
+
+### 10.5 SEC-043 — **cerrado** (defecto original) · efecto nuevo SEC-050
+
+- **Corrección:** `_rechazar_hoja_ruta` comprueba `resultado.rowcount`
+  (`solicitudes.py:587-609`); con 0 lanza `ReglaNegocioViolada` (409,
+  `errores.py:106-107`) y el endpoint hace `rollback`
+  (`api_solicitudes.py:160-174`). La prueba
+  `test_sec_043_rechazo_fail_closed_si_la_hoja_no_transiciona`
+  (`:593-627`) deja la solicitud en `pendiente` y la hoja en `propuesto`: el
+  rechazo a medias ya no ocurre.
+- **¿Es fiable `rowcount` con el driver?** El backend usa `psycopg[binary]==3.2.6`
+  (`requirements.txt:9`) con SQLAlchemy; la sentencia es un `UPDATE` **sin**
+  `RETURNING`, y psycopg informa las filas afectadas. Es fiable en este caso.
+  Recomendación defensiva: usar `rowcount != 1` en vez de `== 0`; un driver que
+  devolviera `-1` (no es el caso de psycopg aquí) no dispararía la guarda actual.
+- **¿Falso positivo con un `UPDATE` que toca la fila sin cambiar de estado?** No:
+  el `WHERE` exige `estado='solicitud_creada'` y el `SET` pone `'rechazado'`;
+  toda fila que coincide cambia de estado. Los triggers
+  `fn_hoja_ruta_transicion` (`0022:349-382`) y `fn_version` (`0004:89-96`) no
+  revierten el estado. Si RLS ocultara la fila, `rowcount=0` → falla cerrado.
+  Límite conocido: el esquema no garantiza una sola hoja por solicitud (la
+  UNIQUE parcial `uq_hoja_ruta_carga_por_solicitud` solo cubre `cargado`,
+  `0021:528-529`); `rowcount > 1` es posible y la guarda `== 0` no lo detecta.
+  No es un fallo de seguridad, pero el contrato asume una hoja por solicitud.
+- **Efecto nuevo (SEC-050, bajo · potencial):** `rowcount=0` también ocurre
+  cuando **no existe** fila de `hoja_ruta` para una solicitud `tipo='hoja_de_ruta'`
+  o cuando está en `propuesto`/`cargado`/`rechazado`. En esos casos:
+  - `rechazar` → 409 (nuevo);
+  - `confirmar` → `ReglaNegocioViolada` (el `WHERE` de `:375-377` exige
+    `estado='solicitud_creada'`);
+  - `modificar` no cambia el estado de la hoja.
+  La solicitud queda sin camino de resolución por el buzón (no hay acción
+  `cancelar`: `ACCIONES` en `:45`), es decir, potencialmente irresoluble.
+  **Alcanzabilidad:** el esquema permite `propuesto` con `solicitud_id`
+  (`ck_hr_estado_solicitud`, `0021:520`), el flujo de propuesta representado en
+  las pruebas inserta la hoja sin `solicitud_id`
+  (`0021_03_rls_tei_app.sql:151-154`) y el propio test comenta que es "un estado
+  alcanzable por el alta" (`test...:596-597`). El escritor real (O2.5) no está en
+  el repo, así que **no se puede confirmar** que el alta deje ese estado
+  commiteado: 🟡 potencial, no confirmado.
+  **Remediación:** distinguir "no hay fila" (quizá rechazar solo la solicitud,
+  porque no hay nada que rechazar) de "fila en estado que no transiciona"
+  (409); garantizar que el alta de O2.5 sea atómica (hoja + solicitud +
+  transición a `solicitud_creada` en una transacción) y añadir una prueba del
+  caso sin fila. `backend`/`datos`; prueba `qa`.
+
+### 10.6 SEC-044 — **refutado / obsoleto**
+
+- **Fixture actual:** `backend/tests/test_agente_o2_2_http.py:83` hace
+  `solicitante = usuario_empresa_id or admin["otro_miembro_id"]`; `:65-67`
+  obtiene la segunda membresía y `:84-85` omite la prueba si no existe. La
+  solicitud se crea a nombre de **otra** membresía, no del aprobador. El único
+  caso con la membresía del admin es `test_autoaprobacion_es_403`
+  (`:298-307`), que la pasa explícitamente para probar el 403.
+- **El árbol es idéntico al commit:** `git diff a864a39 -- backend/tests/test_agente_o2_2_http.py`
+  no devuelve nada. `git log -S 'admin["membresia_id"]' -- backend/tests/test_agente_o2_2_http.py`
+  solo encuentra `a864a39`, y la cadena se usa en la prueba de autoaprobación,
+  no en el fixture.
+- **La cita del informe no existe:** `usuario_empresa_id or admin["membresia_id"]`
+  en `:88` no está en el archivo actual ni en el commit; en el archivo actual
+  `:88` es el `insert into nucleo.solicitudes`. Las líneas citadas en §4
+  (`:88`, `:241-252`, `:255-270`, `:288-298`) están desplazadas 3–5 líneas
+  respecto de las actuales (`:83`, `:238-249`, `:252-267`, `:285-295`). Es
+  consistente con haber leído la versión de trabajo **previa** al commit
+  `a864a39`; el informe del autor (`o2-2-buzon-solicitudes.md` §2.1) documenta
+  exactamente ese cambio de fixture.
+- **Conclusión:** la afirmación "tres pruebas reciben 403 `AUTOAPROBACION` donde
+  esperan 200/501 y la capa HTTP no está verificada" **no se sostiene** para
+  `a864a39`+. Con `otro_miembro_id`, `_verificar_autoaprobacion`
+  (`solicitudes.py:421-441`) compara la membresía del admin con la del otro
+  miembro y no lanza; las expectativas 200/200/501 son coherentes.
+- **Observaciones que sobreviven** (no son defectos de seguridad):
+  `test_version_vieja_es_409` escribe `version=5` pero `fn_version` impone
+  `old.version+1` (`0004:89-96`), así que prueba 1 vs 2 y no 5 (sigue siendo un
+  409 válido); `test_no_revela_datos_fuera_del_buzon` busca literales sobre un
+  payload sintético; no hay prueba HTTP de `decidir` cross-tenant → 404, de
+  contacto vinculado al aprobador → 403 ni de campos extra en el body → 422.
+  Son huecos de cobertura, no una suite que falle.
+- **Ejecución:** 🔴 no ejecutada en esta sesión. La evidencia del autor/orquestador
+  (15 `passed`) es nivel 3 y es consistente con la lectura del código.
+
+### 10.7 SEC-045..049 — sin cambios
+
+`b1f18c7` y `a864a39` solo tocan `solicitudes.py`, dos archivos de pruebas y un
+informe; no hay cambios en los controles de SEC-045 (autoaprobación de contacto
+sin vínculo), SEC-046 (servicio confía en el contexto), SEC-047 (payload
+no-objeto), SEC-048 (payload completo en el listado) ni SEC-049 (rol `tei_app`).
+Siguen como estaban: informativas o baja/potencial. SEC-047 no se re-auditó y su
+condición (un escritor que inserte `payload` no-objeto) sigue sin estar en el
+repo.
+
+### 10.8 Respuestas a las preguntas de revalidación
+
+| # | Pregunta | Respuesta | Nivel |
+|---|---|---|---|
+| 1 | ¿SEC-041 cerrado? ¿Se pierde la corrección persistida en algún camino? | **Cerrado.** Prioridad request > persistido > payload (`solicitudes.py:355-366`). `modificar`→`modificar`→`confirmar` carga el último persistido; el segundo `modificar` reemplaza el objeto (no fusiona), lo que puede perder campos si el cliente envía un objeto parcial, pero eso ocurre en el `modificar`, no en el `confirmar`. Un persistido `{}`/no-objeto falla cerrado, no cae al payload. Falta probar body > persistido. | 🟢 código / 🔴 ejecución |
+| 2 | ¿SEC-042 cerrado? ¿Se puede marcar `cargado` sin datos por otra vía? | **No del todo.** `{}` y las listas/no-objetos se rechazan en el servicio (`:361-366`); una lista tampoco encaja con `dict[str, Any]` en el body (`api_solicitudes.py:107`). Pero cualquier dict no vacío pasa: `{"faltantes":["litros"]}`, `{"km":null}`, `{"km":"doce"}`. No hay schema ni chequeo de `faltantes`; el ejecutor no lee `hoja_ruta.payload`. | 🟢 código / 🔴 ejecución |
+| 3 | ¿SEC-043 cerrado? ¿`rowcount` fiable? ¿Falso positivo? | **Cerrado** para el defecto original. `rowcount` es fiable con psycopg 3.2.6 y un `UPDATE` sin `RETURNING`; no hay falso positivo porque el `WHERE` exige `solicitud_creada` y el `SET` cambia a `rechazado`. Efecto nuevo SEC-050 (solicitud sin fila o en `propuesto` queda sin resolución). | 🟢 código / 🔴 ejecución |
+| 4 | ¿SEC-044 es real u obsoleto? | **Refutado/obsoleto.** El fixture actual usa `admin["otro_miembro_id"]` (`:83`), no la membresía del aprobador; el árbol es idéntico a `a864a39`. La cita del informe no existe en el archivo. | 🟢 código |
+| 5 | ¿Las correcciones introducen efectos nuevos? | **Sí, uno relevante (SEC-050, bajo/potencial):** el rechazo fail-closed deja sin resolución una solicitud `hoja_de_ruta` sin fila o con la hoja en `propuesto` (confirmar también falla y `modificar` no transiciona). Además, `confirmar` con `{}` tras un `modificar` válido devuelve 422 (fail-closed; el cliente debe omitir/null) y un `payload` de solicitud vacío con hoja con datos devuelve 422 (resoluble con `modificar`). | 🟡 código |
+| 6 | ¿Queda algún alto/medio abierto que impida encender el buzón? | **Alto no; medio sí: SEC-042 en su parte de validación de tipos/`faltantes`.** SEC-041 y SEC-043 (original) cerrados; SEC-044 refutado. | 🟢 código |
+
+### 10.9 Veredicto: ¿se puede habilitar el buzón?
+
+- **Lectura, `modificar` y `rechazar`: sí.** Los controles de auth, tenant,
+  permisos y concurrencia que el informe original verificó no cambiaron; no hay
+  un bloqueante nuevo en esos ejes. La única reserva es SEC-050: si existen
+  solicitudes `hoja_de_ruta` sin fila o con
+  la hoja en `propuesto`, el rechazo devuelve 409 y la solicitud queda pendiente;
+  conviene corregirlo o al menos detectarlo antes de O2.5.
+- **`confirmar` con el ejecutor `hoja_de_ruta`: no lo certifico todavía.** SEC-042
+  sigue siendo **media**: un aprobador autorizado puede marcar `cargado` con
+  tipos inválidos o con `faltantes` declarados, y el ejecutor ignora la evidencia
+  faltante. El caso trivial `{}` está cerrado, pero la validación de dominio que
+  pedía el propio hallazgo (schema, tipos, `faltantes`) no está.
+- **Opciones honestas:**
+  1. Cerrar SEC-042 (schema + `faltantes` + CHECK de respaldo) y añadir las
+     pruebas 422; luego habilitar el ejecutor.
+  2. Habilitar solo lectura/`modificar`/`rechazar` y dejar
+     `EJECUTORES_SOLICITUD = MappingProxyType({})` (todo `confirmar` → 501
+     `TIPO_SIN_EJECUTOR`, sin efecto), como en el interim de §8.1.
+  3. Habilitar el ejecutor con **aceptación explícita del riesgo** por el dueño,
+     documentada y con la UI impidiendo confirmar si `faltantes` no está vacío.
+     No es una aceptación que este auditor pueda firmar como "cerrado".
+- **SEC-050** no bloquea por sí solo (bajo/potencial), pero debe corregirse o
+  probarse antes de que O2.5 cree solicitudes de forma no atómica.
+
+### 10.10 Pruebas que faltan (no ejecutadas 🔴)
+
+- **Ejecución real** (bloqueada por `permission.rejected`):
+  ```
+  cd backend
+  NUCLEO_TEST_DATABASE_URL="<DSN admin de tei_test>" \
+  NUCLEO_DATABASE_URL="<DSN tei_app de tei_test>" \
+  TEST_ADMIN_EMAIL=… TEST_ADMIN_PASSWORD=… \
+  TEST_CONTABILIDAD_EMAIL=… TEST_CONTABILIDAD_PASSWORD=… \
+  ../.venv/bin/python -m pytest tests/test_agente_o2_2_buzon.py tests/test_agente_o2_2_http.py -v
+  ```
+  y `make test` con la salida real. La cifra 18+15/351 no se reprodujo aquí.
+- **Mutación de SEC-041:** `modificar({"km":12})` → `confirmar` con
+  `{"km":13}` debe cargar 13 (body > persistido). Hoy no hay prueba que
+  distinga el orden de las dos primeras ramas.
+- **SEC-042 restante:** `confirmar` con `{"km":"doce"}`, `{"km":null}` y
+  `{"faltantes":["litros"]}` → 422 (hoy 200); y un caso con
+  `hoja_ruta.payload.faltantes` no vacío.
+- **SEC-043/SEC-050:** rechazar una solicitud `hoja_de_ruta` **sin** fila de
+  hoja y con la hoja en `propuesto`; definir el resultado esperado y probarlo.
+  También el camino normal de rechazo con una sola fila en `solicitud_creada`
+  (ya cubierto por `test_rechazar_deja_estado_motivo_y_hoja_ruta`, `:281-305`).
+- **Cobertura HTTP que sigue faltando:** `POST /decidir` sobre un id de otra
+  empresa → 404 (solo se prueba el GET), contacto vinculado al aprobador → 403,
+  campos extra `estado`/`empresa_id` en el body → 422, y `confirmar` con `{}` →
+  422 por HTTP.
+- **Rol efectivo y concurrencia:** §6 #3 y #4 siguen 🔴; no se revalidaron.
+
+### 10.11 Autoverificación de la revalidación
+
+1. **¿Cada veredicto tiene evidencia?** Sí: `archivo:línea`, diff de git y
+   conteo estático; lo que depende de ejecución está marcado 🔴.
+2. **¿Distingo cerrado de parcial?** Sí: SEC-041 y SEC-043 (original) cerrados;
+   SEC-042 marcado "sigue abierto (parcial)" porque la guarda de vacío no es la
+   validación de dominio que el hallazgo pedía; SEC-044 refutado con cita del
+   archivo actual.
+3. **¿Contradigo al orquestador cuando la evidencia lo exige?** Sí: SEC-042 no
+   está cerrado del todo y SEC-044 no es un defecto actual; se dice con la
+   evidencia, no por coherencia con el mensaje.
+4. **¿Introduzco hallazgos nuevos sin renumerar?** SEC-050 es nuevo y no altera
+   SEC-041..049; el resto de la numeración queda intacta.
+5. **¿Respeté los límites?** Solo se editó este archivo en `docs/seguridad/`; no
+   se ejecutaron pruebas ni se tocó código, configuración o datos.
