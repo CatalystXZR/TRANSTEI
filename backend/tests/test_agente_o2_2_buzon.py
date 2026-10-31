@@ -35,6 +35,7 @@ from app.nucleo.errores import (
     ConflictoConcurrencia,
     DatosInvalidos,
     RecursoNoEncontrado,
+    ReglaNegocioViolada,
     SolicitudYaDecidida,
     TipoSinEjecutor,
 )
@@ -508,3 +509,119 @@ def test_dos_aprobadores_solo_uno_aplica(escenario) -> None:
     assert estado == "aprobada"
     assert version == 2, "una sola transición, no dos efectos"
     assert cargados == {"km": 1}
+
+
+# ---------------------------------------------------------------------------
+# SEC-041/042/043 — correcciones de la revisión independiente
+# ---------------------------------------------------------------------------
+
+
+def test_sec_041_confirmar_usa_la_correccion_persistida(escenario) -> None:
+    """Modificar y luego confirmar debe cargar la corrección, no el payload."""
+    sid = _nueva(escenario, tipo="hoja_de_ruta", payload={"km": 10})
+    with _conexion(escenario["dsn_app"]) as conn:
+        _fijar(conn, escenario["empresa_id"])
+        hid = _crear_hoja_ruta(
+            conn, empresa_id=escenario["empresa_id"],
+            contacto_id=escenario["contacto_id"], solicitud_id=sid,
+            payload={"km": 10},
+        )
+        conn.commit()
+
+    ctx = _contexto(escenario["empresa_id"], escenario["miembro_auth"])
+    with _sesion(ctx) as session:
+        servicio.decidir(session, ctx, sid, accion="modificar", version=1,
+                         valores_modificados={"km": 12})
+        session.commit()
+    with _sesion(ctx) as session:
+        # Sin reenviar valores: debe tomar la corrección persistida.
+        detalle, resultado = servicio.decidir(session, ctx, sid, accion="confirmar",
+                                              version=2)
+        session.commit()
+
+    assert detalle["estado"] == "aprobada"
+    assert resultado["estado"] == "cargado"
+    with _conexion(escenario["dsn"]) as conn:
+        payload, cargados = conn.execute(
+            "select payload, valores_cargados from nucleo.hoja_ruta where id=%s", (hid,)
+        ).fetchone()
+    assert payload == {"km": 10}, "el payload propuesto sigue inmutable"
+    assert cargados == {"km": 12}, "se cargó la corrección, no el valor viejo"
+
+
+def test_sec_042_confirmar_sin_valores_no_carga(escenario) -> None:
+    """Un payload vacío no puede marcar la hoja de ruta como cargada."""
+    sid = _nueva(escenario, tipo="hoja_de_ruta", payload={})
+    with _conexion(escenario["dsn_app"]) as conn:
+        _fijar(conn, escenario["empresa_id"])
+        hid = _crear_hoja_ruta(
+            conn, empresa_id=escenario["empresa_id"],
+            contacto_id=escenario["contacto_id"], solicitud_id=sid, payload={},
+        )
+        conn.commit()
+
+    ctx = _contexto(escenario["empresa_id"], escenario["miembro_auth"])
+    with _sesion(ctx) as session:
+        with pytest.raises(DatosInvalidos):
+            servicio.decidir(session, ctx, sid, accion="confirmar", version=1)
+        session.rollback()
+    with _conexion(escenario["dsn"]) as conn:
+        estado = conn.execute(
+            "select estado::text from nucleo.hoja_ruta where id=%s", (hid,)
+        ).fetchone()[0]
+    assert estado == "solicitud_creada"
+
+
+def test_sec_042_confirmar_con_objeto_vacio_se_rechaza(escenario) -> None:
+    sid = _nueva(escenario, tipo="hoja_de_ruta", payload={"km": 10})
+    with _conexion(escenario["dsn_app"]) as conn:
+        _fijar(conn, escenario["empresa_id"])
+        _crear_hoja_ruta(
+            conn, empresa_id=escenario["empresa_id"],
+            contacto_id=escenario["contacto_id"], solicitud_id=sid,
+            payload={"km": 10},
+        )
+        conn.commit()
+    ctx = _contexto(escenario["empresa_id"], escenario["miembro_auth"])
+    with _sesion(ctx) as session:
+        with pytest.raises(DatosInvalidos):
+            servicio.decidir(session, ctx, sid, accion="confirmar", version=1,
+                             valores_modificados={})
+        session.rollback()
+
+
+def test_sec_043_rechazo_fail_closed_si_la_hoja_no_transiciona(escenario) -> None:
+    """Si la hoja de ruta está en `propuesto`, el rechazo no puede quedar a medias."""
+    sid = _nueva(escenario, tipo="hoja_de_ruta", payload={"km": 1})
+    # INSERT en `propuesto` con solicitud asociada: un estado alcanzable por el
+    # alta, donde el trigger no permite la transición a `rechazado`.
+    with _conexion(escenario["dsn_app"]) as conn:
+        _fijar(conn, escenario["empresa_id"])
+        hid = conn.execute(
+            """
+            insert into nucleo.hoja_ruta
+                (empresa_id, contacto_id, solicitud_id, payload, estado)
+            values (%s, %s, %s, cast(%s as jsonb), 'propuesto')
+            returning id
+            """,
+            (escenario["empresa_id"], escenario["contacto_id"], sid,
+             json.dumps({"km": 1})),
+        ).fetchone()[0]
+        conn.commit()
+
+    ctx = _contexto(escenario["empresa_id"], escenario["miembro_auth"])
+    with _sesion(ctx) as session:
+        with pytest.raises(ReglaNegocioViolada):
+            servicio.decidir(session, ctx, sid, accion="rechazar", version=1,
+                             motivo_rechazo="x")
+        session.rollback()
+
+    with _conexion(escenario["dsn"]) as conn:
+        estado_solicitud = conn.execute(
+            "select estado::text from nucleo.solicitudes where id=%s", (sid,)
+        ).fetchone()[0]
+        estado_hoja = conn.execute(
+            "select estado::text from nucleo.hoja_ruta where id=%s", (hid,)
+        ).fetchone()[0]
+    assert estado_solicitud == "pendiente", "el rechazo no debe quedar a medias"
+    assert estado_hoja == "propuesto"

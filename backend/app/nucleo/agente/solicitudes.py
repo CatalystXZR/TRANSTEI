@@ -345,10 +345,25 @@ def _confirmar_hoja_ruta(
     El `payload` propuesto **no** se reescribe: la corrección va a
     `valores_cargados` (ADR-0003 §14.2; lo impone `fn_hoja_ruta_transicion`,
     0022). El estado lo valida el trigger: aquí no se duplica esa regla.
+
+    Prioridad de los valores (SEC-041): lo que envía el aprobador en este
+    request; si no envía nada, la corrección que ya persistió al **modificar**;
+    solo si nunca se modificó, el payload original. Cargar el `payload` después
+    de un `modificar` dejaría el registro con la corrección y la hoja de ruta con
+    el valor viejo.
     """
-    cargados = valores if valores is not None else solicitud.payload
-    if not isinstance(cargados, dict):
-        raise DatosInvalidos("Los valores a cargar deben ser un objeto JSON.")
+    if valores is not None:
+        cargados = valores
+    elif solicitud.valores_modificados is not None:
+        cargados = solicitud.valores_modificados
+    else:
+        cargados = solicitud.payload
+    if not isinstance(cargados, dict) or not cargados:
+        # SEC-042: un objeto vacío marcaba `cargado` sin datos y el CHECK solo
+        # exige "no nulo".
+        raise DatosInvalidos(
+            "Confirmar exige valores: no hay payload ni corrección que cargar."
+        )
 
     fila = session.execute(
         text(
@@ -560,10 +575,16 @@ def _rechazar_hoja_ruta(
     solicitud: Any,
     motivo: str,
 ) -> None:
-    """Rechazar no necesita ejecutor: solo toca tablas del módulo (§6.6)."""
+    """Rechazar no necesita ejecutor: solo toca tablas del módulo (§6.6).
+
+    Fail-closed (SEC-043): si la hoja de ruta existe pero no está en
+    `solicitud_creada`, el trigger no permite la transición y el `update` no
+    toca filas. Antes la solicitud quedaba `rechazada` con la hoja de ruta en su
+    estado anterior, es decir, un rechazo a medias.
+    """
     if solicitud.tipo != "hoja_de_ruta":
         return
-    session.execute(
+    resultado = session.execute(
         text(
             """
             update nucleo.hoja_ruta
@@ -582,3 +603,7 @@ def _rechazar_hoja_ruta(
             "actor": f"agente:{contexto.auth_id}",
         },
     )
+    if resultado.rowcount == 0:
+        raise ReglaNegocioViolada(
+            "La hoja de ruta no está en estado que permita rechazarla."
+        )
