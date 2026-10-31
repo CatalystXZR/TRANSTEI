@@ -1,9 +1,12 @@
-# Pruebas de garantía de base de datos — 0015, 0016 y 0020
+# Pruebas de garantía de base de datos — 0015, 0016, 0020 y Ola B (`0024`–`0026`)
 
-> **Autor:** agente `datos` · **Fecha:** 2026-10-29 / 2026-10-30
+> **Autor:** agente `datos` · **Fecha:** 2026-10-29 / 2026-10-30 / 2026-10-31
 > **Estado:** `0015`/`0016` escritas, **no ejecutadas** por este agente. Las de
 > `0020` **sí se ejecutaron** el 2026-10-30 en el clon `tei_test`, con salida real
 > en `docs/datos/rls-multiempresa.md` §7.
+> **Ola B (2026-10-31):** `0024_01`, `0025_01`, `0026_01`, `0026_02` y
+> `0025_02` **ejecutadas en verde** en `postgres` y `tei_test`; los tres rollbacks
+> probados en ciclo completo. Salidas en `docs/datos/retiro-legacy-modelo.md` §5.
 >
 > Para `0015`/`0016` no hubo base levantada: 🔴 hasta que alguien las corra y
 > pegue la salida. Para `0020` la evidencia existe, pero solo en el clon: en la
@@ -26,6 +29,12 @@
 | `0020_02_dos_conexiones.sh` | INV-T01 con **dos conexiones simultáneas**: A y B abiertas a la vez, sin verse; A inserta sin commitear y B no lo ve | bash + 2 `psql` en paralelo | No (`ROLLBACK`) |
 | `0020_03_mutacion.sh` | Que la prueba de aislamiento falla si se retira el mecanismo (BYPASSRLS, `USING (true)`) | bash, restaura con `trap` | No |
 | `0020_04_compatibilidad_postgres.sql` | La migración 0020 no rompe al rol actual (`postgres`/BYPASSRLS) | SQL, `ROLLBACK` | No |
+| `0024_01_mantenimiento.sql` | INV-MANT01…05: `costo >= 0`, bordes del semáforo (CN-08), snapshot inmutable, recurso/pauta coherentes, anulación sin borrado | SQL, 1 sesión, `ROLLBACK` | No |
+| `0025_01_liquidaciones.sql` | INV-LIQ01…05: total generado (CN-03), inmutabilidad de la emitida, imputación única, HALF_UP (CN-04), no se borra | SQL, 1 sesión, `ROLLBACK` | No |
+| `0025_02_concurrencia_anticipo.py` | INV-LIQ03 con **2 conexiones** (una sola imputación) e INV-LIQ02 (emisión vs edición ⇒ `23514`) | Python/psycopg, **2 conexiones**, rol `tei_app` | Sí (1 liquidación + 1 anticipo, mes `2099-01`; limpiar con `truncate` como `supabase_admin`) |
+| `0026_01_configuracion.sql` | INV-CFG01…04: una sola vigente, EXCLUDE de solape, valor cerrado inmutable, rango de IVA | SQL, 1 sesión, `ROLLBACK` | No |
+| `0026_02_rls_tei_app.sql` | INV-MANT06 / INV-LIQ06 / INV-CFG05 con el **rol real** `tei_app`: sin contexto 0 filas y 42501; cross-tenant 42501; sin DELETE | SQL, 1 sesión como `tei_app`, `ROLLBACK` | No |
+| `0024_99_rollback.sql`, `0025_99_rollback.sql`, `0026_99_rollback.sql` | Rollback de la Ola B (drop de tablas/vista/funciones; imprime conteos; no usa CASCADE) | SQL, como dueño del esquema | Sí (borra las tablas de la Ola B) |
 
 Decisiones comunes:
 

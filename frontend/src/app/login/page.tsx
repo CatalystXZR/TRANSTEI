@@ -27,8 +27,8 @@ function LoginForm() {
       setError("Correo o contraseña incorrectos. Intente nuevamente.");
       return;
     }
-    const destino = searchParams.get("next") ?? "/dashboard";
-    router.replace(destino.startsWith("/") ? destino : "/dashboard");
+    const destino = searchParams.get("next") ?? "/tablero";
+    router.replace(destino.startsWith("/") ? destino : "/tablero");
   }
 
   return (

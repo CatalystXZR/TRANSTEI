@@ -1,190 +1,248 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CalendarDays, Minus, Receipt, ReceiptText, Equal } from "lucide-react";
-import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { CalendarDays, Info, Receipt, ReceiptText } from "lucide-react";
+import { nucleo } from "@/lib/nucleo";
+import { useNucleoEmpresa } from "@/lib/use-nucleo-empresa";
 import { formatCLP, formatFecha } from "@/lib/format";
-import { CATEGORIA_GASTO_LABEL } from "@/types";
+import type { IvaResumenNucleo } from "@/types/nucleo";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Aviso, FilaVacia, FilasCargando, PageHeader, Panel, StatTileSkeleton } from "@/components/sistema";
+import {
+  Aviso,
+  PageHeader,
+  Panel,
+  StatTile,
+  StatTileSkeleton,
+} from "@/components/sistema";
+import { ErrorNucleo } from "@/components/nucleo/estado-error";
 
-interface IvaResumen {
-  mes: string;
-  tasa: string;
-  debito: string;
-  credito: string;
-  a_pagar: string;
-  facturas: { numero_sii: string; cliente: string; neto: string; iva: string }[];
-  gastos: { id: string; categoria: string; monto: string; iva_credito: string; fecha: string }[];
+function dosDigitos(n: number) {
+  return String(n).padStart(2, "0");
 }
 
-function mesActual() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+function rangoMesActual() {
+  const hoy = new Date();
+  const anio = hoy.getFullYear();
+  const mes = hoy.getMonth() + 1;
+  const ultimoDia = new Date(anio, mes, 0).getDate();
+  return {
+    desde: `${anio}-${dosDigitos(mes)}-01`,
+    hasta: `${anio}-${dosDigitos(mes)}-${dosDigitos(ultimoDia)}`,
+  };
 }
 
-function nombreMes(mes: string) {
-  const [a, m] = mes.split("-").map(Number);
-  if (!a || !m) return mes;
-  return new Intl.DateTimeFormat("es-CL", { month: "long", year: "numeric" }).format(new Date(a, m - 1, 1));
-}
-
-function fechaPago(mes: string) {
-  const [a, m] = mes.split("-").map(Number);
-  if (!a || !m) return "";
-  return new Intl.DateTimeFormat("es-CL", { day: "numeric", month: "long", year: "numeric" }).format(new Date(a, m, 20));
+function numero(valor: string | null | undefined) {
+  if (valor === null || valor === undefined || valor === "") return "—";
+  const n = Number(valor);
+  if (Number.isNaN(n)) return "—";
+  return new Intl.NumberFormat("es-CL", { maximumFractionDigits: 2 }).format(n);
 }
 
 export default function IvaPage() {
-  const [mes, setMes] = useState("");
-  const [data, setData] = useState<IvaResumen | null>(null);
+  const {
+    empresa,
+    empresaId,
+    cargando: cargandoSesion,
+    error: errorSesion,
+  } = useNucleoEmpresa();
+
+  const [desde, setDesde] = useState("");
+  const [hasta, setHasta] = useState("");
+  const [resumen, setResumen] = useState<IvaResumenNucleo | null>(null);
   const [cargando, setCargando] = useState(true);
+  const [errorDatos, setErrorDatos] = useState<unknown>(null);
 
   useEffect(() => {
-    const t = setTimeout(() => setMes(mesActual()), 0);
+    const t = setTimeout(() => {
+      const rango = rangoMesActual();
+      setDesde(rango.desde);
+      setHasta(rango.hasta);
+    }, 0);
     return () => clearTimeout(t);
   }, []);
 
   useEffect(() => {
-    if (!mes) return;
+    if (!empresaId || !desde || !hasta || desde > hasta) return;
     let activo = true;
-    const t = setTimeout(() => setCargando(true), 0);
-    api
-      .get<IvaResumen>(`/iva/resumen?mes=${mes}`)
-      .then((d) => {
-        if (activo) setData(d ?? null);
-      })
-      .catch((e) => {
-        if (activo) toast.error(e instanceof Error ? e.message : "Error al calcular IVA");
-      })
-      .finally(() => {
-        if (activo) setCargando(false);
-      });
+    const t = setTimeout(() => {
+      setCargando(true);
+      setErrorDatos(null);
+      const params = new URLSearchParams({ desde, hasta });
+      nucleo
+        .get<IvaResumenNucleo>(
+          `/nucleo/iva/resumen?${params.toString()}`,
+          empresaId,
+        )
+        .then((data) => {
+          if (activo) setResumen(data);
+        })
+        .catch((e) => {
+          if (activo) setErrorDatos(e);
+        })
+        .finally(() => {
+          if (activo) setCargando(false);
+        });
+    }, 200);
     return () => {
       activo = false;
       clearTimeout(t);
     };
-  }, [mes]);
+  }, [empresaId, desde, hasta]);
+
+  const rangoInvalido = !!desde && !!hasta && desde > hasta;
+  const resumenVisible = rangoInvalido ? null : resumen;
+  const cargandoVista =
+    cargandoSesion ||
+    !desde ||
+    !hasta ||
+    (!rangoInvalido && cargando);
+  const bloqueado = Boolean(errorSesion || errorDatos);
 
   return (
     <div className="space-y-s5">
       <PageHeader
         rotulo="Finanzas"
         titulo="IVA mensual"
-        descripcion="Débito fiscal de las facturas afectas menos el crédito de los gastos con IVA recuperable."
+        descripcion="Resumen de IVA débito del núcleo sobre facturas no anuladas. El crédito fiscal, el monto a pagar y el remanente dependen de P-09 y no están implementados."
         acciones={
-          <label className="flex items-center gap-s2 text-[15px] text-tinta-3">
-            <CalendarDays className="size-[18px]" />
-            <span className="sr-only">Mes</span>
-            <Input type="month" value={mes} onChange={(e) => e.target.value && setMes(e.target.value)} className="w-48" aria-label="Mes a declarar" />
-          </label>
+          <div className="flex flex-wrap items-end gap-s2">
+            <label className="flex items-center gap-s2 text-tinta-3">
+              <CalendarDays className="size-[18px]" aria-hidden="true" />
+              <span className="sr-only">Desde</span>
+              <Input
+                type="date"
+                value={desde}
+                onChange={(e) => setDesde(e.target.value)}
+                className="w-44"
+                aria-label="Fecha desde"
+              />
+            </label>
+            <label className="flex items-center gap-s2 text-tinta-3">
+              <span className="sr-only">Hasta</span>
+              <Input
+                type="date"
+                value={hasta}
+                onChange={(e) => setHasta(e.target.value)}
+                className="w-44"
+                aria-label="Fecha hasta"
+              />
+            </label>
+          </div>
         }
       />
 
-      {cargando || !data ? (
+      <ErrorNucleo error={errorSesion ?? errorDatos} />
+
+      {rangoInvalido && (
+        <Aviso tono="critico" icono={CalendarDays}>
+          La fecha desde no puede ser posterior a la fecha hasta.
+        </Aviso>
+      )}
+
+      {!bloqueado && (
+        <>
+      {empresa && (
+        <p className="text-[14px] text-tinta-3">
+          Empresa: <span className="font-medium text-tinta-2">{empresa.razon_social}</span>
+        </p>
+      )}
+
+      {resumenVisible && (
+        <Aviso tono="info" icono={CalendarDays}>
+          Período consultado: <strong>{formatFecha(resumenVisible.desde)}</strong> al{" "}
+          <strong>{formatFecha(resumenVisible.hasta)}</strong>. Tasa vigente:{" "}
+          <strong>
+            {resumenVisible.tasa_iva === null
+              ? "no configurada"
+              : `${numero(resumenVisible.tasa_iva)} %`}
+          </strong>
+          .
+        </Aviso>
+      )}
+
+      {cargandoVista ? (
         <div className="grid gap-s3 md:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <StatTileSkeleton key={i} />
           ))}
         </div>
+      ) : resumenVisible ? (
+        <div className="grid gap-s3 md:grid-cols-3">
+          <StatTile
+            etiqueta="IVA débito"
+            valor={formatCLP(resumenVisible.iva_debito)}
+            detalle={`${resumenVisible.facturas} factura(s) no anulada(s)`}
+            tono="info"
+            icono={ReceiptText}
+            destacado
+          />
+          <StatTile
+            etiqueta="Base neta"
+            valor={formatCLP(resumenVisible.base_neta)}
+            detalle="Suma de netos de las facturas del rango"
+            tono="ok"
+            icono={Receipt}
+          />
+          <StatTile
+            etiqueta="Tasa de IVA"
+            valor={
+              resumenVisible.tasa_iva === null
+                ? "—"
+                : `${numero(resumenVisible.tasa_iva)} %`
+            }
+            detalle={
+              resumenVisible.tasa_iva === null
+                ? "La empresa no tiene iva_porcentaje configurado"
+                : "Valor vigente en configuración"
+            }
+            tono={resumenVisible.tasa_iva === null ? "atencion" : "neutro"}
+            icono={Info}
+          />
+        </div>
       ) : (
-        <section aria-label="Cuadratura" className="grid items-stretch gap-s3 md:grid-cols-[1fr_auto_1fr_auto_1.15fr]">
-          <div className="rounded-xl border border-borde bg-superficie p-s4 shadow-elev-1">
-            <p className="text-[15px] font-medium text-tinta-3">IVA débito</p>
-            <p className="cifra mt-s3 text-[32px] leading-none font-semibold">{formatCLP(data.debito)}</p>
-            <p className="mt-s2 text-[14px] text-tinta-3">{data.facturas.length} facturas afectas</p>
-          </div>
-          <div className="hidden items-center justify-center text-tinta-3 md:flex" aria-hidden="true">
-            <Minus className="size-5" />
-          </div>
-          <div className="rounded-xl border border-borde bg-superficie p-s4 shadow-elev-1">
-            <p className="text-[15px] font-medium text-tinta-3">IVA crédito</p>
-            <p className="cifra mt-s3 text-[32px] leading-none font-semibold text-ok">{formatCLP(data.credito)}</p>
-            <p className="mt-s2 text-[14px] text-tinta-3">{data.gastos.length} gastos con IVA recuperable</p>
-          </div>
-          <div className="hidden items-center justify-center text-tinta-3 md:flex" aria-hidden="true">
-            <Equal className="size-5" />
-          </div>
-          <div className="relative overflow-hidden rounded-xl border border-marca bg-marca p-s4 text-white shadow-elev-2">
-            <p className="text-[15px] font-medium text-white/75">A pagar</p>
-            <p className="cifra mt-s3 text-[38px] leading-none font-semibold">{formatCLP(data.a_pagar)}</p>
-            <p className="mt-s2 text-[14px] text-white/70">Plazo: {fechaPago(data.mes)}</p>
-            <span className="absolute inset-x-0 bottom-0 h-[3px] bg-senal" aria-hidden="true" />
-          </div>
-        </section>
+        !errorDatos &&
+        !rangoInvalido && (
+          <Panel>
+            <p className="p-s5 text-[15px] text-tinta-3">
+              Seleccione un rango de fechas para consultar el resumen.
+            </p>
+          </Panel>
+        )
       )}
 
-      {mes && (
-        <Aviso icono={CalendarDays}>
-          Período <strong className="capitalize">{nombreMes(mes)}</strong> · tasa {data?.tasa ?? "19"} %. El IVA se declara
-          y paga hasta el día 20 del mes siguiente.
+      {resumenVisible && resumenVisible.facturas === 0 && (
+        <Aviso tono="neutro" icono={ReceiptText}>
+          No hay facturas no anuladas emitidas en el rango. El resumen se calcula igual,
+          con débito cero.
         </Aviso>
       )}
 
-      <div className="grid gap-s4 xl:grid-cols-2">
-        <Panel titulo="Facturas afectas" descripcion="Generan IVA débito">
-          <div className="max-h-[420px] overflow-y-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>N°</TableHead>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead className="text-right">Neto</TableHead>
-                  <TableHead className="text-right">IVA</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {cargando ? (
-                  <FilasCargando columnas={4} filas={3} />
-                ) : !data?.facturas.length ? (
-                  <FilaVacia columnas={4} icono={ReceiptText} titulo="Sin facturas afectas este mes" />
-                ) : (
-                  data.facturas.map((f, i) => (
-                    <TableRow key={i}>
-                      <TableCell className="font-mono">{f.numero_sii}</TableCell>
-                      <TableCell>{f.cliente}</TableCell>
-                      <TableCell className="cifra text-right text-tinta-2">{formatCLP(f.neto)}</TableCell>
-                      <TableCell className="cifra text-right font-semibold">{formatCLP(f.iva)}</TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </Panel>
-        <Panel titulo="Gastos con IVA recuperable" descripcion="Generan IVA crédito">
-          <div className="max-h-[420px] overflow-y-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Categoría</TableHead>
-                  <TableHead className="text-right">Monto</TableHead>
-                  <TableHead className="text-right">Crédito</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {cargando ? (
-                  <FilasCargando columnas={4} filas={3} />
-                ) : !data?.gastos.length ? (
-                  <FilaVacia columnas={4} icono={Receipt} titulo="Sin gastos con IVA recuperable" />
-                ) : (
-                  data.gastos.map((g) => (
-                    <TableRow key={g.id}>
-                      <TableCell className="text-tinta-2">{formatFecha(g.fecha)}</TableCell>
-                      <TableCell>{CATEGORIA_GASTO_LABEL[g.categoria as keyof typeof CATEGORIA_GASTO_LABEL] ?? g.categoria}</TableCell>
-                      <TableCell className="cifra text-right text-tinta-2">{formatCLP(g.monto)}</TableCell>
-                      <TableCell className="cifra text-right font-semibold text-ok">{formatCLP(g.iva_credito)}</TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </Panel>
-      </div>
+      {resumenVisible?.advertencia && (
+        <Aviso tono="atencion" icono={Info}>
+          {resumenVisible.advertencia}
+        </Aviso>
+      )}
+
+      <Panel
+        titulo="Crédito fiscal pendiente"
+        descripcion="Alcance declarado del núcleo, no un error de carga"
+      >
+        <div className="space-y-s3 p-s4">
+          <Aviso tono="neutro" icono={Info}>
+            Esta pantalla muestra <strong>solo IVA débito</strong>. El crédito fiscal de
+            gastos, el monto a pagar, el remanente y el descuento de notas de crédito no
+            están implementados porque dependen de la definición <strong>P-09</strong>.
+            No se muestra un total que el servidor no entrega.
+          </Aviso>
+          <p className="text-[14px] text-tinta-3">
+            Las facturas se agregan por fecha de emisión inclusiva y sólo se excluyen las
+            anuladas. La tasa sale de <code>nucleo.config_vigente</code>; si no está
+            configurada, el resumen la devuelve nula en lugar de asumir 19 %.
+          </p>
+        </div>
+      </Panel>
+        </>
+      )}
     </div>
   );
 }

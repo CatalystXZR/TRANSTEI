@@ -1415,3 +1415,12 @@ Hechos confirmados:
 - UI: `es_legacy` en `/auth/me`; se ocultan las 12 pantallas legacy y la URL directa muestra "Sin permiso" (redirect a /despacho).
 - Verificación: `make unit` 135 · `make test` **388 (0 skipped)** · `make e2e` 9/9 · 4 pruebas HTTP reales (403 legacy tenant2, 200 núcleo TES, 200 legacy TEI, es_legacy true/false).
 Pendientes: CI real en el primer push; pooler real (R-2/R-3); retiro del legacy (ADR-0002) para más tenants; D-2 (cutover) sigue abierta.
+
+#### Fase 2 — retiro del legacy, olas A/B/C (2026-10-31)
+Riesgo: ALTO | Estado: cerrada (código) | Commit: este cierre
+Hechos confirmados:
+- Ola A: 9 pantallas legacy → 308 al núcleo; menú sin grupo legacy (17 ítems núcleo).
+- Ola B: 0024 mantenimiento, 0025 liquidaciones/anticipos/ajustes, 0026 configuración por empresa (46 tablas, 51 políticas, RLS+grants+auditoría); APIs y 4 pantallas del núcleo con paridad. IVA: solo config por empresa; sin config → 409 (corregido: antes aceptaba tasa del request).
+- Ola C: 11 routers legacy de negocio retirados (404); solo /auth + /nucleo (20 routers). Eliminados lib/api.ts, importar-csv, download y aviso legacy. Tests legacy retirados con justificación; R-02 movida a `test_r02_licencia_nucleo.py`.
+- Verificación: `make unit` 128 · `make test` 415 (0 skipped) · `make e2e` 20/20 · OpenAPI sin rutas fuera de /auth y /nucleo.
+Pendiente: Ola D (cutover de datos, D-2) y Ola E (identidad public.usuarios, gate LEGACY_SOLO_TEI/es_legacy, DROP de public con backup+autorización). Documentos que citan archivos borrados listados en ADR-0002 §8.2.

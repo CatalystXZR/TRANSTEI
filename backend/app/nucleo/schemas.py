@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -1540,7 +1540,22 @@ class FacturaCreate(BaseModel):
     viaje_ids: list[UUID] = Field(min_length=1)
     fecha_emision: date = Field(default_factory=date.today)
     fecha_vencimiento: date
-    tasa_iva: Decimal = Field(default=Decimal("0.19"), ge=0, le=1, max_digits=5, decimal_places=4)
+    # DEPRECADO y SIN EFECTO (RET-04, hallazgo F2). La tasa de IVA es un
+    # parámetro tributario de la empresa, no del request: `crear_factura` la
+    # lee de `nucleo.configuracion_empresa` (`iva_porcentaje` vigente) y el
+    # valor que llegue aquí se ignora. Se conserva el campo para no romper a
+    # los clientes que ya lo envían (el diálogo de cobranza del frontend), pero
+    # sin validarlo: rechazar un dato que no se usa solo generaría 422
+    # espurios. Eliminarlo requiere coordinar el retiro del campo en el
+    # frontend (`nueva-factura-dialog.tsx`).
+    tasa_iva: Decimal | None = Field(
+        default=None,
+        deprecated=True,
+        description=(
+            "Ignorado (deprecado). La tasa de IVA se lee de la configuración "
+            "vigente de la empresa (`nucleo.configuracion_empresa.iva_porcentaje`)."
+        ),
+    )
     observaciones: str | None = None
 
     @model_validator(mode="after")
@@ -1801,3 +1816,256 @@ class ErrorOut(BaseModel):
     mensaje: str
     contexto: dict[str, Any] = Field(default_factory=dict)
     errores: list[dict[str, Any]] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Ola B del retiro legacy (0024–0026)
+#   mantenimiento · liquidaciones/anticipos/ajustes · IVA · configuración
+# Los esquemas de escritura usan `extra="forbid"`; las reglas duras (costo >= 0,
+# km >= 0, mes YYYY-MM, IVA 0–100) se repiten en el servicio y en la base.
+# ---------------------------------------------------------------------------
+MES_PATRON = r"^[0-9]{4}-(0[1-9]|1[0-2])$"
+
+
+class PautaMantenimientoCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    recurso_tipo: TipoRecurso = TipoRecurso.tracto
+    item: str = Field(min_length=1, max_length=120)
+    intervalo_km: int = Field(gt=0)
+    intervalo_meses: int | None = Field(default=None, gt=0)
+    alerta_km: int | None = Field(default=None, ge=0)
+    orden: int = Field(default=0, ge=0)
+
+    @field_validator("item")
+    @classmethod
+    def _item_no_vacio(cls, valor: str) -> str:
+        valor = valor.strip()
+        if not valor:
+            raise ValueError("El ítem de la pauta no puede estar vacío.")
+        return valor
+
+    @field_validator("recurso_tipo")
+    @classmethod
+    def _solo_recurso_mantenible(cls, valor: TipoRecurso) -> TipoRecurso:
+        if valor not in (TipoRecurso.tracto, TipoRecurso.rampla):
+            raise ValueError("La pauta solo aplica a tracto o rampla.")
+        return valor
+
+
+class PautaMantenimientoOut(BaseModel):
+    id: UUID
+    recurso_tipo: TipoRecurso
+    item: str
+    intervalo_km: int
+    intervalo_meses: int | None = None
+    alerta_km: int | None = None
+    orden: int
+    activo: bool
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class MantenimientoCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pauta_id: UUID
+    tracto_id: UUID | None = None
+    rampla_id: UUID | None = None
+    fecha: date
+    km: Decimal = Field(ge=0, max_digits=12, decimal_places=1)
+    costo: Decimal = Field(default=Decimal("0"), ge=0, max_digits=14, decimal_places=2)
+    observaciones: str | None = Field(default=None, max_length=1000)
+    respaldo_url: str | None = Field(default=None, max_length=512)
+
+    @model_validator(mode="after")
+    def _un_solo_recurso(self):
+        if (self.tracto_id is None) == (self.rampla_id is None):
+            raise ValueError("Debe indicar exactamente un recurso: tracto o rampla.")
+        if self.respaldo_url:
+            ruta = self.respaldo_url.strip()
+            if (
+                not ruta
+                or ruta.startswith("/")
+                or "://" in ruta
+                or ".." in ruta.split("/")
+            ):
+                raise ValueError(
+                    "respaldo_url debe ser una ruta relativa dentro del almacenamiento."
+                )
+            self.respaldo_url = ruta
+        return self
+
+
+class MantenimientoOut(BaseModel):
+    id: UUID
+    pauta_id: UUID
+    tracto_id: UUID | None = None
+    rampla_id: UUID | None = None
+    fecha: date
+    km: Decimal
+    costo: Decimal
+    estado: str
+    observaciones: str | None = None
+    respaldo_url: str | None = None
+    intervalo_km_snapshot: int
+    intervalo_meses_snapshot: int | None = None
+    alerta_km_snapshot: int | None = None
+    motivo_anulacion: str | None = None
+    anulada_en: datetime | None = None
+    version: int
+    created_at: datetime
+
+
+class EstadoMantenimientoOut(BaseModel):
+    recurso_tipo: TipoRecurso
+    recurso_id: UUID
+    pauta_id: UUID
+    item: str
+    ultimo_km: Decimal | None = None
+    ultima_fecha: date | None = None
+    intervalo_km: int | None = None
+    alerta_km: int | None = None
+    proximo_km: Decimal | None = None
+    proxima_fecha: date | None = None
+    restante_km: Decimal | None = None
+    estado: str
+
+
+class LiquidacionCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    chofer_id: UUID
+    mes: str = Field(pattern=MES_PATRON)
+    sueldo_base: Decimal | None = Field(
+        default=None, ge=0, max_digits=14, decimal_places=2
+    )
+    notas: str | None = Field(default=None, max_length=1000)
+
+
+class LiquidacionOut(BaseModel):
+    id: UUID
+    chofer_id: UUID
+    chofer_nombre: str | None = None
+    mes: str
+    sueldo_base: Decimal
+    comision: Decimal
+    bonos: Decimal
+    descuentos: Decimal
+    anticipos: Decimal
+    total_liquido: Decimal
+    estado: str
+    emitida_en: datetime | None = None
+    emitida_por: str | None = None
+    anulada_en: datetime | None = None
+    anulada_por: str | None = None
+    motivo_anulacion: str | None = None
+    notas: str | None = None
+    version: int
+    created_at: datetime
+
+
+class MotivoAnulacion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    motivo: str = Field(min_length=3, max_length=500)
+
+    @field_validator("motivo")
+    @classmethod
+    def _motivo(cls, valor: str) -> str:
+        valor = valor.strip()
+        if len(valor) < 3:
+            raise ValueError("El motivo de anulación es obligatorio.")
+        return valor
+
+
+class AnularLiquidacion(MotivoAnulacion):
+    """Misma forma que `MotivoAnulacion`; se conserva el nombre del contrato."""
+
+
+class AnticipoCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    chofer_id: UUID
+    fecha: date = Field(default_factory=date.today)
+    monto: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    mes_imputacion: str = Field(pattern=MES_PATRON)
+    notas: str | None = Field(default=None, max_length=1000)
+
+
+class AnticipoOut(BaseModel):
+    id: UUID
+    chofer_id: UUID
+    fecha: date
+    monto: Decimal
+    mes_imputacion: str
+    estado: str
+    liquidacion_id: UUID | None = None
+    motivo_anulacion: str | None = None
+    anulada_en: datetime | None = None
+    notas: str | None = None
+    version: int
+    created_at: datetime
+
+
+class AjusteCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    chofer_id: UUID
+    mes: str = Field(pattern=MES_PATRON)
+    tipo: Literal["bono", "descuento"]
+    concepto: str = Field(min_length=1, max_length=200)
+    monto: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
+
+    @field_validator("concepto")
+    @classmethod
+    def _concepto(cls, valor: str) -> str:
+        valor = valor.strip()
+        if not valor:
+            raise ValueError("El concepto del ajuste no puede estar vacío.")
+        return valor
+
+
+class AjusteOut(BaseModel):
+    id: UUID
+    chofer_id: UUID
+    mes: str
+    tipo: str
+    concepto: str
+    monto: Decimal
+    estado: str
+    liquidacion_id: UUID | None = None
+    motivo_anulacion: str | None = None
+    anulada_en: datetime | None = None
+    version: int
+    created_at: datetime
+
+
+class IvaResumenOut(BaseModel):
+    desde: date
+    hasta: date
+    tasa_iva: Decimal | None = None
+    facturas: int
+    base_neta: Decimal
+    iva_debito: Decimal
+    advertencia: str
+
+
+class ConfiguracionItemOut(BaseModel):
+    clave: str
+    valor: Any
+    vigente_desde: datetime
+    updated_at: datetime
+    version: int
+
+
+class ConfiguracionOut(BaseModel):
+    items: list[ConfiguracionItemOut]
+    mensaje: str
+
+
+class ConfiguracionUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    valor: Any

@@ -1,19 +1,9 @@
 from fastapi import APIRouter
 
-from app.api.routes import (
-    auth,
-    catalogos,
-    configuracion,
-    dashboard,
-    export,
-    facturas,
-    finanzas,
-    gastos,
-    kpis,
-    liquidaciones,
-    mantenimiento,
-    viajes,
-)
+# Ola C (ADR-0002 §6.5, 2026-10-31): los routers legacy de negocio se
+# desmontaron. Solo queda `auth` porque `/auth/me` lo usa el shell y la
+# identidad se retira en la Ola E (G0.1).
+from app.api.routes import auth
 from app.nucleo.api import router as nucleo_router
 from app.nucleo.agente.api import router as nucleo_agente_router
 from app.nucleo.agente.api_solicitudes import router as nucleo_agente_solicitudes_router
@@ -32,17 +22,6 @@ from app.nucleo.api_rentabilidad import router as nucleo_rentabilidad_router
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
-api_router.include_router(catalogos.router)
-api_router.include_router(viajes.router)
-api_router.include_router(gastos.router)
-api_router.include_router(dashboard.router)
-api_router.include_router(facturas.router)
-api_router.include_router(finanzas.router)
-api_router.include_router(mantenimiento.router)
-api_router.include_router(liquidaciones.router)
-api_router.include_router(configuracion.router)
-api_router.include_router(export.router)
-api_router.include_router(kpis.router)
 api_router.include_router(nucleo_router)
 api_router.include_router(nucleo_agente_router)
 api_router.include_router(nucleo_agente_solicitudes_router)

@@ -45,6 +45,7 @@ from app.nucleo.servicio_expediente import ServicioExpediente
 from app.nucleo.servicio_facturacion import ServicioFacturacion
 from app.nucleo.servicio_gastos import ServicioGastos
 from rut_helpers import rut_empresa
+from test_nucleo_facturacion import _configurar_iva
 
 
 def _url() -> str:
@@ -180,6 +181,9 @@ def test_tablero_genera_alertas_de_todas_las_fuentes():
         sufijo = uuid4().hex[:8]
         with Session(engine) as session:
             empresa, cliente, tracto, rampla, chofer, tarifa, oc = _base(session, sufijo)
+            # RET-04: la emisión exige `iva_porcentaje` por empresa; la
+            # migración 0026 solo sembró las empresas existentes al aplicarse.
+            _configurar_iva(empresa, 19)
             despacho = ContextoEmpresa(
                 auth_id=str(uuid4()), empresa=empresa, rol=RolEmpresa.despacho
             )

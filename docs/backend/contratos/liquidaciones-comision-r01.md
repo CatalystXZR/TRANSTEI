@@ -1,9 +1,18 @@
 # Comisión del conductor — R-01 (contrato verificado)
 
+> **RETIRADO del código el 2026-10-31 (Ola C, ADR-0002 §6.5).** El router
+> `backend/app/api/routes/liquidaciones.py` se desmontó y el archivo ya no
+> existe; `GET/POST /api/v1/liquidaciones*` responde 404. Este documento se
+> conserva **como registro histórico del algoritmo legacy** y de la evidencia
+> que lo respaldó. La comisión viva se implementa y prueba en el núcleo:
+> `docs/backend/contratos/ola-b-modulos-nucleo.md` (§nómina) y
+> `backend/tests/test_nucleo_ola_b_modulos.py` (CN-03/CN-04).
+> No usar este contrato para integraciones nuevas.
+
 > **Pregunta que responde:** ¿cómo se calcula y se imputa la comisión del chofer?
 > **Dueño:** `backend` · **Verificado:** 2026-10-29 · **Método:** lectura de código + migraciones
 > **Caduca si:** cambia `_comision_chofer`, el default de comisión o la regla R-01.
-> **Re-verificar con:** `sed -n '51,96p' backend/app/api/routes/liquidaciones.py`
+> **Re-verificar con:** `git show <commit-anterior-a-Ola-C>:backend/app/api/routes/liquidaciones.py`
 
 Regla fuente: `docs/negocio/catalogo-reglas.md` R-01 (dueño, 2026-10-29).
 Implementación: `backend/app/api/routes/liquidaciones.py:51-96` (`_comision_chofer`).

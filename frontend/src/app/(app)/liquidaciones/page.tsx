@@ -1,13 +1,28 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, Download, FileCheck2, FileDown, Lock, Plus, Trash2, Wallet } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  CalendarDays,
+  Download,
+  FileCheck2,
+  Lock,
+  Plus,
+  RefreshCw,
+  Wallet,
+} from "lucide-react";
 import { toast } from "sonner";
-import { cn } from "cn";
-import { api } from "@/lib/api";
-import { descargarArchivo } from "@/lib/download";
-import { formatCLP, formatFecha, formatRut } from "@/lib/format";
-import { useAuth } from "@/context/auth-context";
+import { descargarNucleo, nucleo } from "@/lib/nucleo";
+import { useNucleoEmpresa } from "@/lib/use-nucleo-empresa";
+import { formatCLP, formatFecha, formatFechaHora } from "@/lib/format";
+import type {
+  AjusteCreateNucleo,
+  AjusteNucleo,
+  AnticipoCreateNucleo,
+  AnticipoNucleo,
+  ChoferNucleo,
+  LiquidacionCreateNucleo,
+  LiquidacionNucleo,
+} from "@/types/nucleo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InputCLP } from "@/components/ui-inputs/input-clp";
@@ -19,499 +34,926 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Aviso, FilaVacia, FilasCargando, PageHeader, Panel, StatusBadge } from "@/components/sistema";
-import { Campo, SelectSimple } from "@/components/formulario";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Aviso,
+  FilaVacia,
+  FilasCargando,
+  PageHeader,
+  Panel,
+  StatusBadge,
+  type Tono,
+} from "@/components/sistema";
+import { AreaTexto, Campo, SelectSimple } from "@/components/formulario";
+import { ErrorNucleo } from "@/components/nucleo/estado-error";
 
-interface FilaLiquidacion {
-  chofer_id: string;
-  nombre: string;
-  rut: string;
-  sueldo_base: string;
-  comision: string;
-  anticipos: string;
-  bonos: string;
-  descuentos: string;
-  total: string;
-  liquidacion_id: string | null;
-  estado: string | null;
-}
-
-interface Anticipo {
-  id: string;
-  chofer_id: string;
-  fecha: string;
-  monto: string;
-  mes_liquidacion: string;
-  notas: string | null;
-}
-
-interface Ajuste {
-  id: string;
-  chofer_id: string;
-  mes: string;
-  tipo: "bono" | "descuento";
-  concepto: string;
-  monto: string;
-}
+const ESTADOS_LIQ: Record<string, { tono: Tono; label: string }> = {
+  borrador: { tono: "atencion", label: "Borrador" },
+  emitida: { tono: "ok", label: "Emitida" },
+  anulada: { tono: "critico", label: "Anulada" },
+};
 
 function mesActual() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
+
 function hoyISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function mensajeDeError(error: unknown) {
+  return error instanceof Error ? error.message : "Ocurrió un error inesperado.";
+}
+
+function nombreChofer(chofer: ChoferNucleo) {
+  return [chofer.nombre, chofer.apellido_paterno].filter(Boolean).join(" ");
+}
+
+function etiquetaEstado(estado: string) {
+  return ESTADOS_LIQ[estado] ?? { tono: "neutro" as Tono, label: estado };
+}
+
 export default function LiquidacionesPage() {
-  const { usuario } = useAuth();
+  const {
+    empresa,
+    empresaId,
+    permisos,
+    cargando: cargandoSesion,
+    error: errorSesion,
+  } = useNucleoEmpresa();
+
+  const puedeEscribir = permisos.includes("liquidaciones:escribir");
+  const puedeVerChoferes = permisos.includes("maestros:leer");
+
   const [mes, setMes] = useState("");
-  const [filas, setFilas] = useState<FilaLiquidacion[]>([]);
+  const [choferFiltro, setChoferFiltro] = useState("");
+  const [estadoFiltro, setEstadoFiltro] = useState("");
+  const [liquidaciones, setLiquidaciones] = useState<LiquidacionNucleo[]>([]);
+  const [choferes, setChoferes] = useState<ChoferNucleo[]>([]);
   const [cargando, setCargando] = useState(true);
-  const [choferSel, setChoferSel] = useState<FilaLiquidacion | null>(null);
-  const [anticipos, setAnticipos] = useState<Anticipo[]>([]);
-  const [ajustes, setAjustes] = useState<Ajuste[]>([]);
+  const [errorDatos, setErrorDatos] = useState<unknown>(null);
+  const [recarga, setRecarga] = useState(0);
+
+  const [detalle, setDetalle] = useState<LiquidacionNucleo | null>(null);
+  const [anticipos, setAnticipos] = useState<AnticipoNucleo[]>([]);
+  const [ajustes, setAjustes] = useState<AjusteNucleo[]>([]);
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
+  const [errorDetalle, setErrorDetalle] = useState<unknown>(null);
+
+  const [dialogoNueva, setDialogoNueva] = useState(false);
+  const [formNueva, setFormNueva] = useState({
+    chofer_id: "",
+    sueldo_base: 0,
+    notas: "",
+  });
+  const [errorNueva, setErrorNueva] = useState<string | null>(null);
+
+  const [emitiendo, setEmitiendo] = useState<LiquidacionNucleo | null>(null);
+  const [anulando, setAnulando] = useState<LiquidacionNucleo | null>(null);
+  const [motivo, setMotivo] = useState("");
+  const [errorAnulacion, setErrorAnulacion] = useState<string | null>(null);
 
   const [dialogoAnticipo, setDialogoAnticipo] = useState(false);
-  const [dialogoAjuste, setDialogoAjuste] = useState(false);
-  const [formAnticipo, setFormAnticipo] = useState({ monto: 0, fecha: "" });
-  const [formAjuste, setFormAjuste] = useState<{ tipo: "bono" | "descuento"; concepto: string; monto: number }>({ tipo: "bono", concepto: "", monto: 0 });
-  const [guardando, setGuardando] = useState(false);
-  const [emitiendo, setEmitiendo] = useState<FilaLiquidacion | null>(null);
+  const [formAnticipo, setFormAnticipo] = useState({
+    monto: 0,
+    fecha: hoyISO(),
+    mes_imputacion: "",
+    notas: "",
+  });
+  const [errorAnticipo, setErrorAnticipo] = useState<string | null>(null);
 
-  const puedeEscribir = !!usuario && ["admin", "contabilidad"].includes(usuario.rol);
-  const bloqueada = choferSel?.estado === "emitida";
+  const [dialogoAjuste, setDialogoAjuste] = useState(false);
+  const [formAjuste, setFormAjuste] = useState<{
+    tipo: "bono" | "descuento";
+    concepto: string;
+    monto: number;
+  }>({ tipo: "bono", concepto: "", monto: 0 });
+  const [errorAjuste, setErrorAjuste] = useState<string | null>(null);
+
+  const [procesando, setProcesando] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setMes(mesActual()), 0);
     return () => clearTimeout(t);
   }, []);
 
-  function recargar() {
-    if (!mes) return;
-    api
-      .get<{ mes: string; choferes: FilaLiquidacion[] }>(`/liquidaciones/resumen?mes=${mes}`)
-      .then((r) => {
-        const nuevas = r?.choferes ?? [];
-        setFilas(nuevas);
-        setChoferSel((sel) => (sel ? (nuevas.find((f) => f.chofer_id === sel.chofer_id) ?? sel) : sel));
+  useEffect(() => {
+    if (!empresaId || !puedeVerChoferes) return;
+    let activo = true;
+    nucleo
+      .get<ChoferNucleo[]>("/nucleo/choferes", empresaId)
+      .then((data) => {
+        if (activo) setChoferes(data);
       })
-      .catch((e) => toast.error(e instanceof Error ? e.message : "Error al cargar"))
-      .finally(() => setCargando(false));
-  }
+      .catch(() => {
+        if (activo) setChoferes([]);
+      });
+    return () => {
+      activo = false;
+    };
+  }, [empresaId, puedeVerChoferes]);
 
   useEffect(() => {
-    if (!mes) return;
+    if (!empresaId || !mes) return;
     let activo = true;
-    const t = setTimeout(() => setCargando(true), 0);
-    api
-      .get<{ mes: string; choferes: FilaLiquidacion[] }>(`/liquidaciones/resumen?mes=${mes}`)
-      .then((r) => {
-        if (activo) setFilas(r?.choferes ?? []);
-      })
-      .catch((e) => {
-        if (activo) toast.error(e instanceof Error ? e.message : "Error al cargar");
-      })
-      .finally(() => {
-        if (activo) setCargando(false);
-      });
+    const t = setTimeout(() => {
+      setCargando(true);
+      setErrorDatos(null);
+      const params = new URLSearchParams({ mes });
+      if (choferFiltro) params.set("chofer_id", choferFiltro);
+      if (estadoFiltro) params.set("estado", estadoFiltro);
+      nucleo
+        .get<LiquidacionNucleo[]>(
+          `/nucleo/liquidaciones?${params.toString()}`,
+          empresaId,
+        )
+        .then((data) => {
+          if (activo) setLiquidaciones(data);
+        })
+        .catch((e) => {
+          if (activo) setErrorDatos(e);
+        })
+        .finally(() => {
+          if (activo) setCargando(false);
+        });
+    }, 150);
     return () => {
       activo = false;
       clearTimeout(t);
     };
-  }, [mes]);
+  }, [empresaId, mes, choferFiltro, estadoFiltro, recarga]);
 
-  const totales = useMemo(
-    () => ({
-      liquido: filas.reduce((a, f) => a + Number(f.total), 0),
-      comision: filas.reduce((a, f) => a + Number(f.comision), 0),
-      emitidas: filas.filter((f) => f.estado === "emitida").length,
-    }),
-    [filas],
+  const recargar = useCallback(() => {
+    setRecarga((valor) => valor + 1);
+  }, []);
+
+  const cargarDetalle = useCallback(
+    async (liquidacion: LiquidacionNucleo) => {
+      if (!empresaId) return;
+      setCargandoDetalle(true);
+      setErrorDetalle(null);
+      try {
+        const [listaAnticipos, listaAjustes] = await Promise.all([
+          nucleo.get<AnticipoNucleo[]>(
+            `/nucleo/anticipos?chofer_id=${liquidacion.chofer_id}&mes=${liquidacion.mes}`,
+            empresaId,
+          ),
+          nucleo.get<AjusteNucleo[]>(
+            `/nucleo/ajustes?chofer_id=${liquidacion.chofer_id}&mes=${liquidacion.mes}`,
+            empresaId,
+          ),
+        ]);
+        setAnticipos(listaAnticipos);
+        setAjustes(listaAjustes);
+      } catch (e) {
+        setErrorDetalle(e);
+      } finally {
+        setCargandoDetalle(false);
+      }
+    },
+    [empresaId],
   );
 
-  async function cargarDetalle(choferId: string) {
-    setCargandoDetalle(true);
+  const abrirDetalle = (liquidacion: LiquidacionNucleo) => {
+    setDetalle(liquidacion);
+    setAnticipos([]);
+    setAjustes([]);
+    void cargarDetalle(liquidacion);
+  };
+
+  const contadores = useMemo(() => {
+    return {
+      total: liquidaciones.length,
+      borradores: liquidaciones.filter((l) => l.estado === "borrador").length,
+      emitidas: liquidaciones.filter((l) => l.estado === "emitida").length,
+      anuladas: liquidaciones.filter((l) => l.estado === "anulada").length,
+    };
+  }, [liquidaciones]);
+
+  async function crearBorrador() {
+    setErrorNueva(null);
+    if (!formNueva.chofer_id) {
+      setErrorNueva("Seleccione un chofer.");
+      return;
+    }
+    if (!mes) {
+      setErrorNueva("Seleccione el mes de la liquidación.");
+      return;
+    }
+    const body: LiquidacionCreateNucleo = {
+      chofer_id: formNueva.chofer_id,
+      mes,
+      ...(formNueva.sueldo_base > 0
+        ? { sueldo_base: formNueva.sueldo_base }
+        : {}),
+      ...(formNueva.notas.trim() ? { notas: formNueva.notas.trim() } : {}),
+    };
+    setProcesando("nueva");
     try {
-      const [a, j] = await Promise.all([
-        api.get<Anticipo[]>(`/anticipos?chofer_id=${choferId}&mes=${mes}`),
-        api.get<Ajuste[]>(`/ajustes?chofer_id=${choferId}&mes=${mes}`),
-      ]);
-      setAnticipos(a ?? []);
-      setAjustes(j ?? []);
+      const liquidacion = await nucleo.post<LiquidacionNucleo>(
+        "/nucleo/liquidaciones",
+        empresaId,
+        body,
+      );
+      toast.success("Liquidación creada como borrador");
+      setDialogoNueva(false);
+      setFormNueva({ chofer_id: "", sueldo_base: 0, notas: "" });
+      setDetalle(liquidacion);
+      void cargarDetalle(liquidacion);
+      recargar();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error al cargar detalle");
+      const mensaje = mensajeDeError(e);
+      setErrorNueva(mensaje);
+      toast.error(mensaje);
     } finally {
-      setCargandoDetalle(false);
+      setProcesando(null);
     }
   }
 
-  function abrirDetalle(fila: FilaLiquidacion) {
-    setChoferSel(fila);
-    setAnticipos([]);
-    setAjustes([]);
-    cargarDetalle(fila.chofer_id);
+  async function emitir() {
+    if (!emitiendo) return;
+    setProcesando("emitir");
+    try {
+      const liquidacion = await nucleo.post<LiquidacionNucleo>(
+        `/nucleo/liquidaciones/${emitiendo.id}/emitir`,
+        empresaId,
+        {},
+      );
+      toast.success("Liquidación emitida");
+      setEmitiendo(null);
+      if (detalle?.id === liquidacion.id) {
+        setDetalle(liquidacion);
+        void cargarDetalle(liquidacion);
+      }
+      recargar();
+    } catch (e) {
+      toast.error(mensajeDeError(e));
+    } finally {
+      setProcesando(null);
+    }
+  }
+
+  async function anular() {
+    if (!anulando) return;
+    setErrorAnulacion(null);
+    if (motivo.trim().length < 3) {
+      setErrorAnulacion("El motivo debe tener al menos 3 caracteres.");
+      return;
+    }
+    setProcesando("anular");
+    try {
+      const liquidacion = await nucleo.post<LiquidacionNucleo>(
+        `/nucleo/liquidaciones/${anulando.id}/anular`,
+        empresaId,
+        { motivo: motivo.trim() },
+      );
+      toast.success("Liquidación anulada; el documento se conserva");
+      setAnulando(null);
+      setMotivo("");
+      if (detalle?.id === liquidacion.id) {
+        setDetalle(liquidacion);
+        void cargarDetalle(liquidacion);
+      }
+      recargar();
+    } catch (e) {
+      const mensaje = mensajeDeError(e);
+      setErrorAnulacion(mensaje);
+      toast.error(mensaje);
+    } finally {
+      setProcesando(null);
+    }
   }
 
   async function guardarAnticipo() {
-    if (!choferSel || !formAnticipo.monto) {
-      toast.error("Ingrese el monto del anticipo");
+    if (!detalle) return;
+    setErrorAnticipo(null);
+    if (formAnticipo.monto <= 0) {
+      setErrorAnticipo("El monto del anticipo debe ser mayor que cero.");
       return;
     }
-    setGuardando(true);
+    if (!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(formAnticipo.mes_imputacion)) {
+      setErrorAnticipo("Indique el mes de imputación en formato AAAA-MM.");
+      return;
+    }
+    const body: AnticipoCreateNucleo = {
+      chofer_id: detalle.chofer_id,
+      fecha: formAnticipo.fecha || hoyISO(),
+      monto: formAnticipo.monto,
+      mes_imputacion: formAnticipo.mes_imputacion,
+      ...(formAnticipo.notas.trim() ? { notas: formAnticipo.notas.trim() } : {}),
+    };
+    setProcesando("anticipo");
     try {
-      const qs = new URLSearchParams({ chofer_id: choferSel.chofer_id, monto: String(formAnticipo.monto), fecha: formAnticipo.fecha || hoyISO(), mes_liquidacion: mes });
-      await api.post(`/anticipos?${qs.toString()}`, {});
+      await nucleo.post<AnticipoNucleo>("/nucleo/anticipos", empresaId, body);
       toast.success("Anticipo registrado");
       setDialogoAnticipo(false);
-      cargarDetalle(choferSel.chofer_id);
-      recargar();
+      setFormAnticipo({
+        monto: 0,
+        fecha: hoyISO(),
+        mes_imputacion: detalle.mes,
+        notas: "",
+      });
+      await cargarDetalle(detalle);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error");
+      const mensaje = mensajeDeError(e);
+      setErrorAnticipo(mensaje);
+      toast.error(mensaje);
     } finally {
-      setGuardando(false);
+      setProcesando(null);
     }
   }
 
   async function guardarAjuste() {
-    if (!choferSel || !formAjuste.concepto.trim() || !formAjuste.monto) {
-      toast.error("Complete concepto y monto");
+    if (!detalle) return;
+    setErrorAjuste(null);
+    if (!formAjuste.concepto.trim()) {
+      setErrorAjuste("El concepto es obligatorio.");
       return;
     }
-    setGuardando(true);
+    if (formAjuste.monto < 0) {
+      setErrorAjuste("El monto no puede ser negativo.");
+      return;
+    }
+    const body: AjusteCreateNucleo = {
+      chofer_id: detalle.chofer_id,
+      mes: detalle.mes,
+      tipo: formAjuste.tipo,
+      concepto: formAjuste.concepto.trim(),
+      monto: formAjuste.monto,
+    };
+    setProcesando("ajuste");
     try {
-      const qs = new URLSearchParams({ chofer_id: choferSel.chofer_id, mes, tipo: formAjuste.tipo, concepto: formAjuste.concepto.trim(), monto: String(formAjuste.monto) });
-      await api.post(`/ajustes?${qs.toString()}`, {});
-      toast.success(formAjuste.tipo === "bono" ? "Bono registrado" : "Descuento registrado");
+      await nucleo.post<AjusteNucleo>("/nucleo/ajustes", empresaId, body);
+      toast.success(
+        formAjuste.tipo === "bono" ? "Bono registrado" : "Descuento registrado",
+      );
       setDialogoAjuste(false);
-      cargarDetalle(choferSel.chofer_id);
-      recargar();
+      setFormAjuste({ tipo: "bono", concepto: "", monto: 0 });
+      await cargarDetalle(detalle);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error");
+      const mensaje = mensajeDeError(e);
+      setErrorAjuste(mensaje);
+      toast.error(mensaje);
     } finally {
-      setGuardando(false);
+      setProcesando(null);
     }
   }
 
-  async function eliminar(tipo: "anticipos" | "ajustes", id: string) {
+  async function exportar() {
+    if (!mes) return;
     try {
-      await api.del(`/${tipo}/${id}`);
-      toast.success("Registro eliminado");
-      if (choferSel) cargarDetalle(choferSel.chofer_id);
-      recargar();
+      await descargarNucleo(
+        `/nucleo/export/liquidaciones?mes=${mes}`,
+        empresaId,
+        `liquidaciones_${mes}.csv`,
+      );
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error");
+      toast.error(mensajeDeError(e));
     }
   }
 
-  async function guardarBorrador(fila: FilaLiquidacion) {
-    try {
-      await api.post(`/liquidaciones/calcular?chofer_id=${fila.chofer_id}&mes=${mes}`, {});
-      toast.success("Liquidación guardada como borrador");
-      recargar();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error");
-    }
-  }
-
-  async function confirmarEmitir() {
-    if (!emitiendo) return;
-    try {
-      const liq = await api.post<{ id: string }>(`/liquidaciones/calcular?chofer_id=${emitiendo.chofer_id}&mes=${mes}`, {});
-      const id = liq?.id ?? emitiendo.liquidacion_id;
-      if (!id) throw new Error("No se pudo calcular la liquidación");
-      await api.post(`/liquidaciones/${id}/emitir`, {});
-      toast.success(`Liquidación de ${emitiendo.nombre} emitida`);
-      setEmitiendo(null);
-      setChoferSel(null);
-      recargar();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error");
-    }
-  }
-
-  async function descargarPdf(fila: FilaLiquidacion) {
-    if (!fila.liquidacion_id) {
-      toast.error("Guarde o emita la liquidación antes de descargar el PDF");
-      return;
-    }
-    try {
-      await descargarArchivo(`/liquidaciones/${fila.liquidacion_id}/pdf`, `liquidacion_${fila.rut.replace(/[^\dKk]/g, "")}_${mes}.pdf`);
-    } catch {
-      toast.error("No se pudo generar el PDF");
-    }
-  }
-
-  const estadoBadge = (f: FilaLiquidacion) =>
-    f.estado === "emitida" ? (
-      <StatusBadge tono="ok">Emitida</StatusBadge>
-    ) : f.liquidacion_id ? (
-      <StatusBadge tono="atencion">Borrador</StatusBadge>
-    ) : (
-      <StatusBadge tono="neutro">Sin calcular</StatusBadge>
-    );
+  const cargandoVista = cargandoSesion || !mes || cargando;
+  const bloqueado = Boolean(errorSesion || errorDatos);
+  const opcionesChofer = choferes.map((c) => ({
+    valor: c.id,
+    etiqueta: `${nombreChofer(c)} · ${c.rut}`,
+  }));
+  const puedeEditarDetalle = puedeEscribir && detalle?.estado === "borrador";
 
   return (
     <div className="space-y-s5">
       <PageHeader
         rotulo="Finanzas"
         titulo="Liquidaciones de sueldo"
-        descripcion="Sueldo = base + comisión de los fletes finalizados del mes + bonos − descuentos − anticipos."
+        descripcion="Documentos del núcleo con montos almacenados: base, comisión de fletes, bonos, descuentos y anticipos. Emitir es idempotente y anular conserva el documento."
         acciones={
           <>
             <label className="flex items-center gap-s2 text-tinta-3">
               <CalendarDays className="size-[18px]" />
-              <Input type="month" value={mes} onChange={(e) => e.target.value && setMes(e.target.value)} className="w-48" aria-label="Mes de liquidación" />
+              <span className="sr-only">Mes de liquidación</span>
+              <Input
+                type="month"
+                value={mes}
+                onChange={(e) => e.target.value && setMes(e.target.value)}
+                className="w-48"
+                aria-label="Mes de liquidación"
+              />
             </label>
             <Button
               variant="outline"
-              onClick={() =>
-                descargarArchivo(`/export/liquidaciones?mes=${mes}`, `liquidaciones_${mes}.csv`).catch((e) =>
-                  toast.error(e instanceof Error ? e.message : "Error al exportar"),
-                )
-              }
+              onClick={() => void exportar()}
+              disabled={!mes || bloqueado}
             >
-              <Download /> Exportar
+              <Download /> Exportar CSV
+            </Button>
+            <Button
+              variant="outline"
+              onClick={recargar}
+              disabled={!empresaId || cargando}
+            >
+              <RefreshCw className={cargando ? "animate-spin" : undefined} />
+              Actualizar
             </Button>
           </>
         }
       />
 
-      {!cargando && filas.length > 0 && (
-        <div className="grid gap-s3 sm:grid-cols-3">
-          <div className="rounded-xl border border-borde bg-superficie px-s4 py-s3 shadow-elev-1">
-            <p className="text-[14px] text-tinta-3">Total líquido del mes</p>
-            <p className="cifra text-[26px] font-semibold">{formatCLP(totales.liquido)}</p>
-          </div>
-          <div className="rounded-xl border border-borde bg-superficie px-s4 py-s3 shadow-elev-1">
-            <p className="text-[14px] text-tinta-3">Comisiones</p>
-            <p className="cifra text-[26px] font-semibold">{formatCLP(totales.comision)}</p>
-          </div>
-          <div className="rounded-xl border border-borde bg-superficie px-s4 py-s3 shadow-elev-1">
-            <p className="text-[14px] text-tinta-3">Emitidas</p>
-            <p className="cifra text-[26px] font-semibold">
-              {totales.emitidas} <span className="text-[16px] font-normal text-tinta-3">de {filas.length}</span>
-            </p>
-          </div>
-        </div>
+      <ErrorNucleo error={errorSesion ?? errorDatos} />
+
+      {!bloqueado && (
+        <>
+      {empresa && (
+        <p className="text-[14px] text-tinta-3">
+          Empresa: <span className="font-medium text-tinta-2">{empresa.razon_social}</span>
+        </p>
       )}
 
-      <Panel>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Chofer</TableHead>
-              <TableHead className="text-right">Base</TableHead>
-              <TableHead className="text-right">Comisión</TableHead>
-              <TableHead className="text-right">Ajustes</TableHead>
-              <TableHead className="text-right">Anticipos</TableHead>
-              <TableHead className="text-right">Líquido</TableHead>
-              <TableHead>Estado</TableHead>
-              <TableHead className="text-right">
-                <span className="sr-only">Acciones</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {cargando ? (
-              <FilasCargando columnas={8} />
-            ) : filas.length === 0 ? (
-              <FilaVacia columnas={8} icono={Wallet} titulo="No hay choferes activos" descripcion="Registre choferes para calcular sus liquidaciones." />
-            ) : (
-              filas.map((f) => {
-                const ajuste = Number(f.bonos) - Number(f.descuentos);
-                return (
-                  <TableRow key={f.chofer_id} className="cursor-pointer" onClick={() => abrirDetalle(f)}>
-                    <TableCell>
-                      <span className="font-medium">{f.nombre}</span>
-                      <span className="block font-mono text-[13px] text-tinta-3">{formatRut(f.rut)}</span>
-                    </TableCell>
-                    <TableCell className="cifra text-right text-tinta-2">{formatCLP(f.sueldo_base)}</TableCell>
-                    <TableCell className="cifra text-right text-tinta-2">{formatCLP(f.comision)}</TableCell>
-                    <TableCell className={cn("cifra text-right", ajuste > 0 ? "text-ok" : ajuste < 0 ? "text-critico" : "text-tinta-3")}>
-                      {ajuste === 0 ? "—" : `${ajuste > 0 ? "+" : "−"}${formatCLP(Math.abs(ajuste))}`}
-                    </TableCell>
-                    <TableCell className="cifra text-right text-critico">{Number(f.anticipos) ? `−${formatCLP(f.anticipos)}` : <span className="text-tinta-3">—</span>}</TableCell>
-                    <TableCell className="cifra text-right text-[17px] font-semibold">{formatCLP(f.total)}</TableCell>
-                    <TableCell>{estadoBadge(f)}</TableCell>
-                    <TableCell onClick={(e) => e.stopPropagation()}>
-                      <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon-sm" onClick={() => descargarPdf(f)} disabled={!f.liquidacion_id} aria-label={`Descargar PDF de ${f.nombre}`} title="Descargar PDF">
-                          <FileDown />
-                        </Button>
-                        {puedeEscribir && f.estado !== "emitida" && (
-                          <Button variant="outline" size="xs" onClick={() => setEmitiendo(f)}>
-                            <FileCheck2 /> Emitir
+      <div className="flex flex-wrap items-end gap-s3">
+        <div className="w-[260px]">
+          <SelectSimple
+            valor={choferFiltro}
+            onCambio={setChoferFiltro}
+            opciones={opcionesChofer}
+            placeholder="Todos los choferes"
+            ariaLabel="Filtrar por chofer"
+          />
+        </div>
+        <div className="w-[200px]">
+          <SelectSimple
+            valor={estadoFiltro}
+            onCambio={setEstadoFiltro}
+            opciones={[
+              { valor: "borrador", etiqueta: "Borrador" },
+              { valor: "emitida", etiqueta: "Emitida" },
+              { valor: "anulada", etiqueta: "Anulada" },
+            ]}
+            placeholder="Todos los estados"
+            ariaLabel="Filtrar por estado"
+          />
+        </div>
+        {puedeEscribir && (
+          <Button
+            onClick={() => {
+              setErrorNueva(null);
+              setFormNueva({ chofer_id: "", sueldo_base: 0, notas: "" });
+              setDialogoNueva(true);
+            }}
+            disabled={!empresaId || !puedeVerChoferes}
+          >
+            <Plus /> Nuevo borrador
+          </Button>
+        )}
+      </div>
+
+      <div className="grid gap-s3 sm:grid-cols-4">
+        <div className="rounded-xl border border-borde bg-superficie px-s4 py-s3 shadow-elev-1">
+          <p className="text-[14px] text-tinta-3">Documentos del mes</p>
+          <p className="cifra text-[26px] font-semibold">{contadores.total}</p>
+        </div>
+        <div className="rounded-xl border border-borde bg-superficie px-s4 py-s3 shadow-elev-1">
+          <p className="text-[14px] text-tinta-3">Borradores</p>
+          <p className="cifra text-[26px] font-semibold">{contadores.borradores}</p>
+        </div>
+        <div className="rounded-xl border border-borde bg-superficie px-s4 py-s3 shadow-elev-1">
+          <p className="text-[14px] text-tinta-3">Emitidas</p>
+          <p className="cifra text-[26px] font-semibold">{contadores.emitidas}</p>
+        </div>
+        <div className="rounded-xl border border-borde bg-superficie px-s4 py-s3 shadow-elev-1">
+          <p className="text-[14px] text-tinta-3">Anuladas</p>
+          <p className="cifra text-[26px] font-semibold">{contadores.anuladas}</p>
+        </div>
+      </div>
+
+      <Panel titulo={`Liquidaciones · ${liquidaciones.length}`}>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Chofer</TableHead>
+                <TableHead className="text-right">Base</TableHead>
+                <TableHead className="text-right">Comisión</TableHead>
+                <TableHead className="text-right">Bonos</TableHead>
+                <TableHead className="text-right">Descuentos</TableHead>
+                <TableHead className="text-right">Anticipos</TableHead>
+                <TableHead className="text-right">Líquido</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead className="text-right">Acciones</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {cargandoVista ? (
+                <FilasCargando columnas={9} />
+              ) : liquidaciones.length === 0 ? (
+                <FilaVacia
+                  columnas={9}
+                  icono={Wallet}
+                  titulo="Sin liquidaciones en el período"
+                  descripcion="Cree un borrador para el chofer y mes seleccionados."
+                  accion={
+                    puedeEscribir && puedeVerChoferes ? (
+                      <Button onClick={() => setDialogoNueva(true)}>
+                        <Plus /> Nuevo borrador
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              ) : (
+                liquidaciones.map((liquidacion) => {
+                  const estado = etiquetaEstado(liquidacion.estado);
+                  return (
+                    <TableRow key={liquidacion.id}>
+                      <TableCell>
+                        <span className="font-medium">
+                          {liquidacion.chofer_nombre ?? "Chofer"}
+                        </span>
+                        <span className="block text-[13px] text-tinta-3">
+                          {liquidacion.mes}
+                        </span>
+                      </TableCell>
+                      <TableCell className="cifra text-right text-tinta-2">
+                        {formatCLP(liquidacion.sueldo_base)}
+                      </TableCell>
+                      <TableCell className="cifra text-right text-tinta-2">
+                        {formatCLP(liquidacion.comision)}
+                      </TableCell>
+                      <TableCell className="cifra text-right text-ok">
+                        {formatCLP(liquidacion.bonos)}
+                      </TableCell>
+                      <TableCell className="cifra text-right text-critico">
+                        {formatCLP(liquidacion.descuentos)}
+                      </TableCell>
+                      <TableCell className="cifra text-right text-critico">
+                        {formatCLP(liquidacion.anticipos)}
+                      </TableCell>
+                      <TableCell className="cifra text-right text-[17px] font-semibold">
+                        {formatCLP(liquidacion.total_liquido)}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge tono={estado.tono}>{estado.label}</StatusBadge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap justify-end gap-1">
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            onClick={() => abrirDetalle(liquidacion)}
+                          >
+                            Detalle
                           </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
+                          {puedeEscribir && liquidacion.estado === "borrador" && (
+                            <Button
+                              size="xs"
+                              variant="secondary"
+                              onClick={() => setEmitiendo(liquidacion)}
+                            >
+                              <FileCheck2 /> Emitir
+                            </Button>
+                          )}
+                          {puedeEscribir && liquidacion.estado !== "anulada" && (
+                            <Button
+                              size="xs"
+                              variant="destructive"
+                              onClick={() => {
+                                setMotivo("");
+                                setErrorAnulacion(null);
+                                setAnulando(liquidacion);
+                              }}
+                            >
+                              Anular
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </Panel>
 
-      {/* Detalle del chofer */}
-      <Dialog open={!!choferSel} onOpenChange={(o) => !o && setChoferSel(null)}>
-        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
+      <Dialog
+        open={!!detalle}
+        onOpenChange={(abierto) => {
+          if (!abierto) setDetalle(null);
+        }}
+      >
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{choferSel?.nombre}</DialogTitle>
+            <DialogTitle>{detalle?.chofer_nombre ?? "Liquidación"}</DialogTitle>
             <DialogDescription>
-              Liquidación de <span className="capitalize">{mes && new Intl.DateTimeFormat("es-CL", { month: "long", year: "numeric" }).format(new Date(Number(mes.slice(0, 4)), Number(mes.slice(5)) - 1, 1))}</span>
+              Período {detalle?.mes} · Estado{" "}
+              {detalle ? etiquetaEstado(detalle.estado).label : ""}
             </DialogDescription>
           </DialogHeader>
 
-          {choferSel && (
-            <dl className="space-y-s2 rounded-xl bg-superficie-hundida px-s4 py-s3 text-[15.5px]">
-              {[
-                ["Sueldo base", formatCLP(choferSel.sueldo_base), ""],
-                ["Comisión por fletes", formatCLP(choferSel.comision), ""],
-                ["Bonos", `+${formatCLP(choferSel.bonos)}`, "text-ok"],
-                ["Descuentos", `−${formatCLP(choferSel.descuentos)}`, "text-critico"],
-                ["Anticipos", `−${formatCLP(choferSel.anticipos)}`, "text-critico"],
-              ].map(([k, v, c]) => (
-                <div key={k} className="flex justify-between">
-                  <dt className="text-tinta-3">{k}</dt>
-                  <dd className={cn("cifra", c)}>{v}</dd>
+          {detalle && (
+            <>
+              <dl className="space-y-s2 rounded-xl bg-superficie-hundida px-s4 py-s3 text-[15.5px]">
+                {[
+                  ["Sueldo base", formatCLP(detalle.sueldo_base), ""],
+                  ["Comisión por fletes", formatCLP(detalle.comision), ""],
+                  ["Bonos", formatCLP(detalle.bonos), "text-ok"],
+                  ["Descuentos", formatCLP(detalle.descuentos), "text-critico"],
+                  ["Anticipos", formatCLP(detalle.anticipos), "text-critico"],
+                ].map(([etiqueta, valor, clase]) => (
+                  <div key={etiqueta} className="flex justify-between gap-s3">
+                    <dt className="text-tinta-3">{etiqueta}</dt>
+                    <dd className={`cifra ${clase}`}>{valor}</dd>
+                  </div>
+                ))}
+                <div className="flex items-baseline justify-between border-t border-borde-fuerte pt-s2">
+                  <dt className="font-medium">Total líquido</dt>
+                  <dd className="cifra text-[24px] font-semibold text-marca">
+                    {formatCLP(detalle.total_liquido)}
+                  </dd>
                 </div>
-              ))}
-              <div className="flex items-baseline justify-between border-t border-borde-fuerte pt-s2">
-                <dt className="font-medium">Total líquido</dt>
-                <dd className="cifra text-[24px] font-semibold text-marca">{formatCLP(choferSel.total)}</dd>
-              </div>
-            </dl>
-          )}
+              </dl>
 
-          {bloqueada && (
-            <Aviso tono="neutro" icono={Lock}>
-              Esta liquidación ya fue emitida. Anticipos y ajustes del mes quedan bloqueados en el documento.
-            </Aviso>
-          )}
-
-          <section className="space-y-s2">
-            <div className="flex items-center justify-between">
-              <h3 className="text-[16px] font-semibold">Anticipos</h3>
-              {puedeEscribir && !bloqueada && (
-                <Button
-                  size="xs"
-                  variant="outline"
-                  onClick={() => {
-                    setFormAnticipo({ monto: 0, fecha: hoyISO() });
-                    setDialogoAnticipo(true);
-                  }}
-                >
-                  <Plus /> Anticipo
-                </Button>
+              {detalle.estado === "emitida" && (
+                <Aviso tono="neutro" icono={Lock}>
+                  Documento emitido el{" "}
+                  {detalle.emitida_en ? formatFechaHora(detalle.emitida_en) : "—"}. No se
+                  recalcula: los anticipos y ajustes nuevos no modifican este documento.
+                </Aviso>
               )}
-            </div>
-            {cargandoDetalle ? (
-              <p className="text-[14px] text-tinta-3">Cargando…</p>
-            ) : anticipos.length === 0 ? (
-              <p className="text-[14px] text-tinta-3">Sin anticipos este mes.</p>
-            ) : (
-              <ul className="divide-y divide-borde rounded-xl border border-borde">
-                {anticipos.map((a) => (
-                  <li key={a.id} className="flex items-center justify-between px-s3 py-s2 text-[15px]">
-                    <span>
-                      {formatFecha(a.fecha)} · <span className="cifra font-medium">{formatCLP(a.monto)}</span>
-                    </span>
-                    {puedeEscribir && !bloqueada && (
-                      <Button variant="ghost" size="icon-xs" className="text-tinta-3 hover:bg-critico-tenue hover:text-critico" onClick={() => eliminar("anticipos", a.id)} aria-label="Eliminar anticipo">
-                        <Trash2 />
-                      </Button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section className="space-y-s2">
-            <div className="flex items-center justify-between">
-              <h3 className="text-[16px] font-semibold">Bonos y descuentos</h3>
-              {puedeEscribir && !bloqueada && (
-                <Button
-                  size="xs"
-                  variant="outline"
-                  onClick={() => {
-                    setFormAjuste({ tipo: "bono", concepto: "", monto: 0 });
-                    setDialogoAjuste(true);
-                  }}
-                >
-                  <Plus /> Ajuste
-                </Button>
+              {detalle.estado === "anulada" && (
+                <Aviso tono="critico">
+                  Anulada{detalle.motivo_anulacion ? `: ${detalle.motivo_anulacion}` : "."}
+                </Aviso>
               )}
-            </div>
-            {cargandoDetalle ? (
-              <p className="text-[14px] text-tinta-3">Cargando…</p>
-            ) : ajustes.length === 0 ? (
-              <p className="text-[14px] text-tinta-3">Sin ajustes este mes.</p>
-            ) : (
-              <ul className="divide-y divide-borde rounded-xl border border-borde">
-                {ajustes.map((a) => (
-                  <li key={a.id} className="flex items-center justify-between gap-s2 px-s3 py-s2 text-[15px]">
-                    <span className="flex items-center gap-s2">
-                      <StatusBadge tono={a.tipo === "bono" ? "ok" : "critico"}>{a.tipo === "bono" ? "Bono" : "Descuento"}</StatusBadge>
-                      {a.concepto}
-                    </span>
-                    <span className="flex items-center gap-s2">
-                      <span className="cifra font-medium">{formatCLP(a.monto)}</span>
-                      {puedeEscribir && !bloqueada && (
-                        <Button variant="ghost" size="icon-xs" className="text-tinta-3 hover:bg-critico-tenue hover:text-critico" onClick={() => eliminar("ajustes", a.id)} aria-label="Eliminar ajuste">
-                          <Trash2 />
-                        </Button>
-                      )}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+              {detalle.notas && (
+                <p className="text-[14px] text-tinta-3">Notas: {detalle.notas}</p>
+              )}
+
+              <ErrorNucleo error={errorDetalle} />
+
+              <section className="space-y-s2">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-[16px] font-semibold">Anticipos del período</h3>
+                  {puedeEditarDetalle && (
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      onClick={() => {
+                        setErrorAnticipo(null);
+                        setFormAnticipo({
+                          monto: 0,
+                          fecha: hoyISO(),
+                          mes_imputacion: detalle.mes,
+                          notas: "",
+                        });
+                        setDialogoAnticipo(true);
+                      }}
+                    >
+                      <Plus /> Anticipo
+                    </Button>
+                  )}
+                </div>
+                {cargandoDetalle ? (
+                  <p className="text-[14px] text-tinta-3">Cargando anticipos…</p>
+                ) : anticipos.length === 0 ? (
+                  errorDetalle ? null : (
+                    <p className="text-[14px] text-tinta-3">
+                      Sin anticipos en este período.
+                    </p>
+                  )
+                ) : (
+                  <ul className="divide-y divide-borde rounded-xl border border-borde">
+                    {anticipos.map((anticipo) => (
+                      <li
+                        key={anticipo.id}
+                        className="flex flex-wrap items-center justify-between gap-s2 px-s3 py-s2 text-[15px]"
+                      >
+                        <span>
+                          {formatFecha(anticipo.fecha)} ·{" "}
+                          <span className="cifra font-medium">
+                            {formatCLP(anticipo.monto)}
+                          </span>
+                        </span>
+                        <StatusBadge
+                          tono={anticipo.estado === "pendiente" ? "atencion" : "neutro"}
+                        >
+                          {anticipo.estado}
+                        </StatusBadge>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section className="space-y-s2">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-[16px] font-semibold">Bonos y descuentos</h3>
+                  {puedeEditarDetalle && (
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      onClick={() => {
+                        setErrorAjuste(null);
+                        setFormAjuste({ tipo: "bono", concepto: "", monto: 0 });
+                        setDialogoAjuste(true);
+                      }}
+                    >
+                      <Plus /> Ajuste
+                    </Button>
+                  )}
+                </div>
+                {cargandoDetalle ? (
+                  <p className="text-[14px] text-tinta-3">Cargando ajustes…</p>
+                ) : ajustes.length === 0 ? (
+                  errorDetalle ? null : (
+                    <p className="text-[14px] text-tinta-3">
+                      Sin ajustes en este período.
+                    </p>
+                  )
+                ) : (
+                  <ul className="divide-y divide-borde rounded-xl border border-borde">
+                    {ajustes.map((ajuste) => (
+                      <li
+                        key={ajuste.id}
+                        className="flex flex-wrap items-center justify-between gap-s2 px-s3 py-s2 text-[15px]"
+                      >
+                        <span className="flex items-center gap-s2">
+                          <StatusBadge
+                            tono={ajuste.tipo === "bono" ? "ok" : "critico"}
+                          >
+                            {ajuste.tipo === "bono" ? "Bono" : "Descuento"}
+                          </StatusBadge>
+                          {ajuste.concepto}
+                        </span>
+                        <span className="cifra font-medium">{formatCLP(ajuste.monto)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </>
+          )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setChoferSel(null)}>
+            <Button variant="outline" onClick={() => setDetalle(null)}>
               Cerrar
             </Button>
-            {puedeEscribir && choferSel && !bloqueada && (
-              <>
-                <Button variant="secondary" onClick={() => guardarBorrador(choferSel)}>
-                  Guardar borrador
-                </Button>
-                <Button onClick={() => setEmitiendo(choferSel)}>
-                  <FileCheck2 /> Emitir
-                </Button>
-              </>
-            )}
-            {choferSel?.liquidacion_id && (
-              <Button variant={bloqueada ? "default" : "ghost"} onClick={() => descargarPdf(choferSel)}>
-                <FileDown /> PDF
+            {puedeEscribir && detalle?.estado === "borrador" && (
+              <Button
+                onClick={() => {
+                  setEmitiendo(detalle);
+                  setDetalle(null);
+                }}
+              >
+                <FileCheck2 /> Emitir liquidación
               </Button>
             )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Confirmar emisión */}
-      <Dialog open={!!emitiendo} onOpenChange={(o) => !o && setEmitiendo(null)}>
+      <Dialog open={dialogoNueva} onOpenChange={setDialogoNueva}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nuevo borrador de liquidación</DialogTitle>
+            <DialogDescription>
+              La comisión se calcula en el servidor desde los viajes facturados del mes.
+              Si ya existe un documento para el chofer y mes —aunque esté anulado— el
+              servidor responde 409.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-s4">
+            <Campo etiqueta="Chofer" htmlFor="liq-chofer" requerido>
+              <SelectSimple
+                id="liq-chofer"
+                valor={formNueva.chofer_id}
+                onCambio={(v) => setFormNueva({ ...formNueva, chofer_id: v })}
+                placeholder="Seleccione chofer"
+                opciones={opcionesChofer}
+              />
+            </Campo>
+            <Campo etiqueta="Mes" htmlFor="liq-mes" requerido>
+              <Input
+                id="liq-mes"
+                type="month"
+                value={mes}
+                onChange={(e) => e.target.value && setMes(e.target.value)}
+              />
+            </Campo>
+            <Campo
+              etiqueta="Sueldo base"
+              htmlFor="liq-base"
+              ayuda="Déjelo en cero para usar el sueldo base registrado del chofer."
+            >
+              <InputCLP
+                key={dialogoNueva ? "liq-abierto" : "liq-cerrado"}
+                id="liq-base"
+                value={formNueva.sueldo_base}
+                onChange={(v) => setFormNueva({ ...formNueva, sueldo_base: v })}
+                placeholder="$ 0"
+              />
+            </Campo>
+            <Campo etiqueta="Notas" htmlFor="liq-notas">
+              <AreaTexto
+                id="liq-notas"
+                rows={3}
+                value={formNueva.notas}
+                onChange={(e) => setFormNueva({ ...formNueva, notas: e.target.value })}
+                placeholder="Observaciones del borrador"
+              />
+            </Campo>
+            {errorNueva && (
+              <p className="text-[14px] text-critico" role="alert">
+                {errorNueva}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogoNueva(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => void crearBorrador()}
+              disabled={procesando === "nueva"}
+            >
+              {procesando === "nueva" ? "Guardando…" : "Crear borrador"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!emitiendo}
+        onOpenChange={(abierto) => {
+          if (!abierto) setEmitiendo(null);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Emitir liquidación</DialogTitle>
             <DialogDescription>
-              Se emitirá la liquidación de <strong>{emitiendo?.nombre}</strong> por{" "}
-              <strong>{emitiendo ? formatCLP(emitiendo.total) : ""}</strong>. Una vez emitida no se puede recalcular.
+              Se emitirá la liquidación de{" "}
+              <strong>{emitiendo?.chofer_nombre ?? "el chofer"}</strong> por{" "}
+              <strong>{emitiendo ? formatCLP(emitiendo.total_liquido) : ""}</strong>. La
+              operación es idempotente: reintentar no vuelve a imputar anticipos.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEmitiendo(null)}>
               Cancelar
             </Button>
-            <Button onClick={confirmarEmitir}>
-              <FileCheck2 /> Emitir
+            <Button onClick={() => void emitir()} disabled={procesando === "emitir"}>
+              {procesando === "emitir" ? "Emitiendo…" : "Emitir"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!anulando}
+        onOpenChange={(abierto) => {
+          if (!abierto) setAnulando(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Anular liquidación</DialogTitle>
+            <DialogDescription>
+              El documento se conserva con estado anulado. Repetir con el mismo motivo es
+              idempotente; con otro motivo el servidor responde 409.
+            </DialogDescription>
+          </DialogHeader>
+          <Campo etiqueta="Motivo" htmlFor="liq-motivo" requerido>
+            <AreaTexto
+              id="liq-motivo"
+              rows={3}
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              placeholder="Error de cálculo, período incorrecto…"
+            />
+          </Campo>
+          {errorAnulacion && (
+            <p className="text-[14px] text-critico" role="alert">
+              {errorAnulacion}
+            </p>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAnulando(null)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void anular()}
+              disabled={procesando === "anular"}
+            >
+              {procesando === "anular" ? "Anulando…" : "Anular"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -521,22 +963,71 @@ export default function LiquidacionesPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Registrar anticipo</DialogTitle>
-            <DialogDescription>Se descontará de la liquidación del mes seleccionado.</DialogDescription>
+            <DialogDescription>
+              Queda pendiente para el período indicado y se imputa al emitir la
+              liquidación. No se edita ni se borra desde esta pantalla.
+            </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-s3 sm:grid-cols-2">
-            <Campo etiqueta="Monto" htmlFor="a-monto" requerido>
-              <InputCLP key={dialogoAnticipo ? "a1" : "a0"} id="a-monto" value={formAnticipo.monto} onChange={(v) => setFormAnticipo({ ...formAnticipo, monto: v })} className="cifra" />
+          <div className="space-y-s4">
+            <div className="grid gap-s3 sm:grid-cols-2">
+              <Campo etiqueta="Monto" htmlFor="ant-monto" requerido>
+                <InputCLP
+                  key={dialogoAnticipo ? "ant-abierto" : "ant-cerrado"}
+                  id="ant-monto"
+                  value={formAnticipo.monto}
+                  onChange={(v) => setFormAnticipo({ ...formAnticipo, monto: v })}
+                  placeholder="$ 0"
+                />
+              </Campo>
+              <Campo etiqueta="Fecha" htmlFor="ant-fecha">
+                <Input
+                  id="ant-fecha"
+                  type="date"
+                  value={formAnticipo.fecha}
+                  onChange={(e) =>
+                    setFormAnticipo({ ...formAnticipo, fecha: e.target.value })
+                  }
+                />
+              </Campo>
+              <Campo etiqueta="Mes de imputación" htmlFor="ant-mes" requerido>
+                <Input
+                  id="ant-mes"
+                  type="month"
+                  value={formAnticipo.mes_imputacion}
+                  onChange={(e) =>
+                    setFormAnticipo({
+                      ...formAnticipo,
+                      mes_imputacion: e.target.value,
+                    })
+                  }
+                />
+              </Campo>
+            </div>
+            <Campo etiqueta="Notas" htmlFor="ant-notas">
+              <AreaTexto
+                id="ant-notas"
+                rows={2}
+                value={formAnticipo.notas}
+                onChange={(e) =>
+                  setFormAnticipo({ ...formAnticipo, notas: e.target.value })
+                }
+              />
             </Campo>
-            <Campo etiqueta="Fecha" htmlFor="a-fecha">
-              <Input id="a-fecha" type="date" value={formAnticipo.fecha} onChange={(e) => setFormAnticipo({ ...formAnticipo, fecha: e.target.value })} />
-            </Campo>
+            {errorAnticipo && (
+              <p className="text-[14px] text-critico" role="alert">
+                {errorAnticipo}
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogoAnticipo(false)}>
               Cancelar
             </Button>
-            <Button onClick={guardarAnticipo} disabled={guardando}>
-              Guardar
+            <Button
+              onClick={() => void guardarAnticipo()}
+              disabled={procesando === "anticipo"}
+            >
+              {procesando === "anticipo" ? "Guardando…" : "Guardar"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -546,39 +1037,70 @@ export default function LiquidacionesPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Registrar ajuste</DialogTitle>
-            <DialogDescription>Un bono suma y un descuento resta en la liquidación del mes.</DialogDescription>
+            <DialogDescription>
+              Un bono suma y un descuento resta en el cálculo del borrador. El documento
+              emitido no se recalcula.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-s4">
             <div className="grid gap-s3 sm:grid-cols-2">
-              <Campo etiqueta="Tipo" htmlFor="j-tipo">
+              <Campo etiqueta="Tipo" htmlFor="aj-tipo">
                 <SelectSimple
-                  id="j-tipo"
+                  id="aj-tipo"
                   valor={formAjuste.tipo}
-                  onCambio={(v) => setFormAjuste({ ...formAjuste, tipo: (v || "bono") as "bono" | "descuento" })}
+                  onCambio={(v) =>
+                    setFormAjuste({
+                      ...formAjuste,
+                      tipo: v === "descuento" ? "descuento" : "bono",
+                    })
+                  }
                   opciones={[
                     { valor: "bono", etiqueta: "Bono (suma)" },
                     { valor: "descuento", etiqueta: "Descuento (resta)" },
                   ]}
                 />
               </Campo>
-              <Campo etiqueta="Monto" htmlFor="j-monto" requerido>
-                <InputCLP key={dialogoAjuste ? "j1" : "j0"} id="j-monto" value={formAjuste.monto} onChange={(v) => setFormAjuste({ ...formAjuste, monto: v })} className="cifra" />
+              <Campo etiqueta="Monto" htmlFor="aj-monto" requerido>
+                <InputCLP
+                  key={dialogoAjuste ? "aj-abierto" : "aj-cerrado"}
+                  id="aj-monto"
+                  value={formAjuste.monto}
+                  onChange={(v) => setFormAjuste({ ...formAjuste, monto: v })}
+                  placeholder="$ 0"
+                />
               </Campo>
             </div>
-            <Campo etiqueta="Concepto" htmlFor="j-concepto" requerido>
-              <Input id="j-concepto" value={formAjuste.concepto} onChange={(e) => setFormAjuste({ ...formAjuste, concepto: e.target.value })} placeholder="Bono de puntualidad" />
+            <Campo etiqueta="Concepto" htmlFor="aj-concepto" requerido>
+              <Input
+                id="aj-concepto"
+                value={formAjuste.concepto}
+                onChange={(e) =>
+                  setFormAjuste({ ...formAjuste, concepto: e.target.value })
+                }
+                placeholder="Bono de puntualidad"
+              />
             </Campo>
+            {errorAjuste && (
+              <p className="text-[14px] text-critico" role="alert">
+                {errorAjuste}
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogoAjuste(false)}>
               Cancelar
             </Button>
-            <Button onClick={guardarAjuste} disabled={guardando}>
-              Guardar
+            <Button
+              onClick={() => void guardarAjuste()}
+              disabled={procesando === "ajuste"}
+            >
+              {procesando === "ajuste" ? "Guardando…" : "Guardar"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+        </>
+      )}
     </div>
   );
 }

@@ -105,6 +105,58 @@ export const nucleo = {
     nucleoFetch<void>(path, { method: "DELETE" }, empresaId),
 };
 
+/**
+ * Descarga un archivo del núcleo (CSV) reutilizando el mismo JWT y
+ * `X-Empresa-ID` que el resto del cliente. No se construyen URLs de storage:
+ * la ruta es siempre un endpoint del backend.
+ */
+export async function descargarNucleo(
+  path: string,
+  empresaId: string,
+  nombreArchivo: string,
+): Promise<void> {
+  const res = await fetch(`${API_URL}${path}`, {
+    cache: "no-store",
+    headers: await authHeaders(empresaId),
+  });
+  if (!res.ok) {
+    let body: unknown = null;
+    try {
+      body = await res.json();
+    } catch {
+      body = null;
+    }
+    const payload = (body ?? {}) as {
+      mensaje?: string;
+      codigo?: string;
+      errores?: IncidenciaNucleo[];
+      detail?: string | { msg?: string }[];
+    };
+    const detail = payload.detail;
+    const detalle =
+      typeof detail === "string"
+        ? detail
+        : Array.isArray(detail)
+          ? detail[0]?.msg
+          : undefined;
+    throw new NucleoError(
+      payload.mensaje ?? detalle ?? "No se pudo descargar el archivo",
+      res.status,
+      payload.codigo,
+      payload.errores ?? [],
+    );
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const enlace = document.createElement("a");
+  enlace.href = url;
+  enlace.download = nombreArchivo;
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+  URL.revokeObjectURL(url);
+}
+
 export async function nucleoUpload<T>(
   path: string,
   empresaId: string,

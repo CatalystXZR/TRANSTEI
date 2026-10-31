@@ -20,8 +20,9 @@ from app.core.contexto import fijar_auth_id
 from app.core.database import get_session_nucleo
 from app.core.security import auth_id_from_credentials, bearer_scheme
 from app.nucleo.deps import ContextoEmpresa, get_contexto_empresa
-from app.nucleo.permisos import requiere_permiso
 from app.nucleo.models import EstadoViaje, TipoRampla, TipoRecurso
+from app.nucleo.permisos import requiere_permiso
+from app.nucleo.router import router as ola_b_router
 from app.nucleo.schemas import (
     AsignacionConfirmada,
     EmpresaMembresiaOut,
@@ -43,6 +44,7 @@ from app.nucleo.servicio_disponibilidad import (
 )
 
 router = APIRouter(prefix="/nucleo", tags=["nucleo"])
+router.include_router(ola_b_router)
 
 
 def get_servicio_lectura(

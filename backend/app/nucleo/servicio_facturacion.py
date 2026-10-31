@@ -3,11 +3,16 @@
 Sin DTE real: el folio se genera con `nucleo.siguiente_folio`. Una factura
 agrupa viajes cerrados con POD y OC. PostgreSQL recalcula estado/saldo con
 pagos y notas de crédito, y pasa los viajes a `cobrado` al pagarse.
+
+IVA: la tasa es un parámetro de la empresa. Se lee de
+`nucleo.configuracion_empresa` (`iva_porcentaje` vigente, migración 0026) y el
+`tasa_iva` que llegue en el request se ignora (RET-04). Sin tasa configurada
+la emisión falla con un error de dominio; no se asume un 19 % implícito.
 """
 
 from __future__ import annotations
 
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from uuid import UUID
 
 from sqlalchemy import func, text, update
@@ -57,6 +62,37 @@ CENTAVO = Decimal("0.01")
 
 def _d(valor: Decimal | int | str | None) -> Decimal:
     return Decimal(valor or 0).quantize(CENTAVO, rounding=ROUND_HALF_UP)
+
+
+# La configuración guarda el IVA como porcentaje (19, 21); la factura lo usa
+# como fracción (0,19). Precisión de la tasa: 4 decimales (misma que tenía el
+# campo `tasa_iva` del request antes de deprecarlo).
+TASA = Decimal("0.0001")
+CIEN = Decimal("100")
+
+
+def tasa_desde_porcentaje(valor: object) -> Decimal:
+    """Convierte `iva_porcentaje` (0..100) a la fracción que multiplica el neto.
+
+    Es la **única** conversión de la tasa en facturación: el request no la
+    aporta (RET-04). El rango estructural ya está acotado en la base
+    (`ck_config_iva_porcentaje`, migración 0026); esta validación cubre el
+    valor que llegó del `jsonb` y evita usarlo como multiplicador si no es un
+    número finito.
+    """
+    try:
+        porcentaje = Decimal(str(valor))
+    except (InvalidOperation, ValueError) as exc:
+        raise ReglaNegocioViolada(
+            "El IVA configurado para la empresa no es un número válido.",
+            contexto={"clave": "iva_porcentaje"},
+        ) from exc
+    if not porcentaje.is_finite() or porcentaje < 0 or porcentaje > 100:
+        raise ReglaNegocioViolada(
+            "El IVA configurado para la empresa está fuera del rango 0–100.",
+            contexto={"clave": "iva_porcentaje"},
+        )
+    return (porcentaje / CIEN).quantize(TASA, rounding=ROUND_HALF_UP)
 
 
 class ServicioFacturacion:
@@ -527,6 +563,26 @@ class ServicioFacturacion:
             raise DatosInvalidos("La moneda de la OC no coincide con la empresa.")
         return viajes, oc, cliente
 
+    def _tasa_iva_vigente(self) -> Decimal:
+        """Tasa de IVA de la empresa (fracción) desde la configuración vigente.
+
+        Fuente única (RET-04): `nucleo.configuracion_empresa.iva_porcentaje`
+        vigente. El `tasa_iva` que llegue en el request se ignora. Fail-closed:
+        sin tasa configurada no se emite factura; no se asume 19 % porque el
+        valor concreto es un parámetro tributario de la empresa (`P-01`/`D-21`).
+        """
+        valor = self.session.execute(
+            text("select nucleo.config_vigente(:empresa_id, 'iva_porcentaje')"),
+            {"empresa_id": self.empresa.id},
+        ).scalar_one()
+        if valor is None:
+            raise ReglaNegocioViolada(
+                "La empresa no tiene una tasa de IVA vigente configurada "
+                "(`iva_porcentaje`). Configure el IVA antes de emitir facturas.",
+                contexto={"clave": "iva_porcentaje"},
+            )
+        return tasa_desde_porcentaje(valor)
+
     def crear_factura(self, data: FacturaCreate) -> FacturaOut:
         viajes, oc, _cliente = self._validar_viajes_facturables(data)
         neto = _d(
@@ -541,7 +597,9 @@ class ServicioFacturacion:
         )
         if neto <= 0:
             raise DatosInvalidos("El neto de la factura debe ser mayor que cero.")
-        iva = _d(neto * data.tasa_iva)
+        # `data.tasa_iva` está deprecado y se ignora a propósito: el impuesto
+        # lo fija la empresa, no el cliente (ver `_tasa_iva_vigente`).
+        iva = _d(neto * self._tasa_iva_vigente())
         estado_inicial = "vencida" if data.fecha_vencimiento < self.hoy else "emitida"
         self._fijar_contexto_bd()
         try:

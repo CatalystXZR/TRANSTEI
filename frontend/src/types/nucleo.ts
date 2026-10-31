@@ -1178,6 +1178,190 @@ export interface RespuestaDecisionSolicitudNucleo {
 }
 
 /* ------------------------------------------------------------------ */
+/* Ola B del retiro legacy: mantenimiento, nómina, IVA, configuración  */
+/* ------------------------------------------------------------------ */
+export type RecursoMantenibleNucleo = "tracto" | "rampla";
+export type EstadoSemaforoMantenimientoNucleo =
+  | "sin_registro"
+  | "sin_odometro"
+  | "pendiente"
+  | "por_vencer"
+  | "ok";
+
+export interface PautaMantenimientoNucleo {
+  id: string;
+  recurso_tipo: RecursoMantenibleNucleo;
+  item: string;
+  intervalo_km: number;
+  intervalo_meses: number | null;
+  alerta_km: number | null;
+  orden: number;
+  activo: boolean;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PautaMantenimientoCreateNucleo {
+  recurso_tipo?: RecursoMantenibleNucleo;
+  item: string;
+  intervalo_km: number;
+  intervalo_meses?: number;
+  alerta_km?: number;
+  orden?: number;
+}
+
+export interface MantenimientoNucleo {
+  id: string;
+  pauta_id: string;
+  tracto_id: string | null;
+  rampla_id: string | null;
+  fecha: string;
+  km: string;
+  costo: string;
+  estado: string;
+  observaciones: string | null;
+  respaldo_url: string | null;
+  intervalo_km_snapshot: number;
+  intervalo_meses_snapshot: number | null;
+  alerta_km_snapshot: number | null;
+  motivo_anulacion: string | null;
+  anulada_en: string | null;
+  version: number;
+  created_at: string;
+}
+
+export interface MantenimientoCreateNucleo {
+  pauta_id: string;
+  tracto_id?: string;
+  rampla_id?: string;
+  fecha: string;
+  km: number;
+  costo?: number;
+  observaciones?: string;
+  respaldo_url?: string;
+}
+
+export interface EstadoMantenimientoNucleo {
+  recurso_tipo: RecursoMantenibleNucleo;
+  recurso_id: string;
+  pauta_id: string;
+  item: string;
+  ultimo_km: string | null;
+  ultima_fecha: string | null;
+  intervalo_km: number | null;
+  alerta_km: number | null;
+  proximo_km: string | null;
+  proxima_fecha: string | null;
+  restante_km: string | null;
+  estado: EstadoSemaforoMantenimientoNucleo;
+}
+
+export type EstadoLiquidacionNucleo = "borrador" | "emitida" | "anulada";
+
+export interface LiquidacionNucleo {
+  id: string;
+  chofer_id: string;
+  chofer_nombre: string | null;
+  mes: string;
+  sueldo_base: string;
+  comision: string;
+  bonos: string;
+  descuentos: string;
+  anticipos: string;
+  total_liquido: string;
+  estado: string;
+  emitida_en: string | null;
+  emitida_por: string | null;
+  anulada_en: string | null;
+  anulada_por: string | null;
+  motivo_anulacion: string | null;
+  notas: string | null;
+  version: number;
+  created_at: string;
+}
+
+export interface LiquidacionCreateNucleo {
+  chofer_id: string;
+  mes: string;
+  sueldo_base?: number;
+  notas?: string;
+}
+
+export interface AnticipoNucleo {
+  id: string;
+  chofer_id: string;
+  fecha: string;
+  monto: string;
+  mes_imputacion: string;
+  estado: string;
+  liquidacion_id: string | null;
+  motivo_anulacion: string | null;
+  anulada_en: string | null;
+  notas: string | null;
+  version: number;
+  created_at: string;
+}
+
+export interface AnticipoCreateNucleo {
+  chofer_id: string;
+  fecha?: string;
+  monto: number;
+  mes_imputacion: string;
+  notas?: string;
+}
+
+export interface AjusteNucleo {
+  id: string;
+  chofer_id: string;
+  mes: string;
+  tipo: "bono" | "descuento";
+  concepto: string;
+  monto: string;
+  estado: string;
+  liquidacion_id: string | null;
+  motivo_anulacion: string | null;
+  anulada_en: string | null;
+  version: number;
+  created_at: string;
+}
+
+export interface AjusteCreateNucleo {
+  chofer_id: string;
+  mes: string;
+  tipo: "bono" | "descuento";
+  concepto: string;
+  monto: number;
+}
+
+export interface IvaResumenNucleo {
+  desde: string;
+  hasta: string;
+  tasa_iva: string | null;
+  facturas: number;
+  base_neta: string;
+  iva_debito: string;
+  advertencia: string;
+}
+
+export interface ConfiguracionItemNucleo {
+  clave: string;
+  valor: JsonNucleo;
+  vigente_desde: string;
+  updated_at: string;
+  version: number;
+}
+
+export interface ConfiguracionNucleo {
+  items: ConfiguracionItemNucleo[];
+  mensaje: string;
+}
+
+export interface ConfiguracionUpdateNucleo {
+  valor: JsonNucleo;
+}
+
+/* ------------------------------------------------------------------ */
 /* P0-13 Cutover                                                       */
 /* ------------------------------------------------------------------ */
 export interface CutoverEstadoNucleo {

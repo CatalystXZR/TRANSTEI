@@ -5,8 +5,11 @@ Cubre las dos capas del control:
   acumulado del POD), que es la regla de dominio reutilizable;
 - HTTP: 11 fotos → 422 antes de leer/validar bytes; 10 fotos → 201.
 
-F-04 (precisión decimal en KPIs) se prueba en `test_kpi_engine.py`, que corre
-en `make unit` sin base.
+F-04 (precisión decimal en KPIs) se probaba en `test_kpi_engine.py`, retirado en
+la Ola C con el router `kpis` y el motor `app/services/kpi_engine.py` (no tenía
+más consumidores). La precisión decimal vigente se prueba en el núcleo
+(`test_nucleo_ola_b_modulos.py`: CN-04 HALF_UP, y
+`test_nucleo_gastos.py`: costos con `Decimal`).
 """
 
 from __future__ import annotations

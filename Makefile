@@ -70,7 +70,6 @@ unit:
 		tests/test_nucleo_schemas.py \
 		tests/test_nucleo_modelos.py \
 		tests/test_nucleo_tarifas.py \
-		tests/test_kpi_engine.py \
 		tests/test_f1_ola3_recursos_decimal.py \
 		tests/test_agente_manifest.py \
 		tests/test_agente_gate.py \

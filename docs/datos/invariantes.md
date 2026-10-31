@@ -969,3 +969,61 @@ Detalle, mecanismo y evidencia medida en `docs/datos/agente-esquema.md` §8,
 | D7 | `0021` se editó tras una primera aplicación en `tei_test` (`0021:844-845`): aceptable en clon, **prohibido** en cualquier otra base | proceso forward-only | 🟡 probado en clon (2026-10-30: rollback + re-aplicación + 4 suites verdes); regla vigente: no editar una migración aplicada |
 | D8 | `wa_message_id` único global permite "reservar" un id ajeno (DoS entre tenants, baja probabilidad) | INV-AW01 | 🟡 aceptado y documentado; sin cambio de índice |
 | D9 | Tope duro de 99.999 códigos por (empresa, cliente); al llegar a 100.000 `lpad` trunca y **reutiliza** `SQM-10000` | INV-AW14 | 🟢 cerrado por `0022:401-444` |
+
+---
+
+## 12. Adenda 2026-10-31 — Ola B del retiro legacy (`0024`–`0026`)
+
+> **Autor:** agente `datos`. **Naturaleza:** sección nueva; no reescribe §0–§11.
+> **Aplicación:** `0024`, `0025` y `0026` están **aplicadas y probadas** en la
+> base local (`postgres`) y en el clon desechable `tei_test` (2026-10-31). Por
+> eso aquí `impuesto (DDL)` significa además **"leído del catálogo"**, no solo
+> "escrito en un archivo".
+> **Diseño completo** (inventario, precondiciones, impacto, rollback, salidas):
+> `docs/datos/retiro-legacy-modelo.md`.
+> **Regla de negocio de origen:** `docs/negocio/retiro-legacy-modulos.md` §3, §5
+> y §6 (módulos sin equivalente en el núcleo).
+
+### 12.1 Registro
+
+| ID | Invariante (una frase) | Estado en base | Mecanismo | SQLSTATE | Prueba |
+|---|---|---|---|---|---|
+| INV-MANT01 | El costo de una mantención no es negativo | impuesto (DDL) | `ck_mantenimiento_costo` · `0024` | 23514 | `0024_01` 1F ✅ |
+| INV-MANT02 | `km >= 0` y `proximo = ultimo_km + intervalo_km` con el intervalo vigente **al registrar** | impuesto (DDL) | `ck_mantenimiento_km` + `intervalo_km_snapshot` + `v_mantenimiento_estado` · `0024` | 23514 | `0024_01` 1B/1C ✅ |
+| INV-MANT03 | Editar o desactivar una pauta no reescribe el histórico | impuesto (DDL) | `fn_mantenimiento_validar` congela el snapshot · `0024` | 23514 | `0024_01` 1G ✅ (CN-08 borde) |
+| INV-MANT04 | Un registro apunta a un recurso y una pauta de su misma empresa y del tipo correcto | impuesto (DDL) | 3 FKs compuestas + `fn_mantenimiento_validar` · `0024` | 23503 / 23514 | `0024_01` 1D/1F ✅ |
+| INV-MANT05 | El semáforo tiene una sola definición y no se almacena | impuesto (DDL) | `v_mantenimiento_estado` con `security_invoker` · `0024` | — | `0024_01` 1C ✅ |
+| INV-MANT06 | Toda fila de mantenimiento es invisible/inescribible fuera de `app.empresa_id` | impuesto (DDL) | política `tenant_empresa` + `FORCE` + GRANT · `0024` | 42501 / 0 filas | `0026_02` A/B/C ✅ (rol `tei_app`) |
+| INV-LIQ01 | `total_liquido = sueldo_base + comisión + bonos − descuentos − anticipos` | impuesto (DDL) | columna `generated always as … stored` · `0025` | 428C9 al escribirla | `0025_01` 1B ✅ (CN-03) |
+| INV-LIQ02 | Una liquidación emitida no cambia montos, chofer ni mes, y no se borra | impuesto (DDL) | `fn_liquidacion_estado` + `fn_nomina_no_borrar` · `0025` | 23514 | `0025_01` 1D + `0025_02` C2 (2 conexiones) ✅ |
+| INV-LIQ03 | Un anticipo/ajuste se imputa a lo sumo una vez y al mes declarado | impuesto (DDL) | `fn_imputacion_validar` + `liquidacion_id` inmutable + FK compuesta · `0025` | 23514 | `0025_01` 1E + `0025_02` C1 ✅ |
+| INV-LIQ04 | Anticipos y ajustes no se borran: se anulan con motivo | impuesto (DDL) | `fn_nomina_no_borrar` + `CHECK` de anulación con sello · `0025` | 23514 | `0025_01` 1F/1G ✅ |
+| INV-LIQ05 | Un solo criterio de redondeo monetario (HALF_UP) | impuesto (DDL) | `nucleo.redondear_half_up()` (`round(numeric,int)`) · `0025` | 22023 (rango) | `0025_01` 1C ✅ (CN-04) |
+| INV-LIQ06 | La nómina es invisible/inescribible fuera de la empresa | impuesto (DDL) | política + `FORCE` + GRANT · `0025` | 42501 / 0 filas | `0026_02` A/B/C ✅ |
+| INV-CFG01 | A lo sumo una fila vigente por (empresa, clave) | impuesto (DDL) | `uq_config_empresa_clave_vigente` + `ex_config_vigencia` · `0026` | 23505 / 23P01 | `0026_01` 1C ✅ |
+| INV-CFG02 | Las vigencias de una clave no se solapan ni retroceden | impuesto (DDL) | `ex_config_vigencia` + `ck_config_vigencia` · `0026` | 23P01 / 23514 | `0026_01` 1G ✅ |
+| INV-CFG03 | El valor de una fila cerrada no se edita y el historial no se borra | impuesto (DDL) | `fn_config_empresa_inmutable` + `fn_config_empresa_no_borrar` · `0026` | 23514 | `0026_01` 1D/1F ✅ |
+| INV-CFG04 | `iva_porcentaje` es numérico y está en `[0, 100]` | impuesto (DDL) | `ck_config_iva_porcentaje` · `0026` | 23514 | `0026_01` 1H ✅ |
+| INV-CFG05 | La configuración (y su lectura canónica) respeta el tenant | impuesto (DDL) | política + `FORCE` + `config_vigente` security invoker · `0026` | 42501 / 0 filas | `0026_02` B ✅ (`config_vigente` ajena ⇒ NULL) |
+
+### 12.2 Escritores cubiertos y límites
+
+| Mecanismo | Cubre | **No** cubre |
+|---|---|---|
+| Constraints/triggers de `0024`–`0026` | backend futuro, scripts, seeds, `psql`, `tei_app` cableado | `public` (el legacy no escribe `nucleo`); un superusuario que deshabilite un trigger |
+| INV-MANT06 / INV-LIQ06 / INV-CFG05 (RLS) | solo el rol `tei_app` (NOBYPASSRLS), probado | `postgres`/`supabase_admin` (BYPASSRLS/dueños); el rol efectivo del backend sigue sin verificarse (RA-03) |
+| INV-LIQ01–03 | toda escritura sobre las tablas de nómina | que `bonos/descuentos/anticipos` de la cabecera sumen lo mismo que las filas hijas: es snapshot de emisión y depende de `D-19`/`P-10` (§7.2 del diseño) |
+| INV-MANT05 | cualquier lector del semáforo | el umbral por empresa (`alerta_km_mantenimiento`) llega cuando el backend lea `configuracion_empresa`; hoy la vista usa 5.000 km |
+
+### 12.3 Deuda de prueba del bloque
+
+| Prueba | Estado 2026-10-31 |
+|---|---|
+| `0024_01_mantenimiento.sql` | **ejecutada**, 16 `OK` + `ROLLBACK` (0 filas) |
+| `0025_01_liquidaciones.sql` | **ejecutada**, 18 `OK` + `ROLLBACK` |
+| `0026_01_configuracion.sql` | **ejecutada**, 15 `OK` + `ROLLBACK` |
+| `0026_02_rls_tei_app.sql` | **ejecutada** como `tei_app` sin BYPASSRLS, 11 `OK` |
+| `0025_02_concurrencia_anticipo.py` | **ejecutada**, C1 (2 conexiones, 1 imputación) y C2 (emisión vs edición) |
+| `002[456]_99_rollback.sql` | **ejecutados**: rollback → 40 tablas/45 políticas → re-aplicación → 46/51 |
+| Mutación | **manual y ejecutada**: retirar 4 mecanismos hace fallar la suite correspondiente; restaurados |
+| `make unit` / `make test` | **135** y **388** pruebas en verde tras aplicar |

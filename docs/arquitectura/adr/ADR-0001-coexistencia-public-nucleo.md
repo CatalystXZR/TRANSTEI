@@ -1,6 +1,16 @@
 # ADR-0001: Coexistencia `public` (legacy) y `nucleo` (destino)
 
-- **Estado:** Propuesto
+> ⚠️ **Parcialmente reemplazado (2026-10-31).** El §B.3 de este ADR fue sustituido
+> por las compuertas C1/C2/C3 + G0 de
+> [`ADR-0002`](ADR-0002-retiro-del-legacy.md) rev. 3. Las olas A, B y C del retiro
+> ya se ejecutaron: los 11 routers legacy de negocio se borraron, las 13
+> pantallas están en el núcleo y la aplicación ya no escribe en `public` (salvo
+> identidad). Las afirmaciones de este documento sobre "módulos sin equivalente"
+> y "escrituras legacy" describen el estado del **2026-10-29**, no el actual.
+
+- **Estado:** Propuesto — **parcialmente reemplazado por ADR-0002 rev. 3** en lo
+  relativo al retiro (§B.3). Lo que sigue vigente: la descripción de la
+  convivencia y el diagnóstico que motivó el retiro.
 - **Fecha:** 2026-10-29
 - **Decide:** agente `arquitectura` (propuesta técnica). Requiere aceptación del
   dueño del negocio para las decisiones marcadas como **D-xx**.

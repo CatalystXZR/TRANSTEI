@@ -5,6 +5,13 @@ empresas). Base de prueba: `tei_test` refrescada con `make test-db` (clon de la
 base local: 23 migraciones, TEI + TES). Entorno: Supabase local + backend
 `:8000` con recarga automática + frontend `:3000`.
 
+> **Actualización 2026-10-31 (Ola C, ADR-0002 §6.5):** los routers legacy de
+> negocio se desmontaron. Las afirmaciones de este informe sobre
+> `GET /api/v1/clientes` devolviendo **200** para TEI ya no describen el
+> sistema: esa ruta responde **404**. El gate sigue vigente y probado para TES
+> (**403** `LEGACY_SOLO_TEI`). Ver
+> `docs/backend/informes/f2-ola-c-retiro-routers.md`.
+
 ---
 
 ## 1. Cambio

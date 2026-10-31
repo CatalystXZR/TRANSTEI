@@ -138,21 +138,42 @@ Toda garantía de concurrencia es, como mínimo, `parcial`.
 
 ## 9. E2E del piloto
 
+> **Actualización 2026-10-31 (Olas B/C del retiro legacy):** suite ejecutada contra
+> frontend `:3000` + backend `:8000` local → **20 passed, 0 failed, 0 skipped**.
+> Antes del ajuste: 14 passed, 1 failed (el test de TES seguía esperando 13 ítems y la
+> redirección `aviso=sin-acceso-legacy`). Evidencia en
+> `docs/qa/informes/f2-ola-bc-e2e.md`; estado anterior en
+> `docs/qa/informes/f2-ola-a-e2e.md`.
+
 | ID | Dónde se impone | Prueba (`archivo:línea`) | ¿Existe? | Cobertura |
 |---|---|---|---|---|
-| P0-01…P0-13 (`docs/qa/uat-piloto.md`) | Flujo visible completo | `frontend/e2e/tei.spec.ts:14,23,34,42,57,67,75,84,90` | escrita, no ejecutada | escrita, no ejecutada (0 ejecutados) |
+| P0-01…P0-13 (`docs/qa/uat-piloto.md`) | Flujo visible completo | `frontend/e2e/tei.spec.ts:81,89,100,108,122,128,136,146,154,163,174` | sí, ejecutada 2026-10-31 | parcial (UI; límites en el informe) |
+| Ola A: 9 rutas retiradas responden 308 hacia el núcleo | `permanentRedirect` en `frontend/src/app/(retiradas)/*/page.tsx` | `tei.spec.ts:190` | sí, ejecutada | completa (código 308 + `Location`) |
+| Ola A: `/` responde 307 → `/tablero` | `frontend/src/app/page.tsx:4` | `tei.spec.ts:203` | sí, ejecutada | completa |
+| Ola B/C: menú TEI 17 ítems del núcleo (incluye las 4 pantallas reimplementadas) | `frontend/src/lib/navigation.ts:37-85` | `tei.spec.ts:209` | sí, ejecutada | completa |
+| Ola B/C: tenant TES con el mismo menú de 17 ítems y `/mantenimiento` montando el núcleo | `navigation.ts:91-97`, `frontend/src/app/(app)/mantenimiento/page.tsx` | `tei.spec.ts:224` | sí, ejecutada | parcial (menú y montaje; el 403 de API ya no aplica porque no quedan routers legacy, ver `backend/tests/test_f2_tenant2_gate_legacy.py`) |
+| Ola B/C: `/mantenimiento` carga 200, lee estado/pauta y no deja errores de consola | `backend/app/nucleo/api_mantenimiento.py` | `tei.spec.ts:254` | sí, ejecutada | completa (UI + lectura + consola) |
+| Ola B/C: `/iva` carga 200 y muestra el resumen de IVA débito | `backend/app/nucleo/api_iva.py` | `tei.spec.ts:284` | sí, ejecutada | completa (UI + lectura + consola) |
+| Ola B/C: `/liquidaciones` carga 200 y lista el mes en curso | `backend/app/nucleo/servicio_nomina.py` | `tei.spec.ts:301` | sí, ejecutada | completa (UI + lectura + consola) |
+| Ola B/C: `/configuracion` carga 200 y muestra los valores vigentes del servidor | `backend/app/nucleo/servicio_configuracion.py` | `tei.spec.ts:323` | sí, ejecutada | completa (UI + lectura + consola) |
+| Ola C: 11 routers legacy responden 404 y no figuran en OpenAPI; el núcleo sigue montado (401 sin token) | `backend/app/api/router.py`, `backend/app/nucleo/router.py` | `tei.spec.ts:347` | sí, ejecutada | completa |
 
 ---
 
 ## 10. Resumen
 
+> **Recalculado 2026-10-31 con el comando de abajo** (las cifras anteriores —
+> 13/16/4/31/64 — estaban desactualizadas respecto del propio archivo y no se
+> reproducían). Salida real de esta sesión:
+> `completa=40 parcial=20 escrita=3 sin=32 total=95`.
+
 | Cobertura | Filas |
 |---|---|
-| completa | 13 |
-| parcial | 16 |
-| escrita, no ejecutada | 4 |
-| **sin cobertura** | **31** |
-| **Total** | **64** |
+| completa | 40 |
+| parcial | 20 |
+| escrita, no ejecutada | 3 |
+| **sin cobertura** | **32** |
+| **Total clasificadas** | **95** |
 
 Comprobación reproducible (cuenta la última celda de cada fila; ignora cabeceras):
 
@@ -168,7 +189,7 @@ awk -F'|' '/^\|/ { c=$(NF-1); gsub(/^ +| +$/,"",c);
 
 ## 11. Garantías sin cobertura (la deuda real)
 
-**Sin ninguna prueba (31):**
+**Sin ninguna prueba (32):**
 
 - **Reglas:** R-03.
 - **Dinero:** INV-F02, INV-F03, INV-F04, INV-F05, INV-F06, INV-F07, INV-G04,
@@ -179,16 +200,21 @@ awk -F'|' '/^\|/ { c=$(NF-1); gsub(/^ +| +$/,"",c);
 - **Tenant y auditoría:** INV-T01, INV-T02, INV-T03, INV-A01, INV-A02.
 - **Legacy:** INV-L02, INV-L04.
 - **Integridad R-02/documental:** SEC-005, SEC-006.
-- **Controles de prueba:** SEC-008, SEC-009, SEC-010.
+- **Controles de prueba:** SEC-008, SEC-010 (SEC-009 tiene el mecanismo corregido;
+  falta ejecutar `--dry-run`, no es "sin cobertura").
+- **Agente (0021/0022):** ACL deny-by-default por ausencia de fila; cierre de
+  conversación por inactividad.
 
-**Escritas y nunca ejecutadas (4):** R-02 base (`supabase/tests/0016_01…sql`),
-INV-D04 (`0015_01` + `0015_02`), INV-DOC04 (`0015_03`), E2E del piloto.
+**Escritas y nunca ejecutadas (3):** R-02 base (`supabase/tests/0016_01…sql`),
+INV-D04 (`0015_01` + `0015_02`), INV-DOC04 (`0015_03`). El E2E del piloto ya se
+ejecutó (2026-10-31, ver §9).
 
-**Parciales que no deben contarse como verdes (16):** 1.1–1.3, INV-D07,
+**Parciales que no deben contarse como verdes (20):** 1.1–1.3, INV-D07,
 INV-DOC03, INV-C03, INV-C04, 4.1, INV-F01, 9.1, INV-L01/RA-02, INV-L03,
-INV-L05, INV-L06, INV-T04/RA-04, 10.1, 11.2, SEC-011. Motivos recurrentes:
-(a) prueba secuencial donde se exige concurrencia; (b) validación de servicio
-donde el invariante exige DB; (c) aserción que admite más de un resultado.
+INV-L05, INV-L06, INV-T04/RA-04, 10.1, 11.2, SEC-011 y la fila de TES de §9.
+Motivos recurrentes: (a) prueba secuencial donde se exige concurrencia;
+(b) validación de servicio donde el invariante exige DB; (c) aserción que admite
+más de un resultado.
 
 **Nota sobre las cifras:** `docs/datos/invariantes.md:63` declara 31 invariantes
 sin mecanismo en DB. Esta matriz cubre las filas `INV-` de ese catálogo (con

@@ -10,8 +10,9 @@ Cubre:
 3. `tiene_membresia_activa` fail-closed con identificadores mal formados (sin
    llegar a la base).
 4. HTTP contra la app real: `admin2@tei.local` (tenant TES) recibe **403** en el
-   legacy y **200** en `/nucleo/*` con `X-Empresa-ID`; `admin@tei.local` (tenant
-   TEI) sigue con **200** en el legacy y `/auth/me` informa `es_legacy`.
+   prefijo legacy y **200** en `/nucleo/*` con `X-Empresa-ID`; `admin@tei.local`
+   (tenant TEI) **no** recibe 403 del gate (tras la Ola C la ruta legacy ya no
+   existe: 404) y `/auth/me` informa `es_legacy`.
 
 Los flujos HTTP requieren la base de test (`NUCLEO_TEST_DATABASE_URL`) y el
 segundo tenant sembrado. `make test-db` clona la base local (que ya tiene TES);
@@ -372,9 +373,16 @@ def test_http_tenant2_no_puede_leer_el_nucleo_de_TEI(client, headers_admin2):
     assert resp.json()["codigo"] == "ACCESO_DENEGADO"
 
 
-def test_http_tenant1_sigue_usando_el_legacy(client, headers_admin):
+def test_http_tenant1_no_es_bloqueado_por_el_gate(client, headers_admin):
+    """El gate no bloquea a TEI; la ruta legacy retirada responde 404 (Ola C).
+
+    Antes de la Ola C este contrato era 200 (el router legacy servía la
+    respuesta). El gate sigue siendo la frontera para TES —ver
+    `test_http_tenant2_no_entra_al_legacy`— y la desaparición de la ruta es
+    parte del retiro, no del gate.
+    """
     resp = client.get(f"{API}/clientes", headers=headers_admin)
-    assert resp.status_code == 200, resp.text
+    assert resp.status_code == 404, resp.text
 
 
 def test_http_auth_me_expone_es_legacy_por_tenant(client, headers_admin, headers_admin2):
@@ -391,7 +399,12 @@ def test_http_auth_me_expone_es_legacy_por_tenant(client, headers_admin, headers
     assert me_tes.json()["rol"] == "admin"
 
 
-def test_http_sin_token_el_legacy_sigue_respondiendo_401(client):
-    """El gate no reescribe el contrato de "sin token"."""
+def test_http_sin_token_ruta_retirada_responde_404(client):
+    """Sin token, el gate deja pasar; la ruta retirada responde 404 (Ola C).
+
+    El contrato "sin token el gate no reescribe el 401" se prueba en el
+    middleware aislado (`test_sin_token_deja_pasar_para_que_la_ruta_responda_401`):
+    aquí ya no hay router legacy que devuelva 401.
+    """
     resp = client.get(f"{API}/clientes")
-    assert resp.status_code == 401, resp.text
+    assert resp.status_code == 404, resp.text

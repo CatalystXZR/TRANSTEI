@@ -3,7 +3,9 @@
 Cubre:
 - F-01: `legacy_congelado()` fail-closed ante error de lectura o fila ausente.
 - F-03: handler global de IntegrityError con mapeo por sqlstate.
-- F-08: `get_config_decimal` y `valores` de KPI ya no tragan errores en silencio.
+- F-08: `get_config_decimal` ya no traga errores en silencio (la parte de
+  `valores` de KPI se retiró en la Ola C junto con el router `kpis`, ADR-0002
+  §6.5; el motor `app/services/kpi_engine.py` ya no existe).
 - F0-05: firma por magic bytes, content-type canónico y lectura acotada.
 """
 
@@ -174,28 +176,6 @@ def test_get_config_decimal_registra_y_devuelve_default(monkeypatch, caplog):
         resultado = get_config_decimal(_Sesion(), "iva_porcentaje", "19")
     assert resultado == Decimal("19")
     assert any("iva_porcentaje" in m for m in caplog.messages)
-
-
-def test_kpi_valores_registra_fallo_de_metricas(monkeypatch, caplog):
-    from app.api.routes import kpis as mod_kpis
-    from app.services import kpi_engine
-
-    class _ResultadoVacio:
-        def all(self):
-            return []
-
-    class _Sesion:
-        def exec(self, stmt):
-            return _ResultadoVacio()
-
-    def boom(session, periodo):
-        raise RuntimeError("no hay métricas")
-
-    monkeypatch.setattr(kpi_engine, "metricas_global", boom)
-    with caplog.at_level(logging.WARNING, logger="app.api.routes.kpis"):
-        resultado = mod_kpis.valores(periodo=None, session=_Sesion(), _=None)
-    assert resultado == []
-    assert any("métricas globales" in m for m in caplog.messages)
 
 
 # ---------------------------------------------------------------------------

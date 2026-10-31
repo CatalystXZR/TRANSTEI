@@ -10,9 +10,10 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlmodel import Session, create_engine
+from sqlmodel import Session, create_engine, select
 
 from app.core.config import settings
+from app.core.database import registrar_contexto_transaccion
 from app.nucleo.deps import ContextoEmpresa, RolEmpresa
 from app.nucleo.errores import DatosInvalidos, ReglaNegocioViolada
 from app.nucleo.models import (
@@ -41,9 +42,11 @@ from app.nucleo.schemas import (
     PODUpdate,
     PromesaPagoCreate,
 )
+from app.nucleo.servicio_configuracion import ServicioConfiguracion
 from app.nucleo.servicio_expediente import ServicioExpediente
-from app.nucleo.servicio_facturacion import ServicioFacturacion
+from app.nucleo.servicio_facturacion import ServicioFacturacion, tasa_desde_porcentaje
 from app.nucleo.servicio_pod import ServicioPOD
+from contexto_helpers import contexto_de_prueba
 from rut_helpers import rut_empresa
 
 PNG_FALSO = (
@@ -58,6 +61,15 @@ def _url() -> str:
     if not url:
         pytest.skip("Sin NUCLEO_TEST_DATABASE_URL; se omite integración de facturación")
     return url
+
+
+def _url_app() -> str:
+    """DSN del rol de aplicación (`tei_app`), al que 0026 le da DML de configuración."""
+    return (
+        os.environ.get("NUCLEO_DATABASE_URL")
+        or settings.NUCLEO_DATABASE_URL
+        or _url()
+    )
 
 
 def _crear_viaje(session: Session, empresa: Empresa, sufijo: str) -> Viaje:
@@ -151,6 +163,70 @@ def _crear_viaje(session: Session, empresa: Empresa, sufijo: str) -> Viaje:
     return viaje
 
 
+def _configurar_iva(empresa: Empresa, valor: int = 19) -> None:
+    """Configura `iva_porcentaje` vigente para la empresa de prueba.
+
+    Desde el fix de RET-04 la emisión exige `iva_porcentaje` configurado: no
+    hay 19 % implícito. La migración 0026 sembró solo las empresas existentes
+    al aplicarse; las que crea cada test son posteriores.
+
+    La tabla 0026 solo da DML al rol de aplicación (`tei_app`); el rol
+    privilegiado de las fixtures no tiene GRANT. Se escribe con el rol real y
+    su contexto de empresa (RLS), igual que en `test_nucleo_ola_b_modulos.py`.
+    """
+    if (
+        _url_app() == _url()
+    ):  # pragma: no cover - entorno sin roles de 0020
+        pytest.skip(
+            "NUCLEO_DATABASE_URL no apunta a tei_app; no se puede configurar el "
+            "IVA (0026 no da DML al rol privilegiado)"
+        )
+    contexto = contexto_de_prueba(
+        ContextoEmpresa(
+            auth_id=str(uuid4()), empresa=empresa, rol=RolEmpresa.admin
+        )
+    )
+    app_engine = registrar_contexto_transaccion(create_engine(_url_app(), future=True))
+    try:
+        with Session(app_engine) as app:
+            ServicioConfiguracion(app, contexto).actualizar("iva_porcentaje", valor)
+    finally:
+        app_engine.dispose()
+
+
+def _cerrar_viaje_con_pod(
+    session: Session, contexto: ContextoEmpresa, viaje: Viaje
+) -> None:
+    """Deja un viaje cerrado y facturable: POD + checklist completo + cierre."""
+    pod = ServicioPOD(session, contexto).crear(
+        viaje.id,
+        receptor_nombre="Receptor Factura",
+        receptor_rut="11.111.111-1",
+        receptor_cargo="Jefe de bodega",
+        fecha_hora=None,
+        lat=None,
+        lon=None,
+        danios=None,
+        observaciones=None,
+        firma_nombre="firma.png",
+        firma_contenido=PNG_FALSO,
+        firma_content_type="image/png",
+        fotos=[],
+    )
+    assert pod.facturacion_habilitada is True
+    expediente = ServicioExpediente(session, contexto)
+    for item in expediente.listar_checklist(viaje.id):
+        expediente.actualizar_item_checklist(
+            viaje.id,
+            item.id,
+            ChecklistItemUpdate(completado=True, version=item.version),
+        )
+    cerrado = expediente.cerrar_viaje(
+        viaje.id, CerrarViaje(observaciones="Cierre para facturación")
+    )
+    assert cerrado.estado == EstadoViaje.cerrado
+
+
 def test_factura_pagos_parciales_nota_y_aging():
     engine = create_engine(_url(), future=True)
     try:
@@ -170,6 +246,7 @@ def test_factura_pagos_parciales_nota_y_aging():
             session.add(empresa)
             session.commit()
             session.refresh(empresa)
+            _configurar_iva(empresa, 19)
 
             contexto = ContextoEmpresa(
                 auth_id=str(uuid4()), empresa=empresa, rol=RolEmpresa.contador
@@ -366,5 +443,189 @@ def test_crear_promesa_rechazo_db_traducido_409():
                 ),
             )
             assert len(otra.promesas) == 2
+    finally:
+        engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# RET-04 / F2: la tasa de IVA es de la empresa, no del request
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("porcentaje", "fraccion"),
+    [
+        (19, "0.1900"),
+        (21, "0.2100"),
+        (Decimal("19.5"), "0.1950"),
+        (0, "0.0000"),
+    ],
+)
+def test_tasa_desde_porcentaje_convierte_la_configuracion(porcentaje, fraccion):
+    """Regla pura: `iva_porcentaje` (% en la config) → fracción del multiplicador."""
+    assert tasa_desde_porcentaje(porcentaje) == Decimal(fraccion)
+
+
+@pytest.mark.parametrize("valor", [-1, 101, "no-numero", None])
+def test_tasa_desde_porcentaje_rechaza_valores_invalidos(valor):
+    with pytest.raises(ReglaNegocioViolada) as info:
+        tasa_desde_porcentaje(valor)
+    assert info.value.status_code == 409
+    assert info.value.codigo == "REGLA_NEGOCIO_VIOLADA"
+
+
+def test_factura_usa_la_config_e_ignora_tasa_iva_del_request():
+    """RET-04: una `tasa_iva` en el request no puede fijar el impuesto.
+
+    La config vigente es 21 % — distinta del default histórico 19 % y de la
+    fracción 0,10 enviada —, así que una factura con `tasa_iva` y otra sin el
+    campo deben dar el **mismo** IVA: 21 % del neto.
+    """
+    engine = create_engine(_url(), future=True)
+    try:
+        with engine.connect() as conn:
+            try:
+                conn.execute(text("select 1 from nucleo.facturas_nucleo limit 1"))
+            except SQLAlchemyError as exc:  # pragma: no cover
+                pytest.skip(f"Falta aplicar la migración 0013: {exc}")
+            if (
+                conn.execute(
+                    text("select to_regclass('nucleo.configuracion_empresa')")
+                ).scalar()
+                is None
+            ):  # pragma: no cover
+                pytest.skip("Falta aplicar la migración 0026: no hay configuración")
+
+        sufijo = uuid4().hex[:8]
+        with Session(engine) as session:
+            empresa = Empresa(
+                codigo=f"IVA-{sufijo}",
+                razon_social=f"Empresa IVA {sufijo}",
+                rut=rut_empresa(),
+            )
+            session.add(empresa)
+            session.commit()
+            session.refresh(empresa)
+
+            contexto = ContextoEmpresa(
+                auth_id=str(uuid4()), empresa=empresa, rol=RolEmpresa.contador
+            )
+            _configurar_iva(empresa, 21)
+
+            # La lectura de la config también funciona con el rol real de la
+            # app (`tei_app`, RLS activo): es el camino de producción.
+            app_engine = registrar_contexto_transaccion(
+                create_engine(_url_app(), future=True)
+            )
+            try:
+                with Session(app_engine) as app:
+                    contexto_de_prueba(contexto)
+                    assert ServicioFacturacion(
+                        app, contexto
+                    )._tasa_iva_vigente() == Decimal("0.2100")
+            finally:
+                app_engine.dispose()
+
+            facturacion = ServicioFacturacion(session, contexto)
+
+            viaje_a = _crear_viaje(session, empresa, f"{sufijo}a")
+            _cerrar_viaje_con_pod(session, contexto, viaje_a)
+            con_request = facturacion.crear_factura(
+                FacturaCreate(
+                    cliente_id=viaje_a.cliente_id,
+                    viaje_ids=[viaje_a.id],
+                    fecha_vencimiento=date.today() + timedelta(days=30),
+                    tasa_iva=Decimal("10"),  # absurdo como fracción; se ignora
+                )
+            )
+
+            viaje_b = _crear_viaje(session, empresa, f"{sufijo}b")
+            _cerrar_viaje_con_pod(session, contexto, viaje_b)
+            sin_request = facturacion.crear_factura(
+                FacturaCreate(
+                    cliente_id=viaje_b.cliente_id,
+                    viaje_ids=[viaje_b.id],
+                    fecha_vencimiento=date.today() + timedelta(days=30),
+                )
+            )
+
+            assert con_request.neto == Decimal("100000.00")
+            assert con_request.iva == Decimal("21000.00")  # 21 % de la config
+            assert con_request.total == Decimal("121000.00")
+            assert sin_request.iva == con_request.iva
+            assert sin_request.total == con_request.total
+
+            # El schema ya no propone una tasa por defecto (no hay 19 implícito).
+            assert (
+                FacturaCreate(
+                    cliente_id=viaje_a.cliente_id,
+                    viaje_ids=[viaje_a.id],
+                    fecha_vencimiento=date.today(),
+                ).model_dump()["tasa_iva"]
+                is None
+            )
+    finally:
+        engine.dispose()
+
+
+def test_factura_sin_iva_configurado_falla_409_sin_efectos():
+    """Fail-closed: sin `iva_porcentaje` vigente no se emite factura.
+
+    No se inventa un 19 %: el error es de dominio (409) y ocurre antes de
+    cualquier escritura, así que no queda factura ni cambia el estado del viaje.
+    """
+    engine = create_engine(_url(), future=True)
+    try:
+        with engine.connect() as conn:
+            try:
+                conn.execute(text("select 1 from nucleo.facturas_nucleo limit 1"))
+            except SQLAlchemyError as exc:  # pragma: no cover
+                pytest.skip(f"Falta aplicar la migración 0013: {exc}")
+            if (
+                conn.execute(
+                    text("select to_regclass('nucleo.configuracion_empresa')")
+                ).scalar()
+                is None
+            ):  # pragma: no cover
+                pytest.skip("Falta aplicar la migración 0026: no hay configuración")
+
+        sufijo = uuid4().hex[:8]
+        with Session(engine) as session:
+            empresa = Empresa(
+                codigo=f"SINIVA-{sufijo}",
+                razon_social=f"Empresa Sin IVA {sufijo}",
+                rut=rut_empresa(),
+            )
+            session.add(empresa)
+            session.commit()
+            session.refresh(empresa)
+
+            contexto = ContextoEmpresa(
+                auth_id=str(uuid4()), empresa=empresa, rol=RolEmpresa.contador
+            )
+            viaje = _crear_viaje(session, empresa, sufijo)
+            _cerrar_viaje_con_pod(session, contexto, viaje)
+            facturacion = ServicioFacturacion(session, contexto)
+
+            with pytest.raises(ReglaNegocioViolada) as info:
+                facturacion.crear_factura(
+                    FacturaCreate(
+                        cliente_id=viaje.cliente_id,
+                        viaje_ids=[viaje.id],
+                        fecha_vencimiento=date.today() + timedelta(days=30),
+                        tasa_iva=Decimal("0.10"),  # tampoco sirve de sustituto
+                    )
+                )
+            assert info.value.status_code == 409
+            assert info.value.codigo == "REGLA_NEGOCIO_VIOLADA"
+            assert info.value.contexto.get("clave") == "iva_porcentaje"
+            assert "iva_porcentaje" in info.value.mensaje
+
+            assert (
+                session.exec(
+                    select(FacturaNucleo).where(FacturaNucleo.empresa_id == empresa.id)
+                ).all()
+                == []
+            )
+            session.refresh(viaje)
+            assert viaje.estado == EstadoViaje.cerrado
     finally:
         engine.dispose()

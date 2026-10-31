@@ -1,6 +1,7 @@
 """Configuración de pruebas.
 
-- Pruebas unitarias del motor de KPIs: siempre corren (sin red ni base de datos).
+- Pruebas unitarias del núcleo (fechas, políticas, schemas, tarifas, agente):
+  siempre corren (sin red ni base de datos).
 - Pruebas de integración: requieren la base de test dedicada
   `NUCLEO_TEST_DATABASE_URL` (tei_test) y, para los flujos HTTP, las variables
   de entorno TEST_ADMIN_EMAIL / TEST_ADMIN_PASSWORD (y TEST_CONT_EMAIL si

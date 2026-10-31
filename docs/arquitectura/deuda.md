@@ -9,6 +9,16 @@
 > **Re-verificar con:** `grep -n` de la evidencia citada + `docs/estado.md` §5.
 >
 > **Prefijo canónico: `DEU-NN`.** Las 23 filas `D-01…D-23` de este archivo se conservan como alias histórico; **las nuevas deudas usan `DEU-NN`**. El prefijo `D-NN` pertenece a las decisiones del dueño en `docs/negocio/preguntas.md` (`AGENTS.md` §11.2): el `D-18` de este archivo (observabilidad) **no** es el `D-18` de `preguntas.md` (resolución de código de flete).
+>
+> ⚠️ **Aviso 2026-10-31 (Olas A–C ejecutadas).** Varias filas citan archivos que
+> **ya no existen** (`routes/viajes.py`, `routes/facturas.py`,
+> `routes/liquidaciones.py`, `routes/gastos.py`, `kpi_engine.py`) y describen una
+> doble escritura que la aplicación ya no tiene. Siguen siendo válidas como
+> **deuda de datos** (histórico sin migrar), no como deuda de código:
+> `D-01`, `D-04`, `D-06`, `D-09`, `D-15`, `D-16`. Estado y compuertas vigentes:
+> [`adr/ADR-0002-retiro-del-legacy.md`](adr/ADR-0002-retiro-del-legacy.md) rev. 3 y
+> [`fuentes-de-verdad.md`](fuentes-de-verdad.md) rev. 2. La reescritura de estas
+> filas queda pendiente de `arquitectura`.
 
 ---
 

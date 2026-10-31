@@ -1,4 +1,4 @@
-# Catálogo de migraciones — `supabase/migrations/0001`–`0023`
+# Catálogo de migraciones — `supabase/migrations/0001`–`0026`
 
 > **Pregunta que responde:** ¿qué hace cada migración, cuánto riesgo tiene y está aplicada?
 > **Dueño:** agente `datos` · **Verificado:** 2026-10-29 (cuerpo) · 2026-10-30 (`0020`, `0021`, `0022` y `0023`, catálogo de `tei_test`) · **Método:** lectura de DDL + `git` + `psql`
@@ -59,6 +59,9 @@
 | `0021_agente_whatsapp.sql` | Persistencia del módulo agente WhatsApp (F2.5/F2.6, ADR-0003/0004): contactos, ACL, conversaciones, mensajes, solicitudes, hoja de ruta, R-04 y auditoría de consultas | **ADD-only:** 8 tablas (`contactos_whatsapp`…`auditoria_consultas_agente`), columna `viajes.id_comercial_flete` + `CHECK` + `UNIQUE` parcial, 8 `enum`, 5 funciones, 25 triggers, 32 índices en las tablas nuevas, 9 políticas RLS con `ENABLE`+`FORCE`, GRANTs a `tei_app`; única excepción estructural: `UNIQUE (empresa_id, id)` en `usuarios_empresa` (habilita FKs compuestas) | **Alto** (identidad, aislamiento, idempotencia del webhook, numeración comercial; módulo apagado) | untracked (`??`) | 🟡 solo `tei_test` (2026-10-30, 14/14 smoke) |
 | `0022_agente_whatsapp_endurecimiento.sql` | Cerrar en la base 4 defectos verificados de `0021` (D2, D3, D5, D9 de `docs/datos/agente-esquema.md` §8): ID comercial inmutable, contador monótono no decreciente, máquina de estados + `payload` inmutable de `hoja_ruta`, y tope de 5 dígitos fail-closed | 3 funciones de trigger + 3 triggers (`trg_contador_10_no_retrocede`, `trg_viajes_10_id_comercial_inmutable`, `trg_hoja_ruta_10_transicion`) y `create or replace` de `obtener_siguiente_id_comercial_flete` con el tope. **Cero cambios de tablas, columnas, índices, políticas o datos** | **Alto** (R-04: numeración comercial, identidad inmutable y estados; módulo apagado) | untracked (`??`) | 🟡 solo `tei_test` (2026-10-30); rollback probado con `0022_99` (2026-10-30) |
 | `0023_modulos_empresa.sql` | Llave 1 del gate del conector: flag de módulo activo **por empresa** (`nucleo.modulos_empresa`), fail-closed | **ADD-only:** 1 tabla nueva (`modulos_empresa`), PK `(empresa_id, modulo_id)`, FK a `nucleo.empresas` `on delete restrict`, 3 `CHECK`, 2 triggers (`fn_touch`/`fn_version` de `0004`), RLS `ENABLE`+`FORCE`, 1 política `tenant_empresa`, GRANT `select, insert, update` a `tei_app` (sin `delete`). **0 filas: no siembra** | Bajo en datos (tabla vacía, sin reescritura) / a vigilar en comportamiento: escribir `habilitado=true` enciende la llave 1 del agente | untracked (`??`) | 🟡 solo `tei_test` (2026-10-30); rollback `0023_99` ejecutado + re-aplicación |
+| `0024_mantenimiento_nucleo.sql` | Ola B.1: mantenimiento por km en el núcleo (pautas + registros + semáforo único) | **ADD-only:** 2 tablas (`pautas_mantenimiento`, `mantenimientos`), 1 vista (`v_mantenimiento_estado`, `security_invoker`), 3 funciones de trigger, 9 triggers, FKs compuestas, snapshot inmutable del intervalo, RLS `ENABLE`+`FORCE`, 2 políticas `tenant_empresa`, GRANT `select,insert,update` a `tei_app` + `select` a la vista. **0 filas** | **Alto**: `costo >= 0` (corrige defecto legacy) y el histórico de la flota. Sin backfill; el trigger de odómetro solo **sube** `tractos.km_actual` | untracked (`??`) | 🟡 `postgres` (local) y `tei_test`, 2026-10-31; rollback `0024_99` ejecutado + re-aplicación |
+| `0025_liquidaciones_nucleo.sql` | Ola B.2: nómina (liquidaciones, anticipos, ajustes) con total generado y HALF_UP | **ADD-only:** 3 tablas (`liquidaciones`, `anticipos_chofer`, `ajustes_liquidacion`), 1 función de redondeo (`redondear_half_up`), 3 funciones de trigger, 15 triggers, `total_liquido` **generado**, UNIQUE `(empresa_id, chofer_id, mes)`, FKs compuestas, RLS `ENABLE`+`FORCE`, 3 políticas, GRANT `select,insert,update` (sin `delete`). **0 filas** | **Alto** (dinero y datos laborales): inmutabilidad de la emitida e imputación única del anticipo. No migra filas legacy | untracked (`??`) | 🟡 `postgres` y `tei_test`, 2026-10-31; rollback `0025_99` ejecutado + re-aplicación |
+| `0026_configuracion_empresa.sql` | Ola B.4: configuración por empresa con vigencia e historial; reemplazo de `public.configuracion` | **ADD-only:** 1 tabla (`configuracion_empresa`), 3 funciones (lectura + 2 de trigger), 5 triggers, `UNIQUE` parcial de fila vigente, `EXCLUDE` gist de vigencias, `CHECK` de rango para `iva_porcentaje`, RLS `ENABLE`+`FORCE`, 1 política, GRANT `select,insert,update`. **Seed:** `iva_porcentaje=19` por empresa existente (2 en `postgres`, 130 en `tei_test`) | **Medio** (tributario): el 19 es paridad con `0001:291`, no una norma (`P-01`); no toca el legacy ni reajusta facturas | untracked (`??`) | 🟡 `postgres` y `tei_test`, 2026-10-31; rollback `0026_99` ejecutado + re-aplicación |
 
 **Nota (a) — única declaración de aplicación en el repo:** `docs/qa/informes/2026-10-29-r01-r02-suite-verde.md:1-45`
 reporta PostgreSQL local arriba y el trigger de `0016` activo (los fixtures sin
@@ -198,6 +201,27 @@ higiene: cualquier `supabase db reset` sobre `HEAD` deja un sistema sin `nucleo`
 > `0023_modulos_empresa.sql` es **untracked** (`??`). `HEAD` sigue teniendo solo
 > `0001`–`0003`: 20 de los 23 archivos están fuera del commit (11 `A` + 9 `??`).
 > Aplicada **solo** en `tei_test` (clon desechable).
+
+> **Adenda 2026-10-31 (Ola B: `0024`–`0026`).** `ls supabase/migrations/ |
+> wc -l` = **26**; los tres archivos nuevos son **untracked** (`??`). `HEAD`
+> sigue teniendo solo `0001`–`0003`: 23 de los 26 están fuera del commit.
+>
+> Las tres se aplicaron **y** probaron en la base local `postgres` (datos
+> ficticios) y en el clon `tei_test`: `nucleo` pasa de **40 a 46 tablas** y de
+> **45 a 51 políticas**; 6 tablas nuevas con `ENABLE`+`FORCE` y política
+> `tenant_empresa`; 29 triggers nuevos; `tei_app` con
+> `select,insert,update` (sin `delete`) en las 6 y `select` en la vista.
+> Rollback probado en ciclo completo: `0026_99` → `0025_99` → `0024_99` deja
+> 40 tablas/45 políticas y cero objetos de la Ola B; la re-aplicación vuelve a
+> 46/51 sin residuos.
+>
+> **Particularidad de `0026`:** es la única de las tres que **escribe datos**
+> (seed `iva_porcentaje = 19` por empresa: 2 filas en `postgres`, 130 en
+> `tei_test`). No es backfill ni migración de datos del legacy: es el valor por
+> defecto del parámetro, con el mismo 19 de `0001:291`, pendiente de `P-01`.
+>
+> Diseño, precondiciones ejecutadas, impacto/locks y salidas reales:
+> `docs/datos/retiro-legacy-modelo.md`; invariantes: `invariantes.md` §12.
 
 ---
 

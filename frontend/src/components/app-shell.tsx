@@ -34,8 +34,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [hoy, setHoy] = useState("");
 
-  const grupos = usuario ? gruposParaRol(usuario.rol, usuario.es_legacy) : [];
-  const inicio = usuario?.es_legacy === false ? "/despacho" : "/dashboard";
+  const grupos = usuario ? gruposParaRol(usuario.rol) : [];
+  // `/dashboard` ya no existe: el legacy aterriza en el tablero del núcleo.
+  // Sin legacy se conserva la mesa de despacho como home (fase 2).
+  const inicio = usuario?.es_legacy === false ? "/despacho" : "/tablero";
   const actual = tituloDeRuta(pathname);
 
   useEffect(() => {

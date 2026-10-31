@@ -677,7 +677,15 @@ def test_legacy_congelado_fila_presente(monkeypatch, valor, esperado):
 
 
 def test_middleware_congelado_bloquea_escritura_legacy(client, db):
-    """HTTP real (in-process): flag true -> POST legacy -> 409 CUTOVER_LEGACY_CONGELADO."""
+    """HTTP real (in-process): flag true -> POST legacy -> 409 CUTOVER_LEGACY_CONGELADO.
+
+    Ola C (ADR-0002 §6.5): los routers legacy de negocio ya **no existen**, así
+    que esta prueba verifica el orden `middleware -> router` sobre el prefijo
+    `/api/v1` que queda vigilado (defensa en profundidad hasta la Ola E). La
+    ruta usada (`/viajes`) es deliberadamente una ruta retirada: el 409 lo emite
+    el middleware antes del enrutado, y sin congelamiento la misma ruta responde
+    404 (ver `test_f2_ola_c_retiro_routers.py`).
+    """
     with db.cursor() as cur:
         cur.execute("select 1 from nucleo.cutover_control where id = true")
         if cur.fetchone() is None:
@@ -697,9 +705,10 @@ def test_middleware_congelado_bloquea_escritura_legacy(client, db):
         resp = client.post(f"{API}/viajes", json={"origen": "X"})
         assert resp.status_code == 409, resp.text
         assert resp.json()["codigo"] == "CUTOVER_LEGACY_CONGELADO"
-        # Lecturas legacy no se bloquean (401 de auth, no 409).
+        # Las lecturas de un prefijo retirado no se bloquean: 404 del router
+        # (ya no hay ruta legacy), nunca 409 del middleware.
         resp_get = client.get(f"{API}/viajes")
-        assert resp_get.status_code == 401, resp_get.text
+        assert resp_get.status_code == 404, resp_get.text
         # Las escrituras del núcleo NO se bloquean (422 de validación, no 409).
         resp_nucleo = client.post(f"{API}/nucleo/documentos", data={})
         assert resp_nucleo.status_code != 409
@@ -749,7 +758,11 @@ def test_middleware_congelado_bloquea_con_credenciales(client, db, headers_admin
 
 
 def test_middleware_sin_flag_deja_pasar(client, db):
-    """Flag false: el middleware deja pasar (401 de auth, no 409)."""
+    """Flag false: el middleware deja pasar y la ruta retirada responde 404.
+
+    Antes de la Ola C el contrato era 401 (auth de la ruta legacy). Hoy la ruta
+    ya no existe: 404 del router, nunca 409 del middleware.
+    """
     with db.cursor() as cur:
         cur.execute(
             "update nucleo.cutover_control set legacy_escritura_congelada = false where id = true"
@@ -758,7 +771,7 @@ def test_middleware_sin_flag_deja_pasar(client, db):
     invalidar_cache()
     try:
         resp = client.post(f"{API}/viajes", json={"origen": "X"})
-        assert resp.status_code != 409
+        assert resp.status_code == 404, resp.text
         assert resp.json().get("codigo") != "CUTOVER_LEGACY_CONGELADO"
     finally:
         invalidar_cache()
@@ -780,7 +793,8 @@ def test_middleware_mutacion_sin_garantia(monkeypatch, client, db):
     monkeypatch.setattr("app.main.legacy_congelado", lambda: False)
     try:
         resp = client.post(f"{API}/viajes", json={"origen": "X"})
-        assert resp.status_code != 409
+        # Ruta retirada en la Ola C: sin la garantía el request llega al router.
+        assert resp.status_code == 404, resp.text
         assert resp.json().get("codigo") != "CUTOVER_LEGACY_CONGELADO"
     finally:
         invalidar_cache()
@@ -795,146 +809,20 @@ def test_middleware_mutacion_sin_garantia(monkeypatch, client, db):
 # ---------------------------------------------------------------------------
 # C. Mapeo SQLSTATE -> HTTP (por HTTP real con credenciales)
 # ---------------------------------------------------------------------------
-
-
-def _sin_fuga_psycopg(body: dict) -> None:
-    import json
-
-    crudo = json.dumps(body).lower()
-    assert "psycopg" not in crudo
-    assert "postgres" not in crudo
-
-
-def test_23505_rut_chofer_duplicado_409(client, headers_admin, db, etiqueta):
-    """Duplicado legacy (choferes.rut unique) -> 409 REGISTRO_DUPLICADO."""
-    body = {
-        "nombre": f"Chofer {etiqueta}",
-        "rut": f"{etiqueta}-RUT",
-        "sueldo_base": 400000,
-        "porcentaje_produccion": 0.10,
-    }
-    r1 = client.post(f"{API}/choferes", json=body, headers=headers_admin)
-    assert r1.status_code == 201, r1.text
-    try:
-        r2 = client.post(f"{API}/choferes", json=body, headers=headers_admin)
-        assert r2.status_code == 409, r2.text
-        payload = r2.json()
-        assert payload["codigo"] == "REGISTRO_DUPLICADO"
-        _sin_fuga_psycopg(payload)
-    finally:
-        with db.cursor() as cur:
-            cur.execute("delete from choferes where rut=%s", (body["rut"],))
-            db.commit()
-
-
-def test_23514_gasto_negativo_422(client, headers_admin, db, etiqueta):
-    """CHECK monto >= 0 de public.gastos_viaje -> 422 DATOS_INVALIDOS (handler global)."""
-    cl = client.post(
-        f"{API}/clientes",
-        json={"razon_social": f"Cliente {etiqueta}", "rut": f"{etiqueta}-1", "dias_pago": 30},
-        headers=headers_admin,
-    ).json()
-    ch = client.post(
-        f"{API}/choferes",
-        json={
-            "nombre": f"Chofer {etiqueta}",
-            "rut": f"{etiqueta}-2",
-            "sueldo_base": 400000,
-            "porcentaje_produccion": 0.10,
-        },
-        headers=headers_admin,
-    ).json()
-    tr = client.post(
-        f"{API}/tractos",
-        json={"patente": f"{etiqueta}-A", "marca": "Test", "km_actual": 10000},
-        headers=headers_admin,
-    ).json()
-    rp = client.post(
-        f"{API}/ramplas",
-        json={"patente": f"{etiqueta}-B", "tipo": "plana"},
-        headers=headers_admin,
-    ).json()
-    viaje = client.post(
-        f"{API}/viajes",
-        json={
-            "fecha_inicio": "2026-09-05",
-            "origen": "Santiago",
-            "destino": "Concepción",
-            "valor_flete_neto": 500000,
-            "cliente_id": cl["id"],
-            "chofer_id": ch["id"],
-            "tracto_id": tr["id"],
-            "rampla_id": rp["id"],
-        },
-        headers=headers_admin,
-    ).json()
-    try:
-        resp = client.post(
-            f"{API}/viajes/{viaje['id']}/gastos",
-            data={"categoria": "peaje", "monto": "-1000"},
-            headers=headers_admin,
-        )
-        assert resp.status_code == 422, resp.text
-        assert resp.json()["codigo"] == "DATOS_INVALIDOS"
-        _sin_fuga_psycopg(resp.json())
-    finally:
-        with db.cursor() as cur:
-            cur.execute("delete from gastos_viaje where viaje_id=%s", (viaje["id"],))
-            cur.execute("delete from viajes where id=%s", (viaje["id"],))
-            cur.execute("delete from clientes where id=%s", (cl["id"],))
-            cur.execute("delete from choferes where id=%s", (ch["id"],))
-            cur.execute("delete from tractos where id=%s", (tr["id"],))
-            cur.execute("delete from ramplas where id=%s", (rp["id"],))
-            db.commit()
-
-
-def test_23505_liquidacion_concurrente(client, headers_admin, db, etiqueta):
-    """Concurrencia real: dos POST /liquidaciones/calcular simultáneos.
-
-    La unicidad (chofer_id, mes) es la última defensa; esperado: un 200 y un
-    409 REGISTRO_DUPLICADO (o ambos 200 si el perdedor relee la fila), y
-    SIEMPRE exactamente una fila.
-    """
-    ch = client.post(
-        f"{API}/choferes",
-        json={
-            "nombre": f"Chofer {etiqueta}",
-            "rut": f"{etiqueta}-LQ",
-            "sueldo_base": 400000,
-            "porcentaje_produccion": 0.10,
-        },
-        headers=headers_admin,
-    ).json()
-    mes = "2026-09"
-    barrera = threading.Barrier(2)
-    estados: list[int] = []
-
-    def calcular():
-        barrera.wait()
-        r = client.post(
-            f"{API}/liquidaciones/calcular",
-            params={"chofer_id": ch["id"], "mes": mes},
-            headers=headers_admin,
-        )
-        estados.append(r.status_code)
-
-    try:
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            list(pool.map(lambda _: calcular(), range(2)))
-        assert set(estados) <= {200, 409}, f"estados: {estados}"
-        assert 200 in estados, f"estados: {estados}"
-        with db.cursor() as cur:
-            cur.execute(
-                "select count(*) from liquidaciones where chofer_id=%s and mes=%s",
-                (ch["id"], mes),
-            )
-            total = cur.fetchone()[0]
-        assert total == 1, f"filas en liquidaciones: {total}"
-    finally:
-        with db.cursor() as cur:
-            cur.execute("delete from liquidaciones where chofer_id=%s", (ch["id"],))
-            cur.execute("delete from choferes where id=%s", (ch["id"],))
-            db.commit()
+# Ola C (ADR-0002 §6.5, 2026-10-31): se retiraron los casos que ejercitaban
+# rutas legacy desmontadas (`POST /api/v1/choferes`, `POST /api/v1/clientes`,
+# `POST /api/v1/viajes/{id}/gastos`, `POST /api/v1/liquidaciones/calcular`):
+# esos endpoints ya no existen (404). Cobertura equivalente que queda:
+#   * 23505/23P01/23514/23502/23503 -> 409/422 en el handler global:
+#     `test_seguridad_ola2.py::test_handler_integrity_mapea_sqlstate` y
+#     `::test_handler_integrity_23505_usa_mensaje_de_dominio`.
+#   * 409 por error de BD traducido, por HTTP real:
+#     `test_nucleo_facturacion.py::test_crear_promesa_rechazo_db_traducido_409`.
+#   * Unicidad de liquidación `(chofer, mes)` en el núcleo:
+#     `test_nucleo_ola_b_modulos.py::test_nomina_cn04_half_up_y_duplicado`.
+#   * Gap declarado: no hay prueba de concurrencia real sobre la CREACIÓN de la
+#     liquidación del núcleo (sí sobre la emisión:
+#     `test_nomina_concurrencia_emision_imputa_una_sola_vez`). Queda para `qa`.
 
 
 def test_promesa_monto_cero_422_y_monto_positivo_201(client, db):

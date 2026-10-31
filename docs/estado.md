@@ -28,15 +28,15 @@
 
 | Dato | Valor | Comando |
 |---|---|---|
-| Migraciones en disco | **23** (`0001`–`0023`) | `ls supabase/migrations \| wc -l` |
-| Migraciones en `HEAD` | **23** | `git ls-tree HEAD supabase/migrations/ \| wc -l` |
-| Migraciones aplicadas en la base local | **23** (reset reproducible 2026-10-31: `0001`–`0023`) | `docker exec supabase_db_TRANSTEI psql -U postgres -tA -c "select count(*) from supabase_migrations.schema_migrations"` |
-| Tablas en `nucleo` | **40** | `grep -rh "create table nucleo" supabase/migrations \| wc -l` |
-| Routers montados | **27** (12 legacy + 15 núcleo, incluye agente) | `grep -c include_router backend/app/api/router.py` |
-| Pantallas | **28** | `find frontend/src/app -name page.tsx \| wc -l` |
+| Migraciones en disco | **26** (`0001`–`0026`) | `ls supabase/migrations \| wc -l` |
+| Migraciones en `HEAD` | **26** | `git ls-tree HEAD supabase/migrations/ \| wc -l` |
+| Migraciones aplicadas en la base local | **26** (reset reproducible 2026-10-31: `0001`–`0026`) | `docker exec supabase_db_TRANSTEI psql -U postgres -tA -c "select count(*) from supabase_migrations.schema_migrations"` |
+| Tablas en `nucleo` | **46** | `grep -rh "create table nucleo" supabase/migrations \| wc -l` |
+| Routers montados | **20** (1 auth + 15 núcleo + 4 Ola B); 0 de negocio legacy | `grep -c include_router backend/app/api/router.py` |
+| Pantallas | **29** page.tsx (20 de negocio + 9 redirecciones 308) | `find frontend/src/app -name page.tsx \| wc -l` |
 | Roles del núcleo | **8** | `backend/app/nucleo/models.py` (`RolEmpresa`) |
-| Unitarias | **135 passed** (fase 1, 2026-10-31) | `make unit` |
-| Integración | **388 passed, 0 skipped** (fase 2, 2026-10-31) | `make test` (tei_test) |
+| Unitarias | **128 passed** (fase 2, 2026-10-31) | `make unit` |
+| Integración | **415 passed, 0 skipped** (fase 2, 2026-10-31) | `make test` (tei_test) |
 | Tenants activos (local) | **2** (TEI + TES) | `select count(*) from nucleo.empresas` |
 | E2E definidos | **9** | `grep -cE "^\s*test\(" frontend/e2e/tei.spec.ts` |
 | E2E ejecutados | **9/9 passed** | `make e2e` (F0 2026-10-29) |
@@ -139,4 +139,4 @@
 
 *F0 — Due Diligence y Línea Base (2026-10-29): informe completo en [`docs/qa/informes/F0-due-diligence.md`](qa/informes/F0-due-diligence.md). **Veredicto: A (REFACTOR), ratificado por el dueño (2026-10-29). F0 cerrada.***
 
-*Fase 2 — segundo tenant (2026-10-31): D-3 resuelta. Empresa TES (`22222222-…`) con usuarios y membresías; núcleo aislado; **legacy gateado** (`403 LEGACY_SOLO_TEI` para tenants distintos de TEI) y UI que oculta las 12 pantallas legacy. Baseline: **135 unit + 388 integración (0 skipped) + 9 E2E**. Runbook: `docs/operacion/segundo-tenant.md`.*
+*Fase 2 — retiro del legacy (2026-10-31): **Olas A/B/C ejecutadas**. 9 pantallas legacy → 308; 4 módulos sin equivalente reconstruidos en el núcleo (0024 mantenimiento, 0025 liquidaciones/anticipos/ajustes, 0026 configuración) con APIs y pantallas; 11 routers legacy de negocio retirados (404); cliente HTTP legacy eliminado. Núcleo: 46 tablas, 51 políticas. Baseline: **128 unit + 415 integración (0 skipped) + 20 E2E**. **Pendiente Ola D** (cutover de datos, D-2) **y Ola E** (identidad `public.usuarios`, gate y `DROP` de `public` con backup + autorización). ADR: `docs/arquitectura/adr/ADR-0002-retiro-del-legacy.md`.*

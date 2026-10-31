@@ -1,5 +1,13 @@
 # Alcance del piloto de 90 días — qué está construido, qué falta y cómo ejecutarlo
 
+> ⚠️ **Aviso 2026-10-31.** Este alcance es del **2026-10-29**, antes de las Olas
+> A/B/C del retiro. Su decisión **D-01** ("los 4 módulos sin equivalente siguen en
+> legacy") **ya no aplica**: liquidaciones, mantenimiento, IVA y configuración
+> fueron construidos en `nucleo` (`0024`–`0026`) y sus pantallas migradas. El
+> alcance vigente del retiro está en
+> [`adr/ADR-0002-retiro-del-legacy.md`](adr/ADR-0002-retiro-del-legacy.md) rev. 3.
+> Lo demás (P0, criterios de aceptación) no se re-verificó en esta revisión.
+
 > **Pregunta que responde:** ¿qué entra en el piloto de 90 días y con qué criterio se acepta?
 > **Dueño:** `arquitectura` · **Verificado:** 2026-10-29 · **Método:** lectura estática
 > **Caduca si:** cambia el alcance acordado o se cierra un P0.

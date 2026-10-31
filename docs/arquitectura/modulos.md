@@ -1,5 +1,16 @@
 # Módulos y pantallas — qué existe y quién lo sirve
 
+> ## ⚠️ Superado — 2026-10-31
+>
+> Este inventario es del **2026-10-29**, antes de las Olas A, B y C del retiro.
+> **Ya no es estado**: los 11 routers legacy de negocio fueron borrados (solo
+> queda `/auth`), las 13 pantallas legacy están en el núcleo (9 redirigen, 4
+> reescritas) y `frontend/src/lib/api.ts` no existe.
+>
+> Estado vigente: [`adr/ADR-0002-retiro-del-legacy.md`](adr/ADR-0002-retiro-del-legacy.md)
+> rev. 3 y [`retiro-legacy.md`](retiro-legacy.md) rev. 3. Este archivo se
+> conserva como inventario histórico hasta que `arquitectura` lo reescriba.
+
 > **Pregunta que responde:** ¿qué pantallas, routers, servicios y permisos existen hoy, y cuáles están duplicados entre legacy y núcleo?
 > **Dueño:** arquitectura · **Verificado:** 2026-10-29 · **Método:** lectura estática de `backend/app/api/router.py`, `backend/app/api/routes/*`, `backend/app/nucleo/api_*.py` y de los 28 `page.tsx`; sin ejecución.
 > **Caduca si:** se agrega o retira un router, una pantalla o un permiso; o si cambia un prefijo HTTP.

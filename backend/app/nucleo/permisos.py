@@ -44,6 +44,12 @@ TODOS_LOS_PERMISOS = {
     "conductor:usar",
     "configuracion:leer",
     "configuracion:escribir",
+    # Ola B del retiro legacy (0024–0026): mantenimiento, nómina e IVA.
+    "mantenimiento:leer",
+    "mantenimiento:escribir",
+    "liquidaciones:leer",
+    "liquidaciones:escribir",
+    "iva:leer",
     "roles:leer",
     "usuarios:administrar",
 } | PERMISOS_AGENTE
@@ -85,6 +91,10 @@ ROLES_PERMISOS: dict[RolEmpresa, set[str]] = {
         "alertas:leer",
         "conductor:usar",
         "auditoria:leer",
+        # El legacy permitía a operación registrar mantenciones
+        # (`routes/mantenimiento.py:18`): se conserva con permiso explícito.
+        "mantenimiento:leer",
+        "mantenimiento:escribir",
     },
     RolEmpresa.contador: {
         "maestros:leer",
@@ -102,6 +112,13 @@ ROLES_PERMISOS: dict[RolEmpresa, set[str]] = {
         "alertas:leer",
         "auditoria:leer",
         "configuracion:leer",
+        # Nómina y su control tributario: mismo criterio que SEC-008 (solo
+        # admin/gerente/contabilidad). No se concede a tesorería ni auditor.
+        "liquidaciones:leer",
+        "liquidaciones:escribir",
+        "iva:leer",
+        # El costo de mantención es un gasto de flota: contabilidad lo lee.
+        "mantenimiento:leer",
     },
     RolEmpresa.tesoreria: {
         "maestros:leer",
@@ -115,6 +132,8 @@ ROLES_PERMISOS: dict[RolEmpresa, set[str]] = {
         "cobranza:registrar",
         "alertas:leer",
         "auditoria:leer",
+        # El resumen de IVA resume documentos que tesorería ya puede leer.
+        "iva:leer",
     },
     RolEmpresa.taller: {
         "maestros:leer",
@@ -126,6 +145,8 @@ ROLES_PERMISOS: dict[RolEmpresa, set[str]] = {
         "pod:leer",
         "gastos:leer",
         "alertas:leer",
+        "mantenimiento:leer",
+        "mantenimiento:escribir",
     },
     RolEmpresa.conductor: {
         "expediente:leer",
@@ -142,6 +163,9 @@ ROLES_PERMISOS: dict[RolEmpresa, set[str]] = {
         "auditoria:leer",
         "configuracion:leer",
         "roles:leer",
+        # Auditoría de flota y de documentos tributarios: lectura, sin escritura.
+        "mantenimiento:leer",
+        "iva:leer",
     },
 }
 
