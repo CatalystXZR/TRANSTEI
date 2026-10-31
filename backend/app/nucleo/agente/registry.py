@@ -22,6 +22,7 @@ Garantías que implementa:
 from __future__ import annotations
 
 import logging
+import re
 import threading
 from collections.abc import Mapping
 from types import MappingProxyType
@@ -120,14 +121,68 @@ def _nombre_seguro(nombre: Any) -> str:
     return limpio or "<vacío>"
 
 
-def _pregunta_resumida(
-    nombre: str, entrada: dict[str, Any], explicita: str | None
+_RE_PREGUNTA = re.compile(r"^[a-z][a-z0-9_.]{0,63}( \[[a-z0-9_,]{0,300}\])?$")
+_LARGO_PREGUNTA = 200
+
+
+def _derivacion(
+    herramienta: str, entrada: dict[str, Any], schema: dict[str, Any] | None
 ) -> str:
-    """Intención + claves de la entrada. Nunca valores: pueden ser datos."""
-    if explicita:
-        return explicita[:500]
-    claves = ",".join(sorted(entrada))
-    return f"{nombre} [{claves}]"[:500]
+    """`<herramienta> [<clave>,…]` con **solo** claves declaradas en el schema.
+
+    Se filtran las claves no declaradas: una entrada inválida no debe dejar su
+    nombre en la auditoría (contrato §7.3.1).
+    """
+    propiedades = schema.get("properties", {}) if isinstance(schema, dict) else {}
+    claves = sorted(clave for clave in entrada if clave in propiedades)
+    return f"{herramienta} [{','.join(claves)}]"[:_LARGO_PREGUNTA]
+
+
+def _pregunta_resumida(
+    herramienta: str,
+    entrada: dict[str, Any],
+    explicita: str | None,
+    *,
+    descriptor: Descriptor | None,
+    schema: dict[str, Any] | None,
+) -> str:
+    """Etiqueta de auditoría cerrada (§7.3.1): qué tool y con qué claves.
+
+    El registry **no confía** en el runtime: si el valor no tiene la forma
+    canónica o trae una clave no declarada, se descarta y se persiste la
+    derivación determinista. No se "limpia" el texto: se sustituye, porque la
+    tabla es append-only y no se purga.
+    """
+    # Tool desconocida: solo el nombre saneado, sin claves ni texto del llamador.
+    if descriptor is None:
+        return herramienta[:_LARGO_PREGUNTA]
+
+    derivada = _derivacion(herramienta, entrada, schema)
+    if explicita is None:
+        return derivada
+
+    candidata = explicita.strip()
+    if len(candidata) > _LARGO_PREGUNTA or not _RE_PREGUNTA.fullmatch(candidata):
+        logger.warning(
+            "agente.pregunta_no_conforme herramienta=%s motivo=forma", herramienta
+        )
+        return derivada
+
+    cabeza, _, resto = candidata.partition(" [")
+    if cabeza != herramienta:
+        logger.warning(
+            "agente.pregunta_no_conforme herramienta=%s motivo=tool", herramienta
+        )
+        return derivada
+
+    propiedades = schema.get("properties", {}) if isinstance(schema, dict) else {}
+    claves = [c for c in resto.rstrip("]").split(",") if c]
+    if any(clave not in propiedades for clave in claves):
+        logger.warning(
+            "agente.pregunta_no_conforme herramienta=%s motivo=clave", herramienta
+        )
+        return derivada
+    return candidata
 
 
 def _envelope_ok(
@@ -280,8 +335,15 @@ class Registry:
         contexto: ContextoAgente,
         pregunta: str | None,
     ) -> dict[str, Any]:
-        pregunta = _pregunta_resumida(nombre, entrada, pregunta)
         herramienta = _nombre_seguro(nombre)
+        descriptor = self._descriptores.get(nombre) if self._valido else None
+        pregunta = _pregunta_resumida(
+            herramienta,
+            entrada,
+            pregunta,
+            descriptor=descriptor,
+            schema=self._entradas.get(nombre),
+        )
 
         if not self._valido:
             decision = Decision(
@@ -300,7 +362,6 @@ class Registry:
                 pregunta=pregunta,
             )
 
-        descriptor = self._descriptores.get(nombre)
         if descriptor is None:
             decision = Decision(
                 permitido=False,

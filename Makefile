@@ -66,7 +66,8 @@ unit:
 		tests/test_kpi_engine.py \
 		tests/test_f1_ola3_recursos_decimal.py \
 		tests/test_agente_manifest.py \
-		tests/test_agente_gate.py
+		tests/test_agente_gate.py \
+		tests/test_agente_redaccion.py
 
 test: db-up
 	@# Los tests leen NUCLEO_TEST_DATABASE_URL (nunca DATABASE_URL de la app, RA-13).

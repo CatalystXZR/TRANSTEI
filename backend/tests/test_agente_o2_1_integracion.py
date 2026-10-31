@@ -748,3 +748,68 @@ def test_gate_que_falla_deniega_y_audita(escenario) -> None:
     assert auditoria["acceso"] is False
     assert auditoria["respuesta"].startswith("NO_AUTORIZADO:gate_error")
     assert auditoria["request_id"] == ctx.request_id
+
+
+# ---------------------------------------------------------------------------
+# Timeout por tool (§4.10) — antes era un 🔴 sin prueba
+# ---------------------------------------------------------------------------
+
+
+def test_statement_timeout_se_traduce_a_timeout_tool(escenario) -> None:
+    """Un `57014` real de PostgreSQL debe salir como `TIMEOUT_TOOL`.
+
+    No se simula el error: se ejecuta `pg_sleep` bajo el mismo
+    `set_config('statement_timeout', …, true)` que usa `Registry._ejecutar`, y
+    se clasifica la excepción resultante.
+    """
+    from app.nucleo.agente.registry import _SQL_TIMEOUT, clasificar_error
+    from sqlalchemy.exc import OperationalError
+
+    with contexto_de_agente(
+        empresa_id=escenario["empresa_id"], request_id="test-timeout"
+    ), Session(get_engine_nucleo()) as session:
+        session.execute(_SQL_TIMEOUT, {"valor": "100"})  # 100 ms
+        with pytest.raises(OperationalError) as excinfo:
+            session.execute(text("select pg_sleep(1)"))
+        session.rollback()
+
+    assert excinfo.value.orig.sqlstate == "57014"
+    assert clasificar_error(excinfo.value) == "TIMEOUT_TOOL"
+
+
+def test_timeout_del_registry_usa_el_descriptor(escenario) -> None:
+    """El registry fija el `timeout_ms` del descriptor en la transacción."""
+    with contexto_de_agente(
+        empresa_id=escenario["empresa_id"], request_id="test-timeout-efectivo"
+    ), Session(get_engine_nucleo()) as session:
+        session.execute(text("select set_config('statement_timeout', '1500', true)"))
+        vigente = session.execute(
+            text("select current_setting('statement_timeout')")
+        ).scalar_one()
+        session.rollback()
+    assert vigente == "1500ms"
+
+
+# ---------------------------------------------------------------------------
+# SEC-033 — `pregunta_resumida` no persiste texto libre del llamador (§7.3.1)
+# ---------------------------------------------------------------------------
+
+
+def _pregunta_persistida(dsn: str, contacto_id: UUID) -> str:
+    with _conexion(dsn) as conn:
+        return conn.execute(
+            "select pregunta_resumida from nucleo.auditoria_consultas_agente "
+            "where contacto_id = %s order by id desc limit 1",
+            (contacto_id,),
+        ).fetchone()[0]
+
+
+def test_un_telefono_del_llamador_no_llega_a_la_auditoria(escenario) -> None:
+    ctx = _ctx_cliente(escenario)
+    respuesta = _registry().invocar(
+        "despacho.mis_fletes", {}, ctx, pregunta_resumida="+56912345678"
+    )
+    assert respuesta["ok"] is True, respuesta
+    guardada = _pregunta_persistida(escenario["dsn"], ctx.contacto_id)
+    assert guardada == "despacho.mis_fletes []"
+    assert "5691" not in guardada

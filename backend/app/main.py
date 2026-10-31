@@ -259,10 +259,13 @@ async def manejador_integrity_error(request: Request, exc: IntegrityError):
                 ),
             },
         )
+    # Nunca `repr(exc)`: el mensaje de SQLAlchemy arrastra la sentencia y los
+    # parámetros ligados, que pueden contener datos personales o financieros
+    # (AGENTS.md §4; hallazgo SEC-038).
     logger.error(
-        "IntegrityError sin traducción específica (sqlstate=%s): %r",
+        "IntegrityError sin traducción específica sqlstate=%s tipo=%s",
         state,
-        exc,
+        type(exc.orig).__name__ if exc.orig is not None else type(exc).__name__,
     )
     return JSONResponse(
         status_code=500,
