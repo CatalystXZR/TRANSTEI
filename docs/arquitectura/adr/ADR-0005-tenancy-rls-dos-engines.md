@@ -446,7 +446,7 @@ Razonamiento con evidencia:
 | R-7 | Las pruebas escriben en la base de la app con el rol privilegiado (RA-13): un verde no prueba RLS | F0 §5 (`:134`); `docs/estado.md` RA-13 | `qa` | **Abierto**: base de test dedicada + `tei_app` para las sesiones de prueba |
 | R-8 | `docs/estado.md` y F0 describen `legacy_congelado()` como fail-open, pero el código es fail-closed | `estado.md:78,103,127` vs `servicio_cutover.py:47-63` | `orquestador` / `qa` | **Contradicción documental**: corregir el documento, no el código |
 | R-9 | Auditoría: `tei_app` puede insertar filas de auditoría de su empresa; los triggers son `SECURITY DEFINER` y no pasan por RLS | `0004:830-834`; `0020:60-63`; `docs/datos/rls-multiempresa.md:159` | `auditor-seguridad` | Deuda declarada |
-| P-1 | ¿Cuándo habrá un segundo tenant? Sin fecha, la urgencia de RLS es de producto, no de código | F0 D-3 (`:154`) | dueño | **Abierta** (no bloquea este ADR) |
+| P-1 | ¿Cuándo habrá un segundo tenant? | F0 D-3 (`:154`) | dueño | **Resuelta (2026-10-31):** segundo tenant **TES** activo; gate legacy implementado (`403 LEGACY_SOLO_TEI`). El retiro del legacy (ADR-0002) pasa a ser requisito para escalar a más tenants |
 
 **Lo que este ADR NO decide:** no aplica `0020`, no cambia el rol en ninguna base, no
 crea el `NUCLEO_DATABASE_URL`, no modifica `scripts/cutover_legacy.py`, no arregla

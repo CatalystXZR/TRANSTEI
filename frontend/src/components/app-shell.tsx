@@ -34,7 +34,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [hoy, setHoy] = useState("");
 
-  const grupos = gruposParaRol(usuario?.rol);
+  const grupos = usuario ? gruposParaRol(usuario.rol, usuario.es_legacy) : [];
+  const inicio = usuario?.es_legacy === false ? "/despacho" : "/dashboard";
   const actual = tituloDeRuta(pathname);
 
   useEffect(() => {
@@ -130,7 +131,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 
   const marca = (
-    <Link href="/dashboard" className="flex items-center gap-s3 rounded-lg">
+    <Link href={inicio} className="flex items-center gap-s3 rounded-lg">
       <span className="grid size-10 place-items-center rounded-lg bg-white font-heading text-[15px] font-extrabold tracking-tight text-marca">
         TEI
       </span>

@@ -3,14 +3,16 @@ from __future__ import annotations
 import json
 import re
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.exc import IntegrityError, ProgrammingError
+from starlette.concurrency import run_in_threadpool
 
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.contexto import contexto_de_request, limpiar_request_id
+from app.core.security import decode_token, tiene_membresia_activa
 from app.nucleo.errores import (
     ErrorNucleo,
     _sqlstate,
@@ -142,6 +144,127 @@ def _content_length(scope) -> int | None:
     return None
 
 
+# ============================================================================
+# F2 tenant 2 — puerta del legacy monoempresa
+# ============================================================================
+# `public` es legacy y **no** tiene `empresa_id`: ninguna consulta suya puede
+# aislar por empresa (AGENTS.md §3.1, §9). La única frontera posible es la
+# entrada: quien no pertenece a la empresa dueña del legacy no puede usar
+# `/api/v1/*` fuera de `/nucleo` y `/auth`. La membresía se resuelve en el
+# servidor contra `nucleo.usuarios_empresa` (nunca desde el body/header) y con
+# el engine legacy, porque RLS esconde la membresía a `tei_app` sin contexto.
+
+_RUTAS_EXENTAS = ("/nucleo", "/auth")
+
+
+def es_ruta_legacy(path: str) -> bool:
+    """¿`path` pertenece al legacy monoempresa?
+
+    Legacy = `API_V1_PREFIX` salvo `nucleo` y `auth`. La comparación es por
+    segmento: `/api/v1/nucleos` **sí** es legacy (no es una excepción por
+    prefijo textual). `/health` y `/` quedan fuera porque no cuelgan de
+    `API_V1_PREFIX`.
+    """
+    prefijo = settings.API_V1_PREFIX
+    if path != prefijo and not path.startswith(f"{prefijo}/"):
+        return False
+    resto = path[len(prefijo):]
+    for exenta in _RUTAS_EXENTAS:
+        if resto == exenta or resto.startswith(f"{exenta}/"):
+            return False
+    return True
+
+
+def _token_bearer(scope) -> str | None:
+    """Token del header `Authorization: Bearer …` (solo se usa el `sub`)."""
+    for nombre, valor in scope.get("headers", []):
+        if nombre != b"authorization":
+            continue
+        texto = valor.decode("latin-1", "replace").strip()
+        esquema, _, token = texto.partition(" ")
+        if esquema.lower() != "bearer" or not token.strip():
+            return None
+        return token.strip()
+    return None
+
+
+async def _responder_legacy_denegado(send) -> None:
+    cuerpo = json.dumps(
+        {
+            "codigo": "LEGACY_SOLO_TEI",
+            "detail": (
+                "Su empresa no tiene acceso a las pantallas legacy "
+                "(monoempresa). Use el módulo del núcleo."
+            ),
+        }
+    ).encode("utf-8")
+    await send(
+        {
+            "type": "http.response.start",
+            "status": 403,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(cuerpo)).encode()),
+                # No se lee el cuerpo del request: cerrar evita reutilizar la
+                # conexión con bytes pendientes (desincronización HTTP).
+                (b"connection", b"close"),
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": cuerpo})
+
+
+class GateLegacyMiddleware:
+    """ASGI puro: exige membresía en `LEGACY_EMPRESA_ID` para el legacy.
+
+    - Sin `Authorization: Bearer` deja pasar: la ruta legacy responde 401 como
+      siempre (el contrato de "sin token" no cambia).
+    - Token inválido/expirado también deja pasar: la dependencia de auth de la
+      ruta responde 401. Aquí no se reescribe ese contrato.
+    - Token válido sin membresía activa en la empresa dueña → **403**
+      `LEGACY_SOLO_TEI`, antes de tocar `public`.
+    - `/api/v1/nucleo/*` y `/api/v1/auth/*` no pasan por esta puerta: el núcleo
+      se autoriza por membresía + `X-Empresa-ID` + RLS y `/auth/me` debe poder
+      informar `es_legacy=false`.
+
+    El JWT se revalida en la dependencia de la ruta (misma firma JWKS cacheada);
+    aquí solo se lee el `sub` para resolver la membresía.
+    """
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not es_ruta_legacy(scope.get("path", "")):
+            await self.app(scope, receive, send)
+            return
+
+        token = _token_bearer(scope)
+        if token is None:
+            await self.app(scope, receive, send)
+            return
+
+        try:
+            payload = await run_in_threadpool(decode_token, token)
+        except HTTPException:
+            await self.app(scope, receive, send)
+            return
+
+        auth_id = payload.get("sub")
+        if not auth_id:
+            await self.app(scope, receive, send)
+            return
+
+        permitido = await run_in_threadpool(
+            tiene_membresia_activa, auth_id, settings.LEGACY_EMPRESA_ID
+        )
+        if not permitido:
+            await _responder_legacy_denegado(send)
+            return
+
+        await self.app(scope, receive, send)
+
+
 class ContextoRequestMiddleware:
     """Abre y limpia el contexto de request (empresa/auth/request_id).
 
@@ -171,10 +294,12 @@ def _request_id(scope) -> str | None:
 app = FastAPI(title=settings.PROJECT_NAME)
 
 # Pila de middlewares, de afuera hacia adentro (el último `add_middleware`
-# queda más afuera): congelar-legacy → CORS → tope de cuerpo → contexto →
-# router. El tope queda dentro de CORS para que el 413 lleve sus headers.
+# queda más afuera): congelar-legacy → CORS → gate legacy → tope de cuerpo →
+# contexto → router. El gate y el tope quedan dentro de CORS para que el 403/413
+# lleven sus headers; el gate corta antes de leer el cuerpo.
 app.add_middleware(ContextoRequestMiddleware)
 app.add_middleware(LimiteCuerpoMiddleware)
+app.add_middleware(GateLegacyMiddleware)
 
 app.add_exception_handler(ErrorNucleo, manejador_error_nucleo)
 

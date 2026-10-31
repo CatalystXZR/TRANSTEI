@@ -57,7 +57,9 @@ jobs:
 
       - name: Seed de datos ficticios (incluye usuarios de prueba)
         working-directory: .
-        run: python scripts/seed_local.py
+        run: |
+          python scripts/seed_local.py
+          python scripts/seed_segundo_tenant.py
         env:
           DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:54322/postgres
           SUPABASE_URL: http://127.0.0.1:54321
@@ -160,6 +162,8 @@ jobs:
           pip install -r backend/requirements.txt
           DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:54322/postgres \
             python scripts/seed_local.py
+          DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:54322/postgres \
+            python scripts/seed_segundo_tenant.py
 
       - name: Servir backend (núcleo con tei_app)
         run: |

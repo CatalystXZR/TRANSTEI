@@ -1405,3 +1405,13 @@ Hechos confirmados:
 - Dependencias: pip-audit 0 CVEs; npm audit (prod) 0. CI: job E2E agregado.
 - Servidor local: backend :8000 con dos engines (RLS activa), frontend :3000.
 Pendientes: commit (este cierre); validación del CI en el primer push; pooler real con SET LOCAL + tei_app; decisiones D-2/D-3 del dueño.
+
+#### Fase 2 — onboarding del segundo tenant (2026-10-31)
+Riesgo: ALTO | Estado: cerrada (código) | Decisión: D-3 resuelta por el dueño ("segundo tenant altiro")
+Hechos confirmados:
+- Tenant TES (`22222222-…`): usuarios `admin2@tei.local` / `despacho2@tei.local` (clave local), membresías, 2 clientes; `scripts/seed_segundo_tenant.py` idempotente; `make db-reset` y CI lo incluyen.
+- Núcleo aislado: TES ve lo suyo (200); pedir TEI con sesión TES → 403. `mis-empresas` solo devuelve sus empresas.
+- Hueco legacy cerrado: `GateLegacyMiddleware` (main.py) exige membresía en la empresa dueña del legacy (TEI) → `403 LEGACY_SOLO_TEI`; sin token sigue 401. Prueba de mutación: sin middleware, la prueba HTTP falla.
+- UI: `es_legacy` en `/auth/me`; se ocultan las 12 pantallas legacy y la URL directa muestra "Sin permiso" (redirect a /despacho).
+- Verificación: `make unit` 135 · `make test` **388 (0 skipped)** · `make e2e` 9/9 · 4 pruebas HTTP reales (403 legacy tenant2, 200 núcleo TES, 200 legacy TEI, es_legacy true/false).
+Pendientes: CI real en el primer push; pooler real (R-2/R-3); retiro del legacy (ADR-0002) para más tenants; D-2 (cutover) sigue abierta.

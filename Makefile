@@ -9,7 +9,7 @@ DB_URL_TEST := postgresql+psycopg://postgres:postgres@127.0.0.1:54322/tei_test
 DB_URL_NUCLEO_LOCAL := postgresql+psycopg://tei_app:tei_app@127.0.0.1:54322/postgres
 DB_URL_NUCLEO_TEST := postgresql+psycopg://tei_app:tei_app@127.0.0.1:54322/tei_test
 
-.PHONY: help db-up db-down db-reset bootstrap-roles seed backend frontend test test-db unit e2e restore-drill cutover-dry cutover
+.PHONY: help db-up db-down db-reset bootstrap-roles seed seed-tenant2 backend frontend test test-db unit e2e restore-drill cutover-dry cutover
 
 help:
 	@echo "TEI — desarrollo local"
@@ -46,9 +46,13 @@ db-down:
 db-reset: db-up bootstrap-roles
 	@supabase db reset
 	@$(PYTHON) scripts/seed_local.py
+	@$(PYTHON) scripts/seed_segundo_tenant.py
 
 bootstrap-roles: db-up
 	@./scripts/bootstrap_db_roles.sh
+
+seed-tenant2: db-up
+	@$(PYTHON) scripts/seed_segundo_tenant.py
 
 seed: db-up
 	@$(PYTHON) scripts/seed_local.py

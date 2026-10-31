@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, Suspense } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -32,6 +32,7 @@ import type {
 } from "@/types/nucleo";
 import { Button } from "@/components/ui/button";
 import { NuevoViajeDialog } from "@/components/despacho/nuevo-viaje-dialog";
+import { AvisoSinAccesoLegacy } from "@/components/aviso-sin-legacy";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -343,6 +344,9 @@ export default function DespachoPage() {
 
   return (
     <div className="space-y-s5">
+      <Suspense fallback={null}>
+        <AvisoSinAccesoLegacy />
+      </Suspense>
       <PageHeader
         rotulo="Operación"
         titulo="Mesa de despacho"

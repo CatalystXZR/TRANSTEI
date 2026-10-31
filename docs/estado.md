@@ -36,7 +36,8 @@
 | Pantallas | **28** | `find frontend/src/app -name page.tsx \| wc -l` |
 | Roles del núcleo | **8** | `backend/app/nucleo/models.py` (`RolEmpresa`) |
 | Unitarias | **135 passed** (fase 1, 2026-10-31) | `make unit` |
-| Integración | **353 passed, 0 skipped** (fase 1, 2026-10-31) | `make test` (tei_test) |
+| Integración | **388 passed, 0 skipped** (fase 2, 2026-10-31) | `make test` (tei_test) |
+| Tenants activos (local) | **2** (TEI + TES) | `select count(*) from nucleo.empresas` |
 | E2E definidos | **9** | `grep -cE "^\s*test\(" frontend/e2e/tei.spec.ts` |
 | E2E ejecutados | **9/9 passed** | `make e2e` (F0 2026-10-29) |
 
@@ -100,7 +101,7 @@
 |---|---|---|---|
 | RA-01 | "Piloto cerrado y probado" sin evidencia | 🟡 parcial | `qa` |
 | RA-02 | Doble asignación legacy ↔ núcleo (legacy sin `EXCLUDE`) | 🟢 riesgo confirmado, carrera no reproducida | `datos` + `qa` |
-| RA-03 | Aislamiento multiempresa | 🟢 **ACTIVO (2026-10-31)**: ADR-0005 aceptado; `0020` + `0021` + `0023` aplicadas (**45 políticas**, **40 FORCE** sobre 40 tablas); app con dos engines — núcleo `tei_app` (NOBYPASSRLS), legacy con el rol actual y **declarado no aislado** hasta su retiro. Pruebas: 0020_01–04 OK desde clon limpio (una sesión, dos conexiones con solape, mutación, compatibilidad); pytest 353/0 skipped. Residual: legacy sin aislamiento; pooler real no probado | `datos` + `backend` |
+| RA-03 | Aislamiento multiempresa | 🟢 **ACTIVO (2026-10-31)**: ADR-0005 aceptado; `0020` + `0021` + `0023` aplicadas (**45 políticas**, **40 FORCE** sobre 40 tablas); app con dos engines — núcleo `tei_app` (NOBYPASSRLS), legacy con el rol actual y **gateado** (`403 LEGACY_SOLO_TEI` para tenants distintos de TEI). **Segundo tenant TES activo** con usuarios/membresías. Pruebas: 0020_01–04 OK desde clon limpio; pytest 388/0 skipped. Residual: legacy sin datos aislados (solo gate de acceso); pooler real no probado | `datos` + `backend` |
 | RA-04 | Cutover: flag abierto por defecto + `legacy_congelado()` **fail-open** | 🟢 **corregido (fase 1, Ola 2)**: fail-closed en `servicio_cutover.py:46-60` + `congelar`/`descongelar` con rowcount (SEC-016); revalidado por auditor-seguridad. Residual: caché TTL 5 s por proceso | `auditor-seguridad` |
 | RA-05 | Restore drill no compara antes/después | 🟡 | `datos` |
 | RA-06 | Duplicidad de fuentes (`/maestros` vs `/clientes`, `/dashboard` vs `/tablero`, `/cobranza` vs `/cobranzas`) | 🟢 confirmado | `arquitectura` |
@@ -138,4 +139,4 @@
 
 *F0 — Due Diligence y Línea Base (2026-10-29): informe completo en [`docs/qa/informes/F0-due-diligence.md`](qa/informes/F0-due-diligence.md). **Veredicto: A (REFACTOR), ratificado por el dueño (2026-10-29). F0 cerrada.***
 
-*Fase 1 (cerrada 2026-10-31): infraestructura reproducible (tei_test + CI con PostgreSQL/E2E + aislamiento de tests), cutover fail-closed, SQLSTATE→HTTP, uploads con firma, idempotencia de documentos, límite de cuerpo y contexto por transacción, **RLS multiempresa activa** (ADR-0005: legacy con rol actual / núcleo `tei_app`), dependencias sin CVEs (pip 0, npm prod 0). Baseline: **135 unit + 353 integración (0 skipped) + 9 E2E** verdes, reproducibles desde `make db-reset` (23 migraciones). Detalle por ola en `docs/orquestacion/registro.md`.*
+*Fase 2 — segundo tenant (2026-10-31): D-3 resuelta. Empresa TES (`22222222-…`) con usuarios y membresías; núcleo aislado; **legacy gateado** (`403 LEGACY_SOLO_TEI` para tenants distintos de TEI) y UI que oculta las 12 pantallas legacy. Baseline: **135 unit + 388 integración (0 skipped) + 9 E2E**. Runbook: `docs/operacion/segundo-tenant.md`.*
