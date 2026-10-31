@@ -1070,6 +1070,114 @@ export interface TablaAuditoriaNucleo {
 }
 
 /* ------------------------------------------------------------------ */
+/* Agente WhatsApp — buzón de solicitudes (O4.3)                       */
+/* ------------------------------------------------------------------ */
+/** Valor JSON tal como lo devuelve el sobre del backend. */
+export type JsonNucleo =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonNucleo[]
+  | { [campo: string]: JsonNucleo };
+
+export type TipoSolicitudNucleo =
+  | "agendamiento"
+  | "documentos"
+  | "hoja_de_ruta"
+  | "otra";
+
+export type EstadoSolicitudNucleo =
+  | "pendiente"
+  | "aprobada"
+  | "rechazada"
+  | "cancelada";
+
+export type FiltroEstadoSolicitudNucleo = EstadoSolicitudNucleo | "todas";
+
+export type AccionDecisionSolicitudNucleo = "confirmar" | "rechazar" | "modificar";
+
+export interface SolicitanteSolicitudNucleo {
+  tipo: "contacto" | "usuario";
+  id: string | null;
+  nombre: string | null;
+}
+
+export interface SolicitudResumenNucleo {
+  id: string;
+  tipo: TipoSolicitudNucleo;
+  estado: EstadoSolicitudNucleo;
+  solicitante: SolicitanteSolicitudNucleo;
+  viaje_id: string | null;
+  id_comercial_flete: string | null;
+  resumen: string;
+  creada_en: string | null;
+  decidida_en: string | null;
+  tiene_modificaciones: boolean;
+  version: number;
+}
+
+export interface ListaSolicitudesNucleo {
+  items: SolicitudResumenNucleo[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface DiffSolicitudNucleo {
+  campo: string;
+  propuesto: JsonNucleo;
+  modificado: JsonNucleo;
+}
+
+export interface EvidenciaSolicitudNucleo {
+  tipo: string | null;
+  ref: string | null;
+}
+
+export interface HojaRutaSolicitudNucleo {
+  id: string;
+  estado: string;
+  faltantes: string[];
+}
+
+export interface SolicitudDetalleNucleo {
+  id: string;
+  tipo: TipoSolicitudNucleo;
+  estado: EstadoSolicitudNucleo;
+  solicitante: SolicitanteSolicitudNucleo;
+  viaje_id: string | null;
+  id_comercial_flete: string | null;
+  payload: Record<string, JsonNucleo>;
+  valores_modificados: Record<string, JsonNucleo> | null;
+  diff: DiffSolicitudNucleo[];
+  evidencia: EvidenciaSolicitudNucleo[];
+  hoja_ruta: HojaRutaSolicitudNucleo | null;
+  creada_en: string | null;
+  decidida_en: string | null;
+  aprobado_por: string | null;
+  version: number;
+}
+
+export interface DecisionSolicitudNucleo {
+  accion: AccionDecisionSolicitudNucleo;
+  version: number;
+  motivo_rechazo?: string;
+  valores_modificados?: Record<string, JsonNucleo>;
+}
+
+export interface ResultadoSolicitudNucleo {
+  tipo: string;
+  ref: string;
+  estado: string;
+}
+
+export interface RespuestaDecisionSolicitudNucleo {
+  solicitud: SolicitudDetalleNucleo;
+  resultado: ResultadoSolicitudNucleo | null;
+}
+
+/* ------------------------------------------------------------------ */
 /* P0-13 Cutover                                                       */
 /* ------------------------------------------------------------------ */
 export interface CutoverEstadoNucleo {
