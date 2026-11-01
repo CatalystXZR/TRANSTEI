@@ -28,9 +28,9 @@
 
 | Dato | Valor | Comando |
 |---|---|---|
-| Migraciones en disco | **26** (`0001`–`0026`) | `ls supabase/migrations \| wc -l` |
-| Migraciones en `HEAD` | **26** | `git ls-tree HEAD supabase/migrations/ \| wc -l` |
-| Migraciones aplicadas en la base local | **26** (reset reproducible 2026-10-31: `0001`–`0026`) | `docker exec supabase_db_TRANSTEI psql -U postgres -tA -c "select count(*) from supabase_migrations.schema_migrations"` |
+| Migraciones en disco | **27** (`0001`–`0027`) | `ls supabase/migrations \| wc -l` |
+| Migraciones en `HEAD` | **27** | `git ls-tree HEAD supabase/migrations/ \| wc -l` |
+| Migraciones aplicadas en la base local | **27** (reset reproducible 2026-11-01: `0001`–`0027`) | `docker exec supabase_db_TRANSTEI psql -U postgres -tA -c "select count(*) from supabase_migrations.schema_migrations"` |
 | Tablas en `nucleo` | **46** | `grep -rh "create table nucleo" supabase/migrations \| wc -l` |
 | Routers montados | **20** (1 auth + 15 núcleo + 4 Ola B); 0 de negocio legacy | `grep -c include_router backend/app/api/router.py` |
 | Pantallas | **29** page.tsx (20 de negocio + 9 redirecciones 308) | `find frontend/src/app -name page.tsx \| wc -l` |
@@ -139,4 +139,4 @@
 
 *F0 — Due Diligence y Línea Base (2026-10-29): informe completo en [`docs/qa/informes/F0-due-diligence.md`](qa/informes/F0-due-diligence.md). **Veredicto: A (REFACTOR), ratificado por el dueño (2026-10-29). F0 cerrada.***
 
-*Fase 2 — retiro del legacy (2026-10-31): **Olas A/B/C ejecutadas**. 9 pantallas legacy → 308; 4 módulos sin equivalente reconstruidos en el núcleo (0024 mantenimiento, 0025 liquidaciones/anticipos/ajustes, 0026 configuración) con APIs y pantallas; 11 routers legacy de negocio retirados (404); cliente HTTP legacy eliminado. Núcleo: 46 tablas, 51 políticas. Baseline: **128 unit + 415 integración (0 skipped) + 20 E2E**. **Pendiente Ola D** (cutover de datos, D-2) **y Ola E** (identidad `public.usuarios`, gate y `DROP` de `public` con backup + autorización). ADR: `docs/arquitectura/adr/ADR-0002-retiro-del-legacy.md`.*
+*Fase 2 — retiro del legacy (2026-10-31/11-01): **Olas A/B/C ejecutadas** (9 pantallas → 308; 4 módulos reconstruidos en el núcleo con 0024–0026; 11 routers legacy retirados) y **Ola D ejecutada** (cutover local reproducible: 6 pautas migradas, maestros 3/3, flag de congelamiento activo, auditoría 6 filas, idempotente; ver `docs/operacion/cutover-ejecutado-2026-11-01.md`). Núcleo: 46 tablas, 51 políticas. Baseline: **128 unit + 415 integración (0 skipped) + 20 E2E**. **Pendiente Ola E** (identidad `public.usuarios`, gate y `DROP` de `public` con backup + autorización). ADR: `docs/arquitectura/adr/ADR-0002-retiro-del-legacy.md`.*

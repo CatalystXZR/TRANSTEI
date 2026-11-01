@@ -1424,3 +1424,14 @@ Hechos confirmados:
 - Ola C: 11 routers legacy de negocio retirados (404); solo /auth + /nucleo (20 routers). Eliminados lib/api.ts, importar-csv, download y aviso legacy. Tests legacy retirados con justificación; R-02 movida a `test_r02_licencia_nucleo.py`.
 - Verificación: `make unit` 128 · `make test` 415 (0 skipped) · `make e2e` 20/20 · OpenAPI sin rutas fuera de /auth y /nucleo.
 Pendiente: Ola D (cutover de datos, D-2) y Ola E (identidad public.usuarios, gate LEGACY_SOLO_TEI/es_legacy, DROP de public con backup+autorización). Documentos que citan archivos borrados listados en ADR-0002 §8.2.
+
+#### Fase 2 — Ola D: cutover de datos (2026-11-01)
+Riesgo: ALTO | Estado: cerrada (local, datos ficticios) | Backup: backups/cutover_pre_20261101_115202.sql
+Hechos confirmados:
+- `scripts/cutover_legacy.py`: prioriza `PLATFORM_DATABASE_URL` (ADR condición 2) y migra pautas de mantenimiento (0024) de forma idempotente.
+- `0027_grants_plataforma.sql`: GRANTs al rol de plataforma para los objetos 0024–0026 (faltaban porque se aplicaron como supabase_admin).
+- Seeds: `configuracion_empresa.iva_porcentaje=19` por empresa (TEI y TES) — sin esto, un reset limpio dejaba el IVA sin config (detectado por E2E).
+- Ejecución reproducible: `make db-reset` (0001–0027 + seeds) → `cutover_legacy.py --freeze` → 6 pautas migradas, flag congelado, auditoría 6 filas, 2.ª corrida 0 (idempotente).
+- Reconciliación: pautas 6/6, clientes 3/3, choferes 3/3, tractos 3/3; viajes legacy 0.
+- Regresión: 128 unit · 415 integración (0 skipped) · E2E 20/20.
+Pendiente: Ola E (identidad public.usuarios, gate LEGACY_SOLO_TEI/es_legacy, DROP de public con backup verificado + autorización); rol de plataforma formal (tei_platform); datos de módulos legacy vacíos en este entorno (si existieran en otro, requieren mapeo).

@@ -174,6 +174,17 @@ def seed() -> None:
                 """,
                 (empresa_id,),
             )
+            # Configuración base por empresa (0026): el IVA se lee de aquí.
+            cur.execute(
+                """
+                insert into nucleo.configuracion_empresa
+                  (empresa_id, clave, valor, vigente_desde)
+                values (%s, 'iva_porcentaje', '19'::jsonb, now())
+                on conflict (empresa_id, clave) where vigente_hasta is null
+                do nothing
+                """,
+                (empresa_id,),
+            )
             cur.execute(
                 """
                 insert into nucleo.usuarios_empresa (empresa_id, auth_id, rol, activo)

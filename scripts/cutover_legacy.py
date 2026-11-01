@@ -61,9 +61,14 @@ def cargar_env() -> None:
 
 
 def db_url() -> str:
-    return os.environ.get("DATABASE_URL", DEFAULT_DB).replace(
-        "postgresql+psycopg://", "postgresql://"
+    # ADR-0005 §7 condición 2: el cutover usa un DSN de PLATAFORMA explícito.
+    # Fallback a DATABASE_URL solo por compatibilidad local.
+    dsn = (
+        os.environ.get("PLATFORM_DATABASE_URL")
+        or os.environ.get("DATABASE_URL")
+        or DEFAULT_DB
     )
+    return dsn.replace("postgresql+psycopg://", "postgresql://")
 
 
 def normalizar(valor: str) -> str:
@@ -88,6 +93,37 @@ def buscar_id(cur, tabla: str, empresa_id: UUID, columna: str, valor: str) -> UU
     return fila[0] if fila else None
 
 
+def migrar_pautas(cur, empresa_id: UUID, dry_run: bool) -> int:
+    """Migra las pautas de mantenimiento legacy al núcleo (0024).
+
+    El legacy es monoempresa (TEI) y sus pautas son de flota (tracto). Idempotente
+    por `(empresa_id, recurso_tipo, lower(item))` activo.
+    """
+    cur.execute(
+        "select id, item, intervalo_km, orden, activo "
+        "from public.pautas_mantenimiento order by orden, item"
+    )
+    migradas = 0
+    for _pauta_id, item, intervalo_km, orden, activo in cur.fetchall():
+        cur.execute(
+            "select 1 from nucleo.pautas_mantenimiento "
+            " where empresa_id = %s and recurso_tipo = 'tracto' "
+            "   and lower(item) = lower(%s) and activo",
+            (empresa_id, item),
+        )
+        if cur.fetchone():
+            continue
+        if not dry_run:
+            cur.execute(
+                "insert into nucleo.pautas_mantenimiento "
+                "  (empresa_id, recurso_tipo, item, intervalo_km, orden, activo) "
+                "values (%s, 'tracto', %s, %s, %s, %s)",
+                (empresa_id, item, intervalo_km, orden, activo),
+            )
+        migradas += 1
+    return migradas
+
+
 def migrar(dry_run: bool, freeze: bool) -> None:
     resumen = {
         "clientes_nuevos": 0,
@@ -98,6 +134,7 @@ def migrar(dry_run: bool, freeze: bool) -> None:
         "viajes_sin_asignacion": 0,
         "viajes_omitidos": 0,
         "documentos": 0,
+        "pautas_migradas": 0,
     }
     with psycopg.connect(db_url()) as conn:
         with conn.cursor() as cur:
@@ -403,6 +440,8 @@ def migrar(dry_run: bool, freeze: bool) -> None:
                 resumen["viajes_migrados"] += 1
                 if sin_asignacion:
                     resumen["viajes_sin_asignacion"] += 1
+
+            resumen["pautas_migradas"] = migrar_pautas(cur, empresa_id, dry_run)
 
             if freeze and not dry_run:
                 cur.execute(

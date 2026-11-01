@@ -59,6 +59,17 @@ def seed_segundo_tenant() -> None:
                 """,
                 (EMPRESA_B,),
             )
+            # Configuración base por empresa (0026): IVA de la empresa.
+            cur.execute(
+                """
+                insert into nucleo.configuracion_empresa
+                  (empresa_id, clave, valor, vigente_desde)
+                values (%s, 'iva_porcentaje', '19'::jsonb, now())
+                on conflict (empresa_id, clave) where vigente_hasta is null
+                do nothing
+                """,
+                (EMPRESA_B,),
+            )
 
             for email, nombre, rol, rol_legacy in USUARIOS:
                 uid = auth_ids[rol]
