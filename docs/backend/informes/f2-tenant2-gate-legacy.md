@@ -1,5 +1,11 @@
 # F2 — Onboarding del segundo tenant: puerta del legacy + `es_legacy`
 
+> **SUPERADO (2026-11-01, F2 Ola E1):** `GateLegacyMiddleware`,
+> `LEGACY_EMPRESA_ID`, `tiene_membresia_activa` y `es_legacy` se retiraron al
+> eliminar `public.usuarios`. Este informe se conserva como historia; el estado
+> vigente está en `docs/backend/informes/f2-ola-e1-identidad.md` y
+> `docs/backend/contratos/auth-me.md`.
+
 Fecha: 2026-10-31. Autor: agente `backend`. Riesgo: **Alto** (aislamiento entre
 empresas). Base de prueba: `tei_test` refrescada con `make test-db` (clon de la
 base local: 23 migraciones, TEI + TES). Entorno: Supabase local + backend

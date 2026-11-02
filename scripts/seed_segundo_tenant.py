@@ -82,19 +82,7 @@ def seed_segundo_tenant() -> None:
                     """,
                     (EMPRESA_B, uid, rol),
                 )
-                # Espejo legacy: /auth/me lee public.usuarios. El rol legacy es
-                # solo para el perfil; el acceso legacy está bloqueado por
-                # pertenecer a un tenant distinto de TEI.
-                cur.execute(
-                    """
-                    insert into public.usuarios (auth_id, nombre, email, rol, activo)
-                    values (%s, %s, %s, %s, true)
-                    on conflict (auth_id)
-                    do update set nombre = excluded.nombre, email = excluded.email,
-                                  rol = excluded.rol, activo = true
-                    """,
-                    (uid, nombre, email, rol_legacy),
-                )
+                # (Sin espejo legacy: la identidad ya no vive en `public.usuarios`.)
 
             for cliente_id, razon_social, rut in CLIENTES:
                 cur.execute(

@@ -24,12 +24,6 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:3000"
     FRONTEND_URL: str = "http://localhost:3000"
 
-    # Empresa dueña del legacy monoempresa (`public.*`, sin `empresa_id`).
-    # El legacy no puede aislar por fila: la única frontera posible es negar
-    # `/api/v1/*` (salvo `/nucleo` y `/auth`) a quien no tenga membresía activa
-    # en esta empresa (`backend/app/main.py:GateLegacyMiddleware`).
-    LEGACY_EMPRESA_ID: str = "11111111-1111-1111-1111-111111111111"
-
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]

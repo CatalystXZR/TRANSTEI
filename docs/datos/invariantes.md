@@ -1,7 +1,7 @@
 # Registro de invariantes — estado real por invariante
 
 > **Pregunta que responde:** ¿qué invariante existe, qué lo impone y qué sigue sin garantía?
-> **Dueño:** agente `datos` · **Verificado:** 2026-10-29 (cuerpo) · 2026-10-30 (adenda §11, catálogo de `tei_test`) · **Método:** lectura de DDL + `psql` (solo `0020`/`0021`)
+> **Dueño:** agente `datos` · **Verificado:** 2026-10-29 (cuerpo) · 2026-10-30 (adenda §11, catálogo de `tei_test`) · 2026-11-01 (adenda §13, retiro de `public`) · **Método:** lectura de DDL + `psql` (solo `0020`/`0021`)
 > **Caduca si:** se agrega o edita una migración, o se ejecutan pruebas contra una base real.
 > **Re-verificar con:** `ls supabase/migrations/` + `grep -n "create trigger\|create or replace function"`.
 
@@ -1027,3 +1027,28 @@ Detalle, mecanismo y evidencia medida en `docs/datos/agente-esquema.md` §8,
 | `002[456]_99_rollback.sql` | **ejecutados**: rollback → 40 tablas/45 políticas → re-aplicación → 46/51 |
 | Mutación | **manual y ejecutada**: retirar 4 mecanismos hace fallar la suite correspondiente; restaurados |
 | `make unit` / `make test` | **135** y **388** pruebas en verde tras aplicar |
+
+---
+
+## 13. Adenda 2026-11-01 — retiro de `public` (`0028`, Ola E / ADR-0002 E.5)
+
+Aplicado en local el 2026-11-01 (`supabase migration up --local` y, de nuevo, por
+`make db-reset`). Contrato completo y conteos en `docs/datos/retiro-public.md`.
+
+| ID | Invariante | Estado en base | Mecanismo | SQLSTATE | Prueba |
+|---|---|---|---|---|---|
+| INV-LEG01 | `public` no contiene tablas, funciones ni tipos propios del ERP | **impuesto (DDL, aplicado)** | 17 `DROP TABLE … CASCADE`, 8 `DROP TYPE`, 2 `DROP FUNCTION` + verificación V1–V3 dentro de la transacción · `0028` | n/a (estado, no error de escritura) | `0028_01` A ✅ + mutación `0028_02` ✅ |
+| INV-LEG02 | Un alta en Supabase Auth no escribe el perfil en ningún esquema legacy | **impuesto (DDL)** | `DROP TRIGGER on_auth_user_created ON auth.users` + `DROP FUNCTION public.handle_new_user()` · `0028` | n/a | `0028_01` B ✅; identidad desde JWT en `test_f2_ola_e1_identidad.py` ✅ |
+| INV-LEG03 | El rol de la aplicación no puede usar el esquema `public` | **impuesto (DDL)** | `REVOKE USAGE ON SCHEMA public FROM public` + `GRANT` explícito a los roles de Supabase (no a `tei_app`) · `0028` | `42501` | `0028_01` D ✅ (probado con `tei_app`, no con `postgres`) |
+| INV-LEG04 | Las garantías del núcleo apoyadas en `btree_gist` sobreviven al retiro | **impuesto (DDL)** | extensión conservada en `public` + los 4 `EXCLUDE` verificados en V6 · `0028` | `23P01` (sigue) | `0028_01` C/E ✅ (`tei_app` inserta en `configuracion_empresa` con `EXCLUDE` gist) |
+
+**Escritores cubiertos:** `tei_app` (denegado por `42501`), backend, seeds y
+scripts (no hay objeto al que apuntar: `42P01`). **No cubre** a `postgres` /
+`supabase_admin`: son dueños y pueden volver a crear objetos en `public`; el
+invariante "`public` vacío" no es una restricción de PostgreSQL, se detecta con
+`0028_01` (y la mutación demuestra que lo detecta).
+
+**Nota de solapamiento:** los invariantes `INV-L01`…`INV-L06` (§6) describían
+reglas del legacy `public`. **Quedan sin objeto**: no existen las tablas que las
+imponían. No se borran del registro (historia), pero su estado real pasa a
+"n/a — tabla retirada".

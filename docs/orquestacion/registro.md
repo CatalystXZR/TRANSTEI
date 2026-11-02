@@ -1435,3 +1435,13 @@ Hechos confirmados:
 - Reconciliación: pautas 6/6, clientes 3/3, choferes 3/3, tractos 3/3; viajes legacy 0.
 - Regresión: 128 unit · 415 integración (0 skipped) · E2E 20/20.
 Pendiente: Ola E (identidad public.usuarios, gate LEGACY_SOLO_TEI/es_legacy, DROP de public con backup verificado + autorización); rol de plataforma formal (tei_platform); datos de módulos legacy vacíos en este entorno (si existieran en otro, requieren mapeo).
+
+#### Fase 2 — Ola E: identidad y retiro físico de public (2026-11-01)
+Riesgo: ALTO (autenticación + destructivo) | Estado: cerrada | Backup: backups/cutover_pre_20261101_115202.sql (36 filas, Δ=0)
+Hechos confirmados:
+- Identidad sin `public.usuarios`: `/auth/me` desde JWT (`sub`, `email`, `user_metadata.nombre`) + rol de menú mapeado desde `nucleo.usuarios_empresa`; sin membresía 403. Eliminados gate `LEGACY_SOLO_TEI`, `es_legacy`, `app/models` y `settings_db` legacy.
+- Seeds limpios: `seed_local.py` y `seed_segundo_tenant.py` solo escriben núcleo; `cutover_legacy.py` guard histórico.
+- `0028_retiro_public.sql`: retira 17 tablas, 8 enums, 2 funciones y el trigger `on_auth_user_created` de `auth.users`; conserva el schema `public` vacío y `btree_gist` (EXCLUDE del núcleo). Precondiciones: 0 FKs nucleo→public; conteos vs backup Δ=0; mutación probada.
+- `servicio_cutover.estado()` ya no lee `public.viajes` (0 fijo histórico).
+- Verificación: 128 unit · 404 integración (0 skipped) · E2E 20/20 · `make db-reset` 0001–0028 reproducible · `public` 0 tablas.
+Pendientes: restore drill del backup; scripts de rollback 0024_99/0025_99/0026_99 quedan históricos (asumían public); formalizar rol `tei_platform`; CI real en el primer push.

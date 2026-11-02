@@ -1,5 +1,10 @@
 # F2 — Ola C: retiro de las sistemáticas legacy (backend)
 
+> **Nota (2026-11-01, Ola E1):** este informe describe el estado tras la Ola C.
+> La Ola E retiró además la identidad legacy: `get_current_user` y `/auth/me` ya
+> no leen `public.usuarios`. Ver
+> `docs/backend/informes/f2-ola-e1-identidad.md`.
+
 - **Fecha:** 2026-10-31 · **Agente:** `backend` · **Riesgo:** **Alto** (se retiran
   endpoints; la superficie pública de la API cambia).
 - **Alcance:** ola **C** de `docs/arquitectura/adr/ADR-0002-retiro-del-legacy.md`

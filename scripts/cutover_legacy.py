@@ -138,6 +138,11 @@ def migrar(dry_run: bool, freeze: bool) -> None:
     }
     with psycopg.connect(db_url()) as conn:
         with conn.cursor() as cur:
+            # Histórico: si el esquema legacy ya fue retirado, no hay nada que hacer.
+            cur.execute("select to_regclass('public.clientes')")
+            if cur.fetchone()[0] is None:
+                print("Cutover ya ejecutado: el esquema legacy 'public' fue retirado.")
+                return
             cur.execute("select id from nucleo.empresas where codigo = 'TEI' limit 1")
             fila = cur.fetchone()
             if not fila:

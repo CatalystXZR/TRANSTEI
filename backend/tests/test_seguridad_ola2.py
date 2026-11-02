@@ -3,10 +3,12 @@
 Cubre:
 - F-01: `legacy_congelado()` fail-closed ante error de lectura o fila ausente.
 - F-03: handler global de IntegrityError con mapeo por sqlstate.
-- F-08: `get_config_decimal` ya no traga errores en silencio (la parte de
-  `valores` de KPI se retiró en la Ola C junto con el router `kpis`, ADR-0002
-  §6.5; el motor `app/services/kpi_engine.py` ya no existe).
 - F0-05: firma por magic bytes, content-type canónico y lectura acotada.
+
+El caso F-08 (`get_config_decimal`) se retiró en F2 Ola E1 (2026-11-01): leía
+`public.configuracion` a través de `app.core.settings_db`, que se eliminó junto
+con `app.models`; la configuración vigente vive en
+`nucleo.configuracion_empresa` (`app/nucleo/servicio_configuracion.py`).
 """
 
 from __future__ import annotations
@@ -14,7 +16,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from decimal import Decimal
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -158,24 +159,6 @@ def test_handler_integrity_23505_usa_mensaje_de_dominio():
     body = json.loads(respuesta.body)
     assert body["codigo"] == "REGISTRO_DUPLICADO"
     assert "Ya existe un registro" in body["detail"]
-
-
-# ---------------------------------------------------------------------------
-# F-08: sin swallows silenciosos
-# ---------------------------------------------------------------------------
-
-
-def test_get_config_decimal_registra_y_devuelve_default(monkeypatch, caplog):
-    from app.core.settings_db import get_config_decimal
-
-    class _Sesion:
-        def get(self, modelo, clave):
-            raise RuntimeError("tabla inexistente")
-
-    with caplog.at_level(logging.WARNING, logger="app.core.settings_db"):
-        resultado = get_config_decimal(_Sesion(), "iva_porcentaje", "19")
-    assert resultado == Decimal("19")
-    assert any("iva_porcentaje" in m for m in caplog.messages)
 
 
 # ---------------------------------------------------------------------------

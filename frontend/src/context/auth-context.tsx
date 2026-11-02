@@ -7,12 +7,6 @@ import type { Usuario } from "@/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
 
-/**
- * Respuesta de `GET /auth/me`. `es_legacy` se declara opcional en el borde
- * porque el backend puede no exponerlo todavía: se normaliza antes de guardarlo.
- */
-type PerfilApi = Omit<Usuario, "es_legacy"> & { es_legacy?: boolean };
-
 interface AuthContextValue {
   session: Session | null;
   usuario: Usuario | null;
@@ -24,21 +18,6 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-
-/**
- * Normaliza el perfil del servidor. Un backend sin `es_legacy` se interpreta
- * como legacy (`true`), que es el comportamiento histórico de TEI: nunca se
- * habilita una pantalla legacy por ausencia de dato.
- */
-function normalizarPerfil(data: PerfilApi): Usuario {
-  return {
-    id: data.id,
-    nombre: data.nombre,
-    email: data.email,
-    rol: data.rol,
-    es_legacy: data.es_legacy !== false,
-  };
-}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -84,14 +63,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })
       .then(async (res) => {
         if (!res.ok) throw new Error("perfil");
-        return (await res.json()) as PerfilApi;
+        return (await res.json()) as Usuario;
       })
       .then((data) => {
-        if (!cancelled) setPerfil({ userId, usuario: normalizarPerfil(data) });
+        if (!cancelled) setPerfil({ userId, usuario: data });
       })
       .catch(() => {
-        // Sin perfil no se puede afirmar el tenant: la UI no oculta nada y el
-        // backend sigue rechazando lo que no corresponda (403 LEGACY_SOLO_TEI).
+        // Sin perfil la UI no muestra navegación por rol; el backend sigue
+        // siendo la autoridad y responde 403 a lo que no corresponda.
         if (!cancelled) setPerfil({ userId, usuario: null });
       });
     return () => {

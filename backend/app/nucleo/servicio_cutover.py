@@ -82,31 +82,9 @@ class ServicioCutover:
             )
         ).mappings().first()
         legacy_abiertos = 0
-        try:
-            # Excepción declarada y única (ADR-0005 §3.2 regla 4): `public` no
-            # está aislado y `tei_app` no tiene GRANT allí. Es una lectura de
-            # plataforma, no de tenant: se usa el engine **legacy** explícito en
-            # su propia sesión, sin contexto, para no depender del rol del
-            # motor del núcleo ni contaminar su transacción.
-            from app.core.database import get_engine as get_engine_legacy
-
-            with Session(get_engine_legacy()) as legacy_session:
-                legacy_abiertos = int(
-                    legacy_session.execute(
-                        text(
-                            "select count(*) from public.viajes "
-                            "where estado in ('programado','cotizado','confirmado',"
-                            "'asignado','en_carga','cargado','en_ruta','en_descarga')"
-                        )
-                    ).scalar_one()
-                )
-        except Exception:
-            logger.warning(
-                "Cutover: no se pudo contar viajes legacy abiertos; "
-                "se reporta 0 para no bloquear la lectura del estado.",
-                exc_info=True,
-            )
-            legacy_abiertos = 0
+        # 0028 retiró el esquema legacy `public`: ya no existen viajes legacy que
+        # contar. El estado del cutover se conserva como registro histórico.
+        legacy_abiertos = 0
         nucleo_viajes = int(
             self.session.execute(
                 text("select count(*) from nucleo.viajes where empresa_id = :empresa_id"),

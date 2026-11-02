@@ -98,16 +98,6 @@ USUARIOS = [
     ("conductor@tei.local", "Conductor TEI", "conductor"),
     ("auditor@tei.local", "Auditor TEI", "auditor"),
 ]
-ROL_LEGACY = {
-    "admin": "admin",
-    "gerente": "operacion",
-    "despacho": "operacion",
-    "contador": "contabilidad",
-    "tesoreria": "contabilidad",
-    "taller": "operacion",
-    "conductor": "operacion",
-    "auditor": "operacion",
-}
 
 
 def seed() -> None:
@@ -204,16 +194,6 @@ def seed() -> None:
                     """,
                     (empresa_id, uid, rol),
                 )
-                cur.execute(
-                    """
-                    insert into public.usuarios (auth_id, nombre, email, rol, activo)
-                    values (%s, %s, %s, %s, true)
-                    on conflict (auth_id)
-                    do update set nombre = excluded.nombre, email = excluded.email,
-                                  rol = excluded.rol, activo = true
-                    """,
-                    (uid, nombre, email, ROL_LEGACY[rol]),
-                )
             cur.execute(
                 "update nucleo.choferes set auth_id = %s where id = %s",
                 (auth_ids["conductor"], chofer_ids[0]),
@@ -240,14 +220,6 @@ def seed() -> None:
                       activo = true
                     """,
                     (cid, empresa_id, nombre, rut, exige_oc),
-                )
-                cur.execute(
-                    """
-                    insert into public.clientes (razon_social, rut, giro, dias_pago, activo)
-                    values (%s, %s, 'Comercio', 30, true)
-                    on conflict (rut) do update set razon_social = excluded.razon_social
-                    """,
-                    (nombre, rut),
                 )
 
             # ------------------------------------------------------------------
@@ -276,20 +248,6 @@ def seed() -> None:
                     """,
                     (tid, empresa_id, patente, marca, modelo, ano),
                 )
-                cur.execute(
-                    """
-                    insert into public.tractos
-                      (patente, marca, modelo, ano, km_actual,
-                       vencimiento_revision_tecnica, vencimiento_seguro, activo)
-                    values (%s, %s, %s, %s, 120000, %s, %s, true)
-                    on conflict (patente) do update set
-                      marca = excluded.marca,
-                      modelo = excluded.modelo,
-                      vencimiento_revision_tecnica = excluded.vencimiento_revision_tecnica,
-                      vencimiento_seguro = excluded.vencimiento_seguro
-                    """,
-                    (patente, marca, modelo, ano, vence, vence),
-                )
 
             ramplas = [
                 ("RPLA01", "plana"),
@@ -310,16 +268,6 @@ def seed() -> None:
                       activo = true
                     """,
                     (rid, empresa_id, patente, tipo),
-                )
-                cur.execute(
-                    """
-                    insert into public.ramplas
-                      (patente, tipo, vencimiento_revision_tecnica, activo)
-                    values (%s, %s::tipo_rampla, %s, true)
-                    on conflict (patente) do update set
-                      vencimiento_revision_tecnica = excluded.vencimiento_revision_tecnica
-                    """,
-                    (patente, tipo, vence),
                 )
 
             choferes = [
@@ -342,19 +290,6 @@ def seed() -> None:
                       activo = true
                     """,
                     (did, empresa_id, rut, nombre, apellido, f"LIC-{rut}", clase),
-                )
-                cur.execute(
-                    """
-                    insert into public.choferes
-                      (nombre, rut, sueldo_base, porcentaje_produccion,
-                       vencimiento_licencia, activo)
-                    values (%s, %s, 800000, 0.10, %s, true)
-                    on conflict (rut) do update set
-                      nombre = excluded.nombre,
-                      porcentaje_produccion = excluded.porcentaje_produccion,
-                      vencimiento_licencia = excluded.vencimiento_licencia
-                    """,
-                    (f"{nombre} {apellido}", rut, vence),
                 )
 
             # ------------------------------------------------------------------

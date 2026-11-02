@@ -1,7 +1,7 @@
-# Catálogo de migraciones — `supabase/migrations/0001`–`0026`
+# Catálogo de migraciones — `supabase/migrations/0001`–`0028`
 
 > **Pregunta que responde:** ¿qué hace cada migración, cuánto riesgo tiene y está aplicada?
-> **Dueño:** agente `datos` · **Verificado:** 2026-10-29 (cuerpo) · 2026-10-30 (`0020`, `0021`, `0022` y `0023`, catálogo de `tei_test`) · **Método:** lectura de DDL + `git` + `psql`
+> **Dueño:** agente `datos` · **Verificado:** 2026-10-29 (cuerpo) · 2026-10-30 (`0020`, `0021`, `0022` y `0023`, catálogo de `tei_test`) · **2026-11-01 (`0027`, `0028`: aplicadas en local y tras `make db-reset`)** · **Método:** lectura de DDL + `git` + `psql`
 > **Caduca si:** se agrega, edita o reordena una migración, o se aplica alguna.
 > **Re-verificar con:** `ls supabase/migrations/` · `git ls-tree HEAD supabase/migrations/` · `git status --short supabase/migrations/`
 
@@ -62,6 +62,18 @@
 | `0024_mantenimiento_nucleo.sql` | Ola B.1: mantenimiento por km en el núcleo (pautas + registros + semáforo único) | **ADD-only:** 2 tablas (`pautas_mantenimiento`, `mantenimientos`), 1 vista (`v_mantenimiento_estado`, `security_invoker`), 3 funciones de trigger, 9 triggers, FKs compuestas, snapshot inmutable del intervalo, RLS `ENABLE`+`FORCE`, 2 políticas `tenant_empresa`, GRANT `select,insert,update` a `tei_app` + `select` a la vista. **0 filas** | **Alto**: `costo >= 0` (corrige defecto legacy) y el histórico de la flota. Sin backfill; el trigger de odómetro solo **sube** `tractos.km_actual` | untracked (`??`) | 🟡 `postgres` (local) y `tei_test`, 2026-10-31; rollback `0024_99` ejecutado + re-aplicación |
 | `0025_liquidaciones_nucleo.sql` | Ola B.2: nómina (liquidaciones, anticipos, ajustes) con total generado y HALF_UP | **ADD-only:** 3 tablas (`liquidaciones`, `anticipos_chofer`, `ajustes_liquidacion`), 1 función de redondeo (`redondear_half_up`), 3 funciones de trigger, 15 triggers, `total_liquido` **generado**, UNIQUE `(empresa_id, chofer_id, mes)`, FKs compuestas, RLS `ENABLE`+`FORCE`, 3 políticas, GRANT `select,insert,update` (sin `delete`). **0 filas** | **Alto** (dinero y datos laborales): inmutabilidad de la emitida e imputación única del anticipo. No migra filas legacy | untracked (`??`) | 🟡 `postgres` y `tei_test`, 2026-10-31; rollback `0025_99` ejecutado + re-aplicación |
 | `0026_configuracion_empresa.sql` | Ola B.4: configuración por empresa con vigencia e historial; reemplazo de `public.configuracion` | **ADD-only:** 1 tabla (`configuracion_empresa`), 3 funciones (lectura + 2 de trigger), 5 triggers, `UNIQUE` parcial de fila vigente, `EXCLUDE` gist de vigencias, `CHECK` de rango para `iva_porcentaje`, RLS `ENABLE`+`FORCE`, 1 política, GRANT `select,insert,update`. **Seed:** `iva_porcentaje=19` por empresa existente (2 en `postgres`, 130 en `tei_test`) | **Medio** (tributario): el 19 es paridad con `0001:291`, no una norma (`P-01`); no toca el legacy ni reajusta facturas | untracked (`??`) | 🟡 `postgres` y `tei_test`, 2026-10-31; rollback `0026_99` ejecutado + re-aplicación |
+| `0027_grants_plataforma.sql` | Que el rol de plataforma (`postgres`, BYPASSRLS) usado por scripts y cutover tenga DML sobre los objetos de la Ola B | 6 `GRANT` (`select,insert,update,delete` en 6 tablas de `0024`–`0026`, `select` en `v_mantenimiento_estado`) + `usage,select` en secuencias de `nucleo`. **0 DDL, 0 filas** | Bajo: solo privilegios; idempotente (`grant` repetido es no-op) | committed | 🟢 `postgres` local, 2026-11-01 (`make db-reset`) |
+| `0028_retiro_public.sql` | **Ola E (ADR-0002 §6.7 E.5): retiro físico del legacy `public`** | **DESTRUCTIVO:** `drop trigger on_auth_user_created on auth.users`; `drop function handle_new_user()`, `set_updated_at()`; **17 `drop table … cascade`** (`usuarios`…`_migraciones`); 8 `drop type` (`rol_usuario`, `estado_viaje`, …); `revoke usage on schema public from public` + `grant` a los roles de Supabase (defecto seguro). **Conserva** el esquema `public` y la extensión `btree_gist` (de la que dependen los 4 `EXCLUDE` del núcleo). Precondiciones P1–P4 abortan con `23514`; verificación V1–V6 dentro de la transacción | **Alto e irreversible por SQL** (pierde el histórico del legacy; solo se vuelve por backup) | untracked (`??`) — pendiente de commit | 🟢 `postgres` local, 2026-11-01 (aplicada con `supabase migration up --local`, y re-aplicada por `make db-reset`); **sin rollback SQL** (`docs/datos/retiro-public.md`) |
+
+> **Adenda 2026-11-01 (estado en git).** `git status --short supabase/` solo
+> muestra `0028_retiro_public.sql` como `??`: las migraciones `0001`–`0027`
+> están **en `HEAD`** y `0028` vive en el árbol de trabajo (la escribió `datos`
+> con autorización del dueño; el commit es del `orquestador`). Las celdas
+> `untracked (??)` de las filas `0015`–`0026` son el estado medido el
+> 2026-10-29/30 y **no se reescriben** (§0.4 de este documento); a la fecha de
+> esta adenda describen un estado superado. El riesgo R13 del ADR-0002
+> ("un clon de `HEAD` no reproduce el esquema") quedó cerrado por el commit de
+> `0001`–`0027`; se reabre solo si `0028` no se commitea.
 
 **Nota (a) — única declaración de aplicación en el repo:** `docs/qa/informes/2026-10-29-r01-r02-suite-verde.md:1-45`
 reporta PostgreSQL local arriba y el trigger de `0016` activo (los fixtures sin

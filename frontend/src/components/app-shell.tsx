@@ -35,9 +35,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [hoy, setHoy] = useState("");
 
   const grupos = usuario ? gruposParaRol(usuario.rol) : [];
-  // `/dashboard` ya no existe: el legacy aterriza en el tablero del núcleo.
-  // Sin legacy se conserva la mesa de despacho como home (fase 2).
-  const inicio = usuario?.es_legacy === false ? "/despacho" : "/tablero";
+  // Sin concepto legacy: el inicio es el tablero del núcleo para todos los roles,
+  // igual que el redirect raíz (`app/page.tsx`) y el destino por defecto del login.
+  const inicio = "/tablero";
   const actual = tituloDeRuta(pathname);
 
   useEffect(() => {
