@@ -103,39 +103,31 @@
 
 | ID | Tema | Estado | Dueño |
 |---|---|---|---|
-| RA-01 | "Piloto cerrado y probado" sin evidencia | 🟡 parcial | `qa` |
-| RA-02 | Doble asignación legacy ↔ núcleo (legacy sin `EXCLUDE`) | 🟢 riesgo confirmado, carrera no reproducida | `datos` + `qa` |
-| RA-03 | Aislamiento multiempresa | 🟢 **ACTIVO (2026-10-31)**: ADR-0005 aceptado; `0020` + `0021` + `0023` aplicadas (**45 políticas**, **40 FORCE** sobre 40 tablas); app con dos engines — núcleo `tei_app` (NOBYPASSRLS), legacy con el rol actual y **gateado** (`403 LEGACY_SOLO_TEI` para tenants distintos de TEI). **Segundo tenant TES activo** con usuarios/membresías. Pruebas: 0020_01–04 OK desde clon limpio; pytest 388/0 skipped. Residual: legacy sin datos aislados (solo gate de acceso); pooler real no probado | `datos` + `backend` |
-| RA-04 | Cutover: flag abierto por defecto + `legacy_congelado()` **fail-open** | 🟢 **corregido (fase 1, Ola 2)**: fail-closed en `servicio_cutover.py:46-60` + `congelar`/`descongelar` con rowcount (SEC-016); revalidado por auditor-seguridad. Residual: caché TTL 5 s por proceso | `auditor-seguridad` |
+| RA-01 | "Piloto cerrado y probado" sin evidencia (UAT vacía) | 🟡 parcial | `qa` |
 | RA-05 | Restore drill no compara antes/después | 🟡 | `datos` |
-| RA-06 | Duplicidad de fuentes (`/maestros` vs `/clientes`, `/dashboard` vs `/tablero`, `/cobranza` vs `/cobranzas`) | 🟢 confirmado | `arquitectura` |
-| RA-07 | Auditoría cubre núcleo, no legacy | 🟡 | `datos` |
-| RA-08 | Conteo E2E contradictorio en documentos históricos | 🟢 resuelto: son **9** | `qa` |
 | RA-09 | Informe de auditoría original ausente del repo | 🔴 | usuario |
-| RA-10 | `DEBUG` por defecto | 🟢 **confirmado**: `DEBUG: bool = True` (`backend/app/core/config.py:11`). Debe forzarse `false` por entorno antes de exponer la API | `auditor-seguridad` |
-| RA-11 | Uploads POD: MIME real, path, visor | 🔴 sin verificar | `auditor-seguridad` |
-| RA-12 | Anon key de Supabase en frontend | 🔴 sin verificar | `auditor-seguridad` |
-| RA-13 | **Los tests pueden escribir en la base de la aplicación** | 🟢 **mitigado (fase 1, 2026-10-29)**: fixtures leen `settings.NUCLEO_TEST_DATABASE_URL` con guarda anti-RA-13 (`conftest.py:40-54`); `make test` apunta por defecto a `tei_test` (clon dedicado, `scripts/test_db_reset.sh`); `backend/.env` corregido. Prueba de aislamiento: 2 corridas completas con la base de la app idéntica. ⚠️ residual: los `test_nucleo_*.py` restantes tienen `_url()` propio sin guarda | `qa` + `backend` |
-| RA-14 | Desincronización ledger↔esquema de migraciones | 🟢 confirmado por F0: `schema_migrations` registraba 0001–0014 pero el esquema físico ya contenía objetos de 0015/0016/0017 (triggers, defaults, backfill de 3 reservas `creado_por='migracion_0015'`). Reconciliado por `supabase db reset` (19 aplicadas). **Causa no determinada** | `datos` + dueño |
+| RA-11 | POD: firma/tamaño/content-type ya validados (Ola 2); **visor/URLs firmadas** sin verificar | 🟡 | `auditor-seguridad` |
+| RA-12 | Anon key en frontend (normal); **políticas del bucket `respaldos`** sin verificar | 🟡 | `auditor-seguridad` |
+| RA-15 | Pooler real (transaction) con `SET LOCAL` + `tei_app` y límites de conexión | 🔴 no probado | `datos` + operación |
+| RA-16 | Rol de plataforma formal (`tei_platform`); hoy el cutover usó `postgres` (BYPASSRLS) | 🔴 | `datos` |
+| RA-17 | Deudas RLS del ADR-0005: R-1 (GUC antes de autorizar), R-5 (FK `reserva.viaje_id` sin empresa), R-9 (auditoría) | 🟡 | `datos` + `backend` |
+| RA-18 | CI nunca ejecutado en GitHub Actions (workflow con Supabase + E2E) | 🔴 | operación |
+| RA-19 | Decisiones tributarias/laborales pendientes (IVA crédito/F29, nómina, comisiones, DTE) | 🔴 | contador |
+| RA-20 | Documentos que citan archivos retirados (16; lista en ADR-0002 §8.2) | 🟡 | varios |
+| RA-21 | Decisiones de producto: RET-06 (tablero sin totales de dinero), RET-12 (secuencia), RET-13 (import CSV) | 🟡 | dueño |
 
 ---
 
 ## 6. Bloqueos activos
 
-0. **`make test` puede apuntar a la base de la aplicación.** El fixture `db` y
-   `test_reglas_negocio` leen `settings.DATABASE_URL` (de `backend/.env`), no
-   `NUCLEO_TEST_DATABASE_URL`. Si esa URL es la de la nube, **las pruebas escriben
-   ahí**. No ejecutes `make test` hasta confirmar el destino (RA-13).
-1. **El cutover deja viajes sin recursos.** El script migra los viajes `confirmado` con
-   `tracto_id`, `rampla_id` y `chofer_id` en `NULL` (`scripts/cutover_legacy.py:6-13,378-401`).
-   Es intencional (el legacy no tiene los documentos que exige `0015`), pero **exige
-   reasignación manual** antes de operar. Ver `operacion/cutover.md`.
-2. **El congelamiento legacy falla en abierto (RA-04).** Si la consulta del flag falla,
-   `legacy_congelado()` devuelve `False` y las escrituras legacy se reanudan en silencio
-   (`servicio_cutover.py:38-39`).
-3. **SEC-002 abierto.** El PDF de liquidación recalcula la comisión en vivo
-   (`liquidaciones.py:515`): un documento firmado no es reproducible.
-4. ~~`HEAD` no tiene el esquema real~~ → **CERRADO (2026-10-29):** las 19 migraciones están commiteadas en `de0d6d3`; la cifra "3/19" era una medición errónea (ver §2). Un clon limpio sí reproduce el esquema.
+No hay bloqueos **técnicos** para operar en local: identidad, aislamiento, suites y datos están verdes.
+Los bloqueos son **decisiones** y **verificación en entorno real**:
+
+1. **Producción/despliegue**: no hay servidor; faltan pooler probado (RA-15), límites de conexión y rol de plataforma (RA-16).
+2. **Restore drill** (RA-05) y backup automatizado: el backup del cutover está verificado por conteos, no por restauración completa.
+3. **CI real** (RA-18): validar el workflow en el primer push.
+4. **Decisiones de negocio** (RA-19/RA-21): IVA/crédito/F29, nómina, comisiones, DTE, tablero, import CSV, ratificación formal de D-2.
+5. **Deuda de seguridad operativa**: rate limiting, cabeceras del frontend, `/docs` en producción, `issuer` del JWT (F0-07/08/09/11).
 
 ---
 
