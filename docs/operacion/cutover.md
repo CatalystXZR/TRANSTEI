@@ -1,8 +1,10 @@
 # Cutover `public` → `nucleo` — runbook
 
 > **Pregunta que responde:** ¿cómo se pasa el legacy a sólo lectura sin perder datos?
-> **Dueño:** `orquestador` · **Verificado:** 2026-10-29 · **Método:** lectura de `scripts/` + `0014`/`0015`
-> **Caduca si:** cambia `cutover_legacy.py`, una migración ≥ 0015 o el flag de congelamiento.
+> **Dueño:** `orquestador` · **Verificado:** 2026-11-01 · **Método:** ejecución local + lectura
+> **Estado:** **ejecutado en local (2026-11-01)**; ver `docs/operacion/cutover-ejecutado-2026-11-01.md`.
+> Este runbook queda para **entornos con datos reales**. Las rutas legacy ya no existen
+> (responden 404) y el flag se conserva como registro del cutover.
 > **Re-verificar con:** `grep -n "add_argument" scripts/cutover_legacy.py`
 
 ---
@@ -14,11 +16,11 @@
 | 1 | **El script es compatible con `0015`.** Migra los viajes `confirmado` **sin recursos** (`tracto_id`, `rampla_id`, `chofer_id` en `NULL`), precisamente para no disparar el `23514` documental | `scripts/cutover_legacy.py:6-13,378-401` |
 | 2 | El comentario de `0015` que declara "incompatible" al script describe una **versión anterior**; quedó obsoleto | `0015:130-143` vs `cutover_legacy.py:6-13` (deuda D-05) |
 | 3 | Consecuencia operativa: **todo viaje migrado queda sin recursos** y debe reasignarse a mano con documentos reales | `cutover_legacy.py:294,398-401` |
-| 4 | El congelamiento **falla en abierto**: si la consulta falla, `legacy_congelado()` devuelve `False` y las escrituras legacy se reanudan en silencio (RA-04) | `backend/app/nucleo/servicio_cutover.py:38-39` |
+| 4 | El congelamiento **falla en cerrado** desde el 2026-10-29: si la lectura falla o falta la fila, se asume CONGELADO (RA-04 corregido) | `backend/app/nucleo/servicio_cutover.py:46-57` |
 | 5 | `backup_pgdump.sh` es **cloud-only**: aborta si la URL no contiene el ref del proyecto en la nube — inservible para la base local | `scripts/backup_pgdump.sh:9,25-27` |
 
-**Bloqueos reales antes de ejecutar:** resolver el fail-open (4) y usar el backup correcto (5).
-La incompatibilidad con `0015` **no es un bloqueo**.
+**Bloqueos reales antes de ejecutar:** usar el backup correcto (5) y verificar `restore-drill`.
+El fail-open (4) está corregido y la incompatibilidad con `0015` **no es un bloqueo**.
 
 ---
 
@@ -55,9 +57,8 @@ La incompatibilidad con `0015` **no es un bloqueo**.
 ```
 
 - [ ] Migración sin errores. **Si aparece `23514` por documentos faltantes, se está cumpliendo el bloqueo de §0** — no lo rodees.
-- [ ] `nucleo.cutover_control.legacy_escritura_congelada = true`.
-- [ ] `POST /api/v1/viajes` legacy devuelve **409 `CUTOVER_LEGACY_CONGELADO`**.
-- [ ] `GET` legacy sigue disponible para consulta.
+- [ ] `nucleo.cutover_control.legacy_escritura_congelada = true` (verificar en base).
+- [ ] Las rutas legacy ya no existen: `/api/v1/viajes` → **404** (retiradas en la Ola C).
 - [ ] Login y módulos `/nucleo` operan.
 - [ ] **Reasignar recursos y documentos a cada viaje migrado** (§45 de la lista original): sin esto quedan viajes sin disponibilidad.
 
