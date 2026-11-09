@@ -588,7 +588,7 @@ export default function DespachoPage() {
               </div>
 
               <fieldset className="space-y-s3 border-0">
-                <legend className="rotulo float-left mb-s2 w-full">Recursos</legend>
+                <legend className="rotulo mb-s2 w-full">Recursos</legend>
                 <div className="grid gap-s3 sm:grid-cols-3">
                   {TIPOS.map((tipo) => {
                     const Icono = ICONO_TIPO[tipo];
@@ -621,7 +621,7 @@ export default function DespachoPage() {
               </fieldset>
 
               <fieldset className="space-y-s3 border-0">
-                <legend className="rotulo float-left mb-s2 w-full">Ventana y traslado</legend>
+                <legend className="rotulo mb-s2 w-full">Ventana y traslado</legend>
                 <div className="grid gap-s3 sm:grid-cols-3">
                   <Campo etiqueta="Inicio" htmlFor="asignar-inicio" requerido>
                     <Input

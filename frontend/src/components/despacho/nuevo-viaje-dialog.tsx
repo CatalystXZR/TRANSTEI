@@ -277,7 +277,7 @@ export function NuevoViajeDialog({
         )}
 
         <fieldset className="space-y-s3 border-0">
-          <legend className="rotulo float-left mb-s2 w-full">Cliente y documentos comerciales</legend>
+          <legend className="rotulo mb-s2 w-full">Cliente y documentos comerciales</legend>
           <div className="grid gap-s3 sm:grid-cols-3">
             <Campo
               etiqueta="Cliente"
@@ -370,7 +370,7 @@ export function NuevoViajeDialog({
         </fieldset>
 
         <fieldset className="space-y-s3 border-0">
-          <legend className="rotulo float-left mb-s2 w-full">Ruta y ventana</legend>
+          <legend className="rotulo mb-s2 w-full">Ruta y ventana</legend>
           <div className="grid gap-s3 sm:grid-cols-2">
             <Campo etiqueta="Origen" htmlFor="nv-origen" requerido>
               <Input
@@ -436,7 +436,7 @@ export function NuevoViajeDialog({
         </fieldset>
 
         <fieldset className="space-y-s3 border-0">
-          <legend className="rotulo float-left mb-s2 w-full">Carga</legend>
+          <legend className="rotulo mb-s2 w-full">Carga</legend>
           <div className="grid gap-s3 sm:grid-cols-3">
             <Campo etiqueta="Peso bruto (kg)" htmlFor="nv-peso" requerido>
               <Input

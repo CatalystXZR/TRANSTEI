@@ -251,7 +251,7 @@ export function DocumentosDialog({
         </div>
 
         <fieldset className="space-y-s3 border-0">
-          <legend className="rotulo float-left mb-s2 w-full">Nueva versión</legend>
+          <legend className="rotulo mb-s2 w-full">Nueva versión</legend>
           <div className="grid gap-s3 sm:grid-cols-2">
             <Campo etiqueta="Tipo de documento" htmlFor="doc-tipo" requerido>
               <SelectSimple
