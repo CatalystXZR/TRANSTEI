@@ -366,12 +366,11 @@ test.describe("Ola C — API legacy retirada", () => {
       expect(respuesta.status(), `${ruta} debe estar retirado (404)`).toBe(404);
     }
 
-    // No basta con que la ruta puntual dé 404: el router no debe estar
-    // publicado en el esquema OpenAPI.
+    // La documentación OpenAPI está desactivada por defecto (menos superficie
+    // de ataque): el esquema no se publica. En local se puede habilitar con
+    // ENABLE_DOCS=true; si se hace, este test debe adaptarse, no el backend.
     const openapi = await request.get(`${API_BASE.replace(/\/api\/v1$/, "")}/openapi.json`);
-    expect(openapi.status()).toBe(200);
-    const rutas = Object.keys((await openapi.json()).paths ?? {});
-    expect(rutas.filter((r) => /^\/api\/v1\//.test(r) && !/^\/api\/v1\/(auth|nucleo)\//.test(r))).toEqual([]);
+    expect(openapi.status()).toBe(404);
 
     // El núcleo sigue publicado: sin token responde 401, no 404.
     const nucleo = await request.get(`${API_BASE}/nucleo/mis-empresas`);

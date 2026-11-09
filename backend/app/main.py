@@ -177,7 +177,48 @@ def _request_id(scope) -> str | None:
     return None
 
 
-app = FastAPI(title=settings.PROJECT_NAME)
+class CabecerasSeguridadMiddleware:
+    """Cabeceras de seguridad en todas las respuestas HTTP.
+
+    No reemplaza al proxy/TLS: HSTS lo pone el terminador HTTPS. Aquí se
+    cubren las cabeceras que el backend puede garantizar por sí mismo.
+    """
+
+    _CABECERAS = (
+        (b"x-content-type-options", b"nosniff"),
+        (b"x-frame-options", b"DENY"),
+        (b"referrer-policy", b"no-referrer"),
+        (b"permissions-policy", b"geolocation=(), microphone=(), camera=()"),
+        (b"cross-origin-opener-policy", b"same-origin"),
+    )
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_con_cabeceras(mensaje):
+            if mensaje.get("type") == "http.response.start":
+                headers = list(mensaje.get("headers", []))
+                existentes = {nombre.lower() for nombre, _ in headers}
+                for nombre, valor in self._CABECERAS:
+                    if nombre not in existentes:
+                        headers.append((nombre, valor))
+                mensaje["headers"] = headers
+            await send(mensaje)
+
+        await self.app(scope, receive, send_con_cabeceras)
+
+
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    docs_url="/docs" if settings.ENABLE_DOCS else None,
+    redoc_url="/redoc" if settings.ENABLE_DOCS else None,
+    openapi_url="/openapi.json" if settings.ENABLE_DOCS else None,
+)
 
 # Pila de middlewares, de afuera hacia adentro (el último `add_middleware`
 # queda más afuera): congelar-legacy → CORS → tope de cuerpo → contexto →
@@ -204,6 +245,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Último `add_middleware` = más externo: las cabeceras cubren también CORS
+# y los errores generados antes del router.
+app.add_middleware(CabecerasSeguridadMiddleware)
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 

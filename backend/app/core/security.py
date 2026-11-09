@@ -19,7 +19,15 @@ def _get_jwks_client() -> PyJWKClient:
 
 
 def decode_token(token: str) -> dict:
-    """Valida el JWT emitido por Supabase Auth y devuelve su payload."""
+    """Valida el JWT emitido por Supabase Auth y devuelve su payload.
+
+    Además de firma y audiencia, valida el emisor (`iss`) cuando se conoce
+    (`SUPABASE_JWT_ISSUER` o derivado de `SUPABASE_URL`). Sin esa validación,
+    un token firmado por otro emisor con la misma audiencia podría aceptarse.
+    """
+    issuer = settings.jwt_issuer
+    opciones = {"verify_aud": True, "verify_iss": bool(issuer)}
+    kwargs = {"issuer": issuer} if issuer else {}
     try:
         signing_key = _get_jwks_client().get_signing_key_from_jwt(token)
         payload = jwt.decode(
@@ -27,7 +35,8 @@ def decode_token(token: str) -> dict:
             signing_key.key,
             algorithms=["RS256", "ES256"],
             audience="authenticated",
-            options={"verify_aud": True},
+            options=opciones,
+            **kwargs,
         )
     except jwt.ExpiredSignatureError:
         raise HTTPException(

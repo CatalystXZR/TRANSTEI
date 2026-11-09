@@ -40,6 +40,13 @@ if [ -f supabase/migrations/0020_rls_multiempresa.sql ]; then
   docker exec -i "$CONTAINER" psql -U supabase_admin -d "$TEST_DB" -v ON_ERROR_STOP=1 \
     < supabase/migrations/0020_rls_multiempresa.sql >/dev/null
 fi
+# SEC-039: 0020 re-concede escritura a `tei_app` sobre todas las tablas; 0029
+# la vuelve a revocar sobre identidad/ACL/flag. Se re-aplica para que el clon
+# de test refleje el esquema real de la app.
+if [ -f supabase/migrations/0029_tei_admin_gate.sql ]; then
+  docker exec -i "$CONTAINER" psql -U supabase_admin -d "$TEST_DB" -v ON_ERROR_STOP=1 \
+    < supabase/migrations/0029_tei_admin_gate.sql >/dev/null
+fi
 # Credencial local/CI documentada (tei_test es desechable; nunca datos reales).
 docker exec "$CONTAINER" psql -U supabase_admin -d postgres \
   -c "ALTER ROLE tei_app PASSWORD 'tei_app';" >/dev/null 2>&1 || true
