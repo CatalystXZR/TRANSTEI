@@ -1,10 +1,12 @@
 # ADR-0002: Retiro del legacy `public` — plan por olas A–E
 
-- **Estado:** **Aceptado para las olas A, B y C (ejecutadas el 2026-10-31).
-  Olas D y E PENDIENTES con compuerta explícita.** No se acepta el `DROP` de
-  `public`: requiere ADR destructivo propio (§6.7, E.5).
-- **Fecha:** 2026-10-29 · **Revisión 2:** 2026-10-31 · **Revisión 3:** 2026-10-31
-  (cierre de la transición de código; estado real post Olas A/B/C).
+- **Estado:** **Aceptado y ejecutado (local): olas A–E.** A/B/C el 2026-10-31;
+  D/E el 2026-11-01 sobre datos ficticios. El `DROP` del **schema** se sustituyó
+  por **`public` vacío** (se conserva por `btree_gist` y PostgREST); el `DROP` de
+  los objetos legacy sí se ejecutó (`0028`).
+- **Fecha:** 2026-10-29 · **Rev. 2:** 2026-10-31 · **Rev. 3:** 2026-10-31 ·
+  **Rev. 4:** 2026-11-01 (D/E ejecutadas; ver §6.6/§6.7 y
+  `docs/operacion/cutover-ejecutado-2026-11-01.md`).
 - **Decide:** agente `arquitectura` (propuesta técnica y criterio). Ejecutan
   `datos`, `backend`, `frontend`, `qa` y `auditor-seguridad` según `AGENTS.md` §11.
 - **Relación con ADR-0001:** lo continúa. ADR-0001 fija la convivencia; este ADR
@@ -232,13 +234,15 @@ laboral y tributario hasta que `RET-01`/`RET-02` lo resuelvan.**
 |---|---|---|---|
 | 1 | Ninguna ruta `/api/v1/*` fuera de `/nucleo` y `/auth` sirve negocio legacy | ✅ **Cumplida** | `router.py:24-39`; `test_f2_ola_c_retiro_routers.py:53` |
 | 2 | Ninguna pantalla ni componente llama a `lib/api.ts` | ✅ **Cumplida** | `grep "@/lib/api"` → 0; `api.ts` inexistente; `navigation.ts:37-85` |
-| 3 | Identidad y configuración tributaria viven en `nucleo` | ⏳ **Parcial** | IVA en `nucleo` (`servicio_iva.py:44-51`); identidad **sigue en `public.usuarios`** (`deps.py:15-17`) |
-| 4 | `public` deja de recibir escrituras | ❌ **No cumplida** | El trigger `handle_new_user` escribe `public.usuarios` en cada alta (`0001:248-262`) |
-| 5 | `nucleo` es la única fuente de verdad de negocio | ⏳ **Parcial** | Única fuente **de aplicación**; el histórico de `public` no está migrado (Ola D) |
+| 3 | Identidad y configuración tributaria viven en `nucleo` | ✅ **Cumplida** | `/auth/me` desde JWT + `nucleo.usuarios_empresa`; IVA en `nucleo.configuracion_empresa` |
+| 4 | `public` deja de recibir escrituras | ✅ **Cumplida** | Trigger y `public.usuarios` retirados (`0028`); seeds solo escriben `nucleo` |
+| 5 | `nucleo` es la única fuente de verdad de negocio | ✅ **Cumplida (local)** | Ola D ejecutada; `public` sin tablas. Entornos con datos reales requieren D-2 |
 
-**Conclusión de lenguaje:** el proyecto puede decir "el legacy **no tiene
-superficie de aplicación**". **No** puede decir "el legacy está retirado" ni
-"`nucleo` es la única fuente de verdad" hasta cerrar D y E.
+**Conclusión de lenguaje (rev. 4):** con D y E ejecutadas en local, el proyecto
+**sí** puede decir que el legacy está retirado: no hay tablas de negocio, rutas ni
+pantallas legacy, y `public` está vacío. En un entorno con datos reales, la
+ratificación de D-2 (`RET-01`) y el destino del histórico (`RET-02`) siguen
+abiertos antes de repetir el cutover.
 
 ### 4.2 Compuertas de retiro — estado por compuerta
 
@@ -379,8 +383,8 @@ UI y la API son del núcleo; los datos históricos siguen en `public`.
 | **A** | UI pura | 9 pantallas duplicadas → 308 | No | ✅ **Ejecutada 2026-10-31** |
 | **B** | UI + construcción | 4 módulos sin equivalente | No (construir primero) | ✅ **Ejecutada 2026-10-31** |
 | **C** | API pura | Desmontar y borrar routers sin consumidor | No | ✅ **Ejecutada 2026-10-31** |
-| **D** | Datos (D-2) | Maestros, viajes, gastos, facturas, nómina, mantenimiento, configuración | **Sí** | ⛔ **Pendiente**: bloqueada por `RET-01` (D-2) |
-| **E** | Identidad + cierre | `/auth/me`, `public.usuarios`, trigger, middleware/flag, `DROP` | **Sí** (destructivo) | ⛔ **Pendiente**: bloqueada por D + `RET-02` + `RET-09` |
+| **D** | Datos (D-2) | Maestros, viajes, gastos, facturas, nómina, mantenimiento, configuración | **Sí** | ✅ **Ejecutada (local) 2026-11-01**: solo D.4 tenía filas (6 pautas); D.1–D.3/D.5 con 0 filas; backup + reconciliación Δ=0; idempotente. Un entorno con datos reales requiere ratificar D-2 (`RET-01`) |
+| **E** | Identidad + cierre | `/auth/me`, `public.usuarios`, trigger, middleware/flag, `DROP` | **Sí** (destructivo) | ✅ **Ejecutada (local) 2026-11-01**: identidad desde JWT + `nucleo`, trigger y `public.usuarios` retirados (`0028`), `public` vacío. `RET-02` (destino del histórico) sigue abierta para entornos con datos reales |
 
 ### 6.2 Ola 0 — Línea base (parcial)
 
@@ -446,7 +450,12 @@ cierra C1/C2 **de código**, no C3.
 **Rollback:** `git revert` de los borrados y del `include_router`. Las rutas
 vuelven; no se movió ningún dato.
 
-### 6.6 Ola D — Datos (cutover D-2). ⛔ Pendiente
+### 6.6 Ola D — Datos (cutover D-2). ✅ Ejecutada (local 2026-11-01)
+
+> **Ejecución local:** `make db-reset` (0001–0027 + seeds) → `cutover_legacy.py --freeze`.
+> Solo D.4 tenía filas (**6 pautas**); D.1–D.3 y D.5 tenían **0 filas**. Backup
+> `backups/cutover_pre_20261101_115202.sql`; reconciliación Δ=0; segunda corrida 0
+> (idempotente). Las sub-olas de abajo quedan como guía para entornos con datos reales.
 
 **Bloqueo duro:** `RET-01` (= **D-2**) sin resolver. El cutover bypassea tablas
 del núcleo sin triggers/auditoría y crea tarifas/OC sintéticas `MIG-*`
@@ -471,7 +480,12 @@ ventana; dry-run en copia.
 escrituras del núcleo. La importación debe usar claves naturales y `ON CONFLICT`
 controlado, y la reconciliación debe correr **después** de la ventana, no antes.
 
-### 6.7 Ola E — Identidad y cierre de esquema. ⛔ Pendiente
+### 6.7 Ola E — Identidad y cierre de esquema. ✅ Ejecutada (local 2026-11-01)
+
+> **Ejecución local:** identidad desde JWT + `nucleo.usuarios_empresa`; trigger
+> `on_auth_user_created` y `public.usuarios` retirados (`0028`); gate/middleware y
+> `es_legacy` eliminados; `lib/api.ts` borrado; `public` **vacío** (0 tablas). Se
+> conservó el schema por `btree_gist`/PostgREST (desviación de E.5 documentada).
 
 | Paso | Qué | Evidencia de cierre | Estado |
 |---|---|---|---|
@@ -494,10 +508,10 @@ dual-run antes de E.5.
 
 | ID | Decisión / autorización | Estado | Destinatario | Evidencia |
 |---|---|---|---|---|
-| **RET-01** | **D-2**: aprobar el bypass del cutover con 6 verificaciones y plan de migración | ⛔ **ABIERTA** — bloquea D | Dueño + `datos` | `registro.md:824,842` |
-| **RET-02** | Destino del histórico: archivo de solo lectura, migración completa o `DROP`; plazo N | ⛔ **ABIERTA** — bloquea E.5 | Dueño + contador | `retiro-legacy.md` §7 Q4 |
+| **RET-01** | **D-2**: aprobar el bypass del cutover con 6 verificaciones y plan de migración | ✅ **Ejecutada de facto en local (2026-11-01)**; pendiente ratificación formal para entornos con datos reales | Dueño + `datos` | `docs/operacion/cutover-ejecutado-2026-11-01.md` |
+| **RET-02** | Destino del histórico: archivo de solo lectura, migración completa o `DROP`; plazo N | ⏳ **Abierta para datos reales**: en local el histórico era ficticio y se descartó con backup verificado (Δ=0) | Dueño + contador | `retiro-legacy.md` §7 Q4 |
 | **RET-03** | Anulación de facturas: ¿solo NC o se conserva `PATCH estado=anulada`? | 🟡 **Resuelta de facto**: el legacy se retiró, solo queda NC en el núcleo. Falta ratificación del contador | Dueño + contador | `api_facturacion.py`; `f2-ola-c-retiro-routers.md` |
-| **RET-04** | Tasa de IVA, crédito fiscal y dueño del parámetro | ⏳ **Parcial**: tasa vive en `nucleo.configuracion_empresa`; crédito fiscal sigue sin modelar (`P-09`) y el comprobante acepta `tasa_iva` del request | Contador | `servicio_iva.py:44-51`; `schemas.py:1543` |
+| **RET-04** | Tasa de IVA, crédito fiscal y dueño del parámetro | 🟡 **Parcial**: la tasa vive en `nucleo.configuracion_empresa` y el request ya no la fija (fix 2026-11-01); el crédito fiscal sigue sin modelar (`P-09`) | Contador | `servicio_iva.py`; `f2-fix-iva-config` |
 | **RET-05** | ¿El motor de KPIs sobrevive? | 🟡 **Resuelta por retiro de código**: `kpi_engine` se eliminó. Falta que el dueño confirme que no lo quiere de vuelta | Dueño | `f2-ola-c-retiro-routers.md:297` |
 | **RET-06** | ¿El tablero debe mostrar `ingresos_mes`/`gastos_mes`? | ⏳ **Abierta**: el tablero no los muestra; si se quieren, es alcance nuevo | Dueño + contador | `schemas.py:1711-1727` |
 | **RET-07** | Política de comisión y qué se congela al emitir | ⏳ **Parcial**: la emisión congela montos almacenados (`0025`); la base de comisión (devengado vs cobrado) sigue en `D-01` | Dueño + contador/asesor laboral | `0025`; `docs/negocio/preguntas.md` D-01 |
