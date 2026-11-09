@@ -239,41 +239,41 @@ def escenario(base_url_test) -> dict:
 
         contactos = {
             "cliente": _contacto(
-                conn_app,
+                conn,
                 empresa_id=empresa_id,
                 telefono=_TELEFONOS["cliente"],
                 rol="cliente_final",
                 cliente_id=cliente_id,
             ),
             "chofer": _contacto(
-                conn_app,
+                conn,
                 empresa_id=empresa_id,
                 telefono=_TELEFONOS["chofer"],
                 rol="conductor",
                 chofer_id=chofer_id,
             ),
             "admin": _contacto(
-                conn_app,
+                conn,
                 empresa_id=empresa_id,
                 telefono=_TELEFONOS["admin"],
                 rol="admin",
             ),
             "sin_acl": _contacto(
-                conn_app,
+                conn,
                 empresa_id=empresa_id,
                 telefono=_TELEFONOS["sin_acl"],
                 rol="cliente_final",
                 cliente_id=cliente_id,
             ),
             "var_false": _contacto(
-                conn_app,
+                conn,
                 empresa_id=empresa_id,
                 telefono=_TELEFONOS["var_false"],
                 rol="cliente_final",
                 cliente_id=cliente_id,
             ),
             "otp_pendiente": _contacto(
-                conn_app,
+                conn,
                 empresa_id=empresa_id,
                 telefono=_TELEFONOS["otp_pendiente"],
                 rol="cliente_final",
@@ -285,7 +285,7 @@ def escenario(base_url_test) -> dict:
         # ACL del camino feliz: componente y variable encendidos.
         for clave in ("cliente", "chofer", "admin"):
             _acl(
-                conn_app,
+                conn,
                 empresa_id=empresa_id,
                 contacto_id=contactos[clave],
                 componente="despacho",
@@ -351,7 +351,7 @@ def escenario(base_url_test) -> dict:
             permitido=True,
         )
 
-        _flag(conn_app, empresa_id, True)
+        _flag(conn, empresa_id, True)
 
     datos = {
         "dsn": dsn,
@@ -365,20 +365,20 @@ def escenario(base_url_test) -> dict:
     }
     yield datos
 
-    # `tei_app` no tiene DELETE sobre estas tablas: se apagan, no se borran.
-    with _conexion(dsn_app) as conn_app:
-        _fijar_empresa(conn_app, empresa_id)
-        conn_app.execute(
+    # SEC-039: la limpieza la hace la plataforma (`postgres`), no `tei_app`.
+    # Se apaga, no se borra (no hay DELETE sobre estas tablas).
+    with _conexion(dsn) as conn_admin:
+        conn_admin.execute(
             "update nucleo.permisos_contacto set permitido = false "
             "where contacto_id = any(%s)",
             (list(contactos.values()),),
         )
-        conn_app.execute(
+        conn_admin.execute(
             "update nucleo.modulos_empresa set habilitado = false "
             "where empresa_id = %s and modulo_id = 'agente-whatsapp'",
             (empresa_id,),
         )
-        conn_app.commit()
+        conn_admin.commit()
 
 
 def _registry() -> Registry:
@@ -635,11 +635,9 @@ def test_otp_pendiente_deniega_identidad(escenario) -> None:
 
 
 def test_modulo_apagado_deniega(escenario) -> None:
-    # El flag se escribe con `tei_app`: `postgres` solo tiene SELECT sobre
-    # `nucleo.modulos_empresa` (los GRANT del módulo son para el rol de la app).
-    with _conexion(_dsn_app()) as conn_app:
-        _fijar_empresa(conn_app, escenario["empresa_id"])
-        _flag(conn_app, escenario["empresa_id"], False)
+    # SEC-039: el flag lo escribe la plataforma (`postgres`), no `tei_app`.
+    with _conexion(escenario["dsn"]) as conn_admin:
+        _flag(conn_admin, escenario["empresa_id"], False)
     try:
         ctx = _ctx_cliente(escenario)
         respuesta = _registry().invocar("despacho.mis_fletes", {}, ctx)
@@ -650,9 +648,8 @@ def test_modulo_apagado_deniega(escenario) -> None:
         assert auditoria["acceso"] is False
         assert auditoria["respuesta"] == "MODULO_INACTIVO"
     finally:
-        with _conexion(_dsn_app()) as conn_app:
-            _fijar_empresa(conn_app, escenario["empresa_id"])
-            _flag(conn_app, escenario["empresa_id"], True)
+        with _conexion(escenario["dsn"]) as conn_admin:
+            _flag(conn_admin, escenario["empresa_id"], True)
 
 
 def test_tool_desconocida_se_audita(escenario) -> None:

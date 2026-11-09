@@ -17,6 +17,7 @@ sigue pendiente de `P-01`/`D-21`.
 from __future__ import annotations
 
 import json
+import re
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -41,6 +42,11 @@ CATALOGO: dict[str, tuple[str, Decimal | None, Decimal | None]] = {
     "dias_alerta_vencimientos": ("entero", Decimal("0"), None),
     "dias_alerta_cobranza": ("entero", Decimal("0"), None),
 }
+
+# Directivas libres escritas por el agente gerente (Ola 3): no tienen catálogo
+# ni tipo; la base solo acota el formato de la clave. El prefijo reservado evita
+# confundirlas con las claves del catálogo cerrado.
+_PATRON_DIRECTIVA = re.compile(r"^directiva_[a-z0-9_]{2,60}$")
 
 _COLUMNAS = "clave, valor, vigente_desde, updated_at, version"
 MENSAJE = (
@@ -149,13 +155,58 @@ class ServicioConfiguracion:
         ).mappings().first()
         return dict(fila) if fila is not None else None
 
-    def actualizar(self, clave: str, valor: Any) -> ConfiguracionItemOut:
+    def actualizar(self, clave: str, valor: Any, *, commit: bool = True) -> ConfiguracionItemOut:
         normalizado = _normalizar(clave, valor)
         actual = self._vigente(clave)
         if actual is not None and _mismo_valor(actual["valor"], normalizado):
             # PUT idempotente: no se crea una versión nueva si el valor no cambia.
             return ConfiguracionItemOut.model_validate(actual)
+        return self._escribir(clave, normalizado, commit=commit)
 
+    def actualizar_directiva(
+        self, clave: str, valor: Any, *, commit: bool = True
+    ) -> tuple[ConfiguracionItemOut, bool]:
+        """Upsert de una directiva libre (`directiva_*`) del agente gerente.
+
+        Devuelve `(item, cambiado)`. Las claves del catálogo cerrado
+        (`iva_porcentaje`, alertas) no se aceptan por esta vía: se cambian con
+        `actualizar`, que aplica tipo y rango. El valor debe ser JSON
+        serializable; `jsonb` no admite `Decimal`, `NaN` ni objetos Python.
+
+        Misma garantía que `actualizar`: cierra la vigencia anterior e inserta
+        la nueva con el **mismo instante** para que el `EXCLUDE` no detecte
+        solape; un valor idéntico es no-op.
+        """
+        if isinstance(clave, str) and clave in CATALOGO:
+            raise DatosInvalidos(
+                "Esa clave se cambia por el flujo de configuración, no por el chat.",
+                contexto={"clave": clave},
+            )
+        if not isinstance(clave, str) or not _PATRON_DIRECTIVA.fullmatch(clave):
+            raise DatosInvalidos(
+                "Clave de directiva inválida: use `directiva_` seguido de 2 a "
+                "60 caracteres en minúsculas, dígitos o guion bajo.",
+                contexto={"clave": clave},
+            )
+        if valor is None:
+            raise DatosInvalidos("El valor de la directiva no puede ser nulo.")
+        try:
+            # `allow_nan=False`: NaN/Infinity no son JSON válido y romperían jsonb.
+            json.dumps(valor, ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise DatosInvalidos(
+                "El valor de la directiva debe ser JSON serializable."
+            ) from exc
+
+        actual = self._vigente(clave)
+        if actual is not None and _mismo_valor(actual["valor"], valor):
+            return ConfiguracionItemOut.model_validate(actual), False
+        return self._escribir(clave, valor, commit=commit), True
+
+    def _escribir(
+        self, clave: str, normalizado: Any, *, commit: bool = True
+    ) -> ConfiguracionItemOut:
+        """Cierra la vigencia abierta e inserta la nueva (una transacción)."""
         try:
             fila = self.session.execute(
                 text(
@@ -184,9 +235,13 @@ class ServicioConfiguracion:
                     "auth_id": self.contexto.auth_id,
                 },
             ).mappings().one()
-            self.session.commit()
+            if commit:
+                self.session.commit()
+            else:
+                self.session.flush()
         except IntegrityError as exc:
-            self.session.rollback()
+            if commit:
+                self.session.rollback()
             estado = _sqlstate(exc)
             if estado in {"23P01", "23505"}:
                 # Otra transacción cerró/insertó la vigencia al mismo tiempo.
@@ -200,7 +255,8 @@ class ServicioConfiguracion:
                 ) from exc
             raise traducir_integrity_error(exc) from exc
         except Exception:
-            self.session.rollback()
+            if commit:
+                self.session.rollback()
             raise
         return ConfiguracionItemOut.model_validate(dict(fila))
 

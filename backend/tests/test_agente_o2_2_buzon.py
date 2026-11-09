@@ -165,9 +165,9 @@ def escenario(base_url_test) -> dict:
         if otro_miembro is None:
             pytest.skip("se necesitan dos membresías para probar autoaprobación")
 
-    with _conexion(dsn_app) as conn_app:
-        _fijar(conn_app, empresa_id)
-        contacto_id = conn_app.execute(
+    # SEC-039: la identidad la escribe la plataforma (`postgres`), no `tei_app`.
+    with _conexion(dsn) as conn_admin:
+        contacto_id = conn_admin.execute(
             """
             insert into nucleo.contactos_whatsapp
                 (empresa_id, telefono, nombre, rol, cliente_id, otp_estado, otp_verificado_en)
@@ -176,7 +176,7 @@ def escenario(base_url_test) -> dict:
             """,
             (empresa_id, f"+5691{uuid.uuid4().int % 10**7:07d}", cliente_id),
         ).fetchone()[0]
-        conn_app.commit()
+        conn_admin.commit()
 
     return {
         "dsn": dsn,

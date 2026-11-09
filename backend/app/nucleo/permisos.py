@@ -15,7 +15,15 @@ from app.nucleo.models import RolEmpresa
 # AB-02 (docs/estado.md §5): permisos del módulo agente. `admin` los hereda de
 # `TODOS_LOS_PERMISOS`; `gerente` queda **excluido** hasta que el dueño ratifique
 # AB-02. Deny-by-default: no se conceden por conveniencia.
-PERMISOS_AGENTE = {"agente:buzon", "agente:aprobar", "agente:contactos"}
+PERMISOS_AGENTE = {
+    "agente:buzon",
+    "agente:aprobar",
+    "agente:contactos",
+    "agente:chat",
+    # Panel `/configuracion/agentes`: solo `admin` lo hereda. El gerente queda
+    # excluido por AB-02 y no puede autoconfigurarse.
+    "agente:configurar",
+}
 
 TODOS_LOS_PERMISOS = {
     "maestros:leer",

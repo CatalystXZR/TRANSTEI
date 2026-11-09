@@ -228,6 +228,9 @@ def oc(**kwargs) -> OrdenCompra:
         empresa_id=uuid4(),
         cliente_id=uuid4(),
         numero_oc="OC-1",
+        # Fecha fija: `vigencia_desde` tiene default `date.today()` en el modelo.
+        # Sin fijarla, el test depende del día en que se ejecute.
+        vigencia_desde=date(2026, 1, 1),
         vigencia_hasta=date(2027, 12, 31),
         monto_autorizado=Decimal("1000000"),
         sobregiro_autorizado=Decimal("0"),

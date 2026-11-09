@@ -37,12 +37,25 @@ from app.nucleo.errores import (
     SolicitudYaDecidida,
     TipoSinEjecutor,
 )
+from app.nucleo.permisos import tiene_permiso
+from app.nucleo.schemas import (
+    SolicitudAnulacionViaje,
+    ViajeCreateNucleo,
+)
+from app.nucleo.servicio_disponibilidad import ServicioDisponibilidad
+from app.nucleo.servicio_transiciones import ServicioTransiciones
 
 ESTADOS_FILTRO = frozenset(
     {"pendiente", "aprobada", "rechazada", "cancelada", "todas"}
 )
 TIPOS = frozenset({"agendamiento", "documentos", "hoja_de_ruta", "otra"})
 ACCIONES = frozenset({"confirmar", "rechazar", "modificar"})
+# Catálogo de acciones críticas que el chat puede dejar en el buzón. Vive aquí
+# (dominio del buzón) y `chat/herramientas.py` lo importa para no duplicarlo;
+# SEC-061 exige que la excepción de autoaprobación use este mismo catálogo.
+ACCIONES_CRITICAS = frozenset(
+    {"crear_viaje", "crear_viajes_masivo", "anular_viaje", "cambiar_tarifa"}
+)
 ESTADOS_TERMINALES = frozenset({"aprobada", "rechazada", "cancelada"})
 
 TIPO_LEGIBLE = {
@@ -100,6 +113,7 @@ select s.id::text        as id,
        s.tipo::text      as tipo,
        s.estado::text    as estado,
        s.version,
+       s.viaje_id::text  as viaje_id,
        s.payload,
        s.valores_modificados,
        s.solicitante_contacto_id::text as solicitante_contacto_id,
@@ -398,11 +412,84 @@ EjecutorSolicitud = Callable[
     [Session, ContextoEmpresa, Any, "dict[str, Any] | None"], dict[str, Any]
 ]
 
+
+def _ejecutar_crear_viaje(
+    session: Session, contexto: ContextoEmpresa, datos: dict[str, Any]
+) -> dict[str, Any]:
+    viaje = ServicioDisponibilidad(session, contexto).crear_viaje(
+        ViajeCreateNucleo(**datos), commit=False
+    )
+    return {"tipo": "viaje", "ref": str(viaje.id), "estado": viaje.estado.value}
+
+
+def _ejecutar_anular_viaje(
+    session: Session,
+    contexto: ContextoEmpresa,
+    datos: dict[str, Any],
+    solicitud: Any,
+) -> dict[str, Any]:
+    viaje_id = datos.get("viaje_id") or getattr(solicitud, "viaje_id", None)
+    if viaje_id is None:
+        raise DatosInvalidos("La solicitud de anulación no indica el viaje.")
+    transicion = ServicioTransiciones(session, contexto).anular(
+        UUID(str(viaje_id)),
+        SolicitudAnulacionViaje(motivo=datos.get("motivo")),
+        commit=False,
+    )
+    return {
+        "tipo": "viaje",
+        "ref": str(viaje_id),
+        "estado": transicion.estado.value
+        if hasattr(transicion.estado, "value")
+        else str(transicion.estado),
+    }
+
+
+# Acciones críticas que el chat puede dejar en el buzón (`tipo='otra'`). Las que
+# no están aquí quedan pendientes de su servicio dueño y responden 501 al
+# confirmar: un `confirmar` a medias es peor que un 501 explícito (contrato §6.6).
+EJECUTORES_ACCION: Mapping[str, Callable[..., dict[str, Any]]] = MappingProxyType(
+    {
+        "crear_viaje": _ejecutar_crear_viaje,
+        "anular_viaje": _ejecutar_anular_viaje,
+    }
+)
+
+
+def _ejecutar_accion_operativa(
+    session: Session,
+    contexto: ContextoEmpresa,
+    solicitud: Any,
+    valores: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Ejecutor de `tipo='otra'` iniciado desde el chat (gerente/secretaria).
+
+    El payload persistido es `{"accion": ..., "datos": ...,
+    "origen": "chat_inapp", "agente": "secretaria"}`. El ejecutor corre sin
+    `commit`: `decidir` y el endpoint cierran una sola transacción.
+    """
+    payload = solicitud.payload if isinstance(solicitud.payload, dict) else {}
+    accion = payload.get("accion")
+    datos = payload.get("datos")
+    if not isinstance(datos, dict):
+        datos = {}
+    if accion == "anular_viaje" and solicitud.viaje_id is not None:
+        datos = {**datos, "viaje_id": str(solicitud.viaje_id)}
+    ejecutor = EJECUTORES_ACCION.get(accion)
+    if ejecutor is None:
+        raise TipoSinEjecutor(
+            f"La acción '{accion}' todavía no tiene ejecutor en el buzón."
+        )
+    if ejecutor is _ejecutar_anular_viaje:
+        return ejecutor(session, contexto, datos, solicitud)
+    return ejecutor(session, contexto, datos)
+
+
 # Solo los tipos cuyo efecto vive en tablas del módulo (§6.6). Los demás
 # devuelven 501 hasta que el servicio dueño acepte participar en la transacción
 # del endpoint; un `confirmar` que a veces deja el sistema a medias es peor.
 EJECUTORES_SOLICITUD: Mapping[str, EjecutorSolicitud] = MappingProxyType(
-    {"hoja_de_ruta": _confirmar_hoja_ruta}
+    {"hoja_de_ruta": _confirmar_hoja_ruta, "otra": _ejecutar_accion_operativa}
 )
 
 
@@ -418,14 +505,41 @@ def _membresia(session: Session, contexto: ContextoEmpresa) -> str | None:
     ).scalar_one_or_none()
 
 
+def _es_propuesta_del_chat(solicitud: Any) -> bool:
+    """Propuesta del chat in-app: `tipo='otra'` y una acción crítica conocida.
+
+    SEC-061: `origen` por sí solo no basta. Un payload manipulado con
+    `tipo='hoja_de_ruta'` o una acción inventada no debe heredar la excepción de
+    autoaprobación de SEC-055.
+    """
+    if solicitud.tipo != "otra":
+        return False
+    payload = solicitud.payload if isinstance(solicitud.payload, dict) else {}
+    return (
+        payload.get("origen") == "chat_inapp"
+        and payload.get("accion") in ACCIONES_CRITICAS
+    )
+
+
 def _verificar_autoaprobacion(
     session: Session, contexto: ContextoEmpresa, solicitud: Any
 ) -> None:
     """403 si el aprobador es el solicitante (§6.4).
 
+    Excepción decidida por el dueño (2026-11-02, SEC-055): una solicitud
+    propuesta por el chat (`payload.origen == "chat_inapp"`) puede aprobarla el
+    mismo usuario si su rol tiene `agente:aprobar`. El proponente es el agente y
+    el humano confirma; además, `admin` ya puede ejecutar esas acciones por los
+    endpoints normales, así que no gana privilegio nuevo. El payload conserva
+    `origen`/`agente` y `aprobado_por` queda como `agente:{auth_id}`.
+
     Para un contacto se compara el `usuario_empresa_id` vinculado; si el
     contacto no tiene vínculo, no hay autoaprobación posible por esa vía.
     """
+    if _es_propuesta_del_chat(solicitud) and tiene_permiso(
+        contexto.rol, "agente:aprobar"
+    ):
+        return
     if solicitud.solicitante_usuario_empresa_id is not None:
         actual = _membresia(session, contexto)
         if actual is not None and actual == solicitud.solicitante_usuario_empresa_id:

@@ -436,7 +436,9 @@ class ServicioComercial:
         conteos = self._conteo_viajes_por_tarifa([tarifa.id])
         return self._tarifa_out(tarifa, cliente, conteos.get(tarifa.id, 0))
 
-    def crear_tarifa(self, data: TarifaCreate) -> TarifaOut:
+    def crear_tarifa(
+        self, data: TarifaCreate, *, commit: bool = True
+    ) -> TarifaOut:
         self._validar_tarifa(data)
         self._fijar_contexto_bd()
         tarifa = Tarifa(
@@ -445,7 +447,12 @@ class ServicioComercial:
         )
         try:
             self.session.add(tarifa)
-            self.session.commit()
+            if commit:
+                self.session.commit()
+            else:
+                # El llamador (chat) cierra la transacción del turno: la tool no
+                # puede commitear a medias ni dejar la solicitud sin ejecutar.
+                self.session.flush()
             self.session.refresh(tarifa)
         except IntegrityError as exc:
             self.session.rollback()
@@ -754,7 +761,9 @@ class ServicioComercial:
                 f"(${monto_autorizado:,.2f})."
             )
 
-    def crear_oc(self, data: OrdenCompraCreate) -> OrdenCompraOut:
+    def crear_oc(
+        self, data: OrdenCompraCreate, *, commit: bool = True
+    ) -> OrdenCompraOut:
         self._cliente(data.cliente_id)
         centro = self._centro(data.centro_costo_id)
         if data.vigencia_hasta < data.vigencia_desde:
@@ -813,7 +822,11 @@ class ServicioComercial:
                         activa=True,
                     )
                 )
-            self.session.commit()
+            if commit:
+                self.session.commit()
+            else:
+                # El chat cierra la transacción del turno (ver crear_tarifa).
+                self.session.flush()
             self.session.refresh(oc)
         except IntegrityError as exc:
             self.session.rollback()

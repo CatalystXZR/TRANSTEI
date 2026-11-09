@@ -11,6 +11,7 @@ import {
   ShoppingCart,
   Smartphone,
   Inbox,
+  MessageSquare,
   TrendingUp,
   Crown,
   FileClock,
@@ -39,6 +40,7 @@ export const NAV_GRUPOS: NavGrupo[] = [
     titulo: "General",
     items: [
       { href: "/tablero", label: "Tablero del dueño", icon: Crown, roles: ["admin", "contabilidad"] },
+      { href: "/agente/chat", label: "Chat con agentes", icon: MessageSquare, roles: ["admin"] },
     ],
   },
   {

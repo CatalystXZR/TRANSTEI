@@ -866,11 +866,19 @@ class ServicioDisponibilidad:
             for o in ocs
         ]
 
-    def crear_viaje(self, propuesta: ViajeCreateNucleo) -> ViajeResumenOut:
-        """Crea y confirma un viaje del núcleo en una sola transacción.
+    def crear_viaje(
+        self, propuesta: ViajeCreateNucleo, *, commit: bool = True
+    ) -> ViajeResumenOut:
+        """Crea y confirma un viaje del núcleo.
 
         La OC es requisito de facturación, no de despacho: si falta, el viaje
         se crea y la UI advierte que no se podrá facturar hasta cargarla.
+
+        `commit=False` lo usa el buzón de aprobación: el ejecutor y el cambio de
+        estado de la solicitud deben confirmarse en **una** transacción
+        (`agente/solicitudes.py`). En ese modo no se hace `rollback()` propio:
+        la excepción propaga y el endpoint decide el rollback de toda la
+        operación. El comportamiento por defecto no cambia.
         """
         try:
             inicio = a_utc(propuesta.inicio_planificado, "inicio_planificado")
@@ -970,14 +978,19 @@ class ServicioDisponibilidad:
                 ),
             )
             self.session.add(viaje)
-            self.session.commit()
+            if commit:
+                self.session.commit()
+            else:
+                self.session.flush()
             self.session.refresh(viaje)
             return self._resumen_viaje(viaje)
         except IntegrityError as exc:
-            self.session.rollback()
+            if commit:
+                self.session.rollback()
             raise traducir_integrity_error(exc) from exc
         except Exception:
-            self.session.rollback()
+            if commit:
+                self.session.rollback()
             raise
 
     def _resumen_viaje(self, viaje: Viaje) -> ViajeResumenOut:
