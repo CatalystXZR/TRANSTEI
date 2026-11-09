@@ -5,6 +5,8 @@ Endpoints:
 - GET  /nucleo/disponibilidad/recursos/{tipo}/{id}/libre-desde
 - POST /nucleo/disponibilidad/validar-asignacion
 - POST /nucleo/viajes/{id}/asignar
+- POST /nucleo/viajes/{id}/transicion
+- POST /nucleo/viajes/{id}/anular
 """
 
 from __future__ import annotations
@@ -32,9 +34,12 @@ from app.nucleo.schemas import (
     ListaViajesOut,
     OrdenCompraOpcionOut,
     ResultadoValidacion,
+    SolicitudAnulacionViaje,
     SolicitudAsignacion,
+    SolicitudTransicionViaje,
     SolicitudValidacionAsignacion,
     TarifaOpcionOut,
+    TransicionViajeOut,
     ViajeCreateNucleo,
     ViajeResumenOut,
 )
@@ -42,6 +47,7 @@ from app.nucleo.servicio_disponibilidad import (
     ServicioDisponibilidad,
     listar_empresas_usuario,
 )
+from app.nucleo.servicio_transiciones import ServicioTransiciones
 
 router = APIRouter(prefix="/nucleo", tags=["nucleo"])
 router.include_router(ola_b_router)
@@ -195,3 +201,46 @@ def asignar_viaje(
     EXCLUDE de PostgreSQL es la que impide la doble asignación concurrente.
     """
     return servicio.confirmar_asignacion(viaje_id, body)
+
+
+def get_servicio_transiciones(
+    session: Session = Depends(get_session_nucleo),
+    contexto: ContextoEmpresa = Depends(requiere_permiso("operacion:escribir")),
+) -> ServicioTransiciones:
+    return ServicioTransiciones(session, contexto)
+
+
+def get_servicio_anulacion(
+    session: Session = Depends(get_session_nucleo),
+    contexto: ContextoEmpresa = Depends(requiere_permiso("comercial:aprobar")),
+) -> ServicioTransiciones:
+    return ServicioTransiciones(session, contexto)
+
+
+@router.post("/viajes/{viaje_id}/transicion", response_model=TransicionViajeOut)
+def transicionar_viaje(
+    viaje_id: UUID,
+    body: SolicitudTransicionViaje,
+    servicio: ServicioTransiciones = Depends(get_servicio_transiciones),
+):
+    """Transición de oficina según `nucleo.transiciones_viaje`.
+
+    La matriz vive en la base (0004:772-808): este endpoint la lee y el trigger
+    `fn_viaje_transicion` la vuelve a validar. `facturado`/`cobrado` quedan
+    fuera (los controla facturación) y `anulado` tiene su propio endpoint.
+    """
+    return servicio.transicionar(viaje_id, body)
+
+
+@router.post("/viajes/{viaje_id}/anular", response_model=TransicionViajeOut)
+def anular_viaje(
+    viaje_id: UUID,
+    body: SolicitudAnulacionViaje,
+    servicio: ServicioTransiciones = Depends(get_servicio_anulacion),
+):
+    """Anulación auditada: exige motivo y libera las reservas del viaje.
+
+    Permiso `comercial:aprobar` (admin/gerente): es una operación sensible que
+    afecta disponibilidad y consumo de la OC, no una transición de despacho.
+    """
+    return servicio.anular(viaje_id, body)

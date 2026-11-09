@@ -2069,3 +2069,62 @@ class ConfiguracionUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     valor: Any
+
+
+# ---------------------------------------------------------------------------
+# Transiciones de viaje desde la oficina y anulación
+# ---------------------------------------------------------------------------
+class SolicitudTransicionViaje(BaseModel):
+    """Cuerpo de `POST /nucleo/viajes/{viaje_id}/transicion`.
+
+    La validez de la transición NO se declara aquí: la decide la matriz
+    `nucleo.transiciones_viaje` (catálogo en la base). El schema solo tipa la
+    entrada para que un error de tipeo del frontend no pase inadvertido.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    estado_destino: EstadoViaje
+    motivo: str | None = Field(default=None, max_length=500)
+
+    @field_validator("motivo")
+    @classmethod
+    def _normalizar_motivo(cls, valor: str | None) -> str | None:
+        if valor is None:
+            return None
+        limpio = valor.strip()
+        return limpio or None
+
+
+class SolicitudAnulacionViaje(BaseModel):
+    """Cuerpo de `POST /nucleo/viajes/{viaje_id}/anular` (motivo obligatorio)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    motivo: str = Field(min_length=5, max_length=500)
+
+    @field_validator("motivo")
+    @classmethod
+    def _motivo_util(cls, valor: str) -> str:
+        limpio = valor.strip()
+        if len(limpio) < 5:
+            raise ValueError(
+                "El motivo de la anulación debe tener al menos 5 caracteres "
+                "útiles (no solo espacios)."
+            )
+        return limpio
+
+
+class TransicionViajeOut(BaseModel):
+    """Resultado de una transición o anulación de oficina.
+
+    `version` es la que quedó en la base después de los triggers
+    (`fn_version` incrementa en cada UPDATE).
+    """
+
+    viaje_id: UUID
+    numero_viaje: str | None = None
+    estado: EstadoViaje
+    estado_anterior: EstadoViaje
+    version: int
+    reservas_liberadas: int = 0
