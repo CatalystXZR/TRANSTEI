@@ -61,10 +61,6 @@ class PermisoIn(_Cerrado):
     permitido: bool
 
 
-class ModuloIn(_Cerrado):
-    habilitado: bool
-
-
 @router.post(
     "/contactos",
     response_model=ContactoOut,
@@ -173,24 +169,6 @@ def set_permiso(
     session.commit()
 
 
-@router.put(
-    "/modulos/{modulo_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-def set_modulo(
-    modulo_id: str,
-    body: ModuloIn,
-    contexto: ContextoEmpresa = Depends(requiere_permiso("agente:contactos")),
-    session: Session = Depends(get_session_nucleo),
-) -> None:
-    session.execute(
-        text(
-            "select nucleo.admin_set_modulo_empresa(:empresa_id, :modulo_id, :habilitado)"
-        ),
-        {
-            "empresa_id": contexto.empresa_id,
-            "modulo_id": modulo_id,
-            "habilitado": body.habilitado,
-        },
-    )
-    session.commit()
+# SEC-066: la activación de `modulos_empresa` es de plataforma, no del tenant.
+# El endpoint PUT /modulos/{id} se retiró; la función `nucleo.admin_set_modulo_empresa`
+# queda disponible solo para el futuro rol de plataforma (RA-16).

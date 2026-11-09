@@ -13,7 +13,7 @@ el body no acepta `empresa_id`.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
@@ -140,3 +140,14 @@ def _personas():
     from app.nucleo.agente.chat.personas import AGENTES
 
     return AGENTES.values()
+
+
+def _agente_out(datos: dict[str, Any]) -> AgenteConfigOut:
+    """Valida la salida de `capacidades.configuracion_agente` contra el schema.
+
+    El helper faltaba y el router nunca se había montado (SEC-069): la primera
+    petición real fallaba con `NameError`. Se valida aquí para que un cambio en
+    `capacidades.py` rompa el contrato de forma explícita.
+    """
+    return AgenteConfigOut.model_validate(datos)
+

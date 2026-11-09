@@ -25,6 +25,9 @@ Decisiones de esta entrega (documentadas en `docs/backend/agente-capacidades.md`
   piloto no tiene esa suscripción y el requisito explícito es que el gerente
   responda margen. El gate por módulo queda para una fase posterior;
 - `whatsapp.recordatorio` sí queda gateada por `whatsapp`;
+- `configuracion.escribir_catalogo` (IVA y umbrales) nace **apagada** (SEC-063):
+  el admin la habilita explícitamente; el chat nunca cambia una regla fiscal sin
+  ese opt-in;
 - el gerente no puede configurarse a sí mismo: no existe tool de configuración
   de capacidades y la API del panel exige `agente:configurar` (solo `admin`).
 
@@ -179,6 +182,9 @@ CAPACIDADES: dict[str, Capacidad] = {
             "Actualizar IVA y umbrales de alerta del catálogo cerrado.",
             permiso="configuracion:escribir",
             agentes=_SOLO_GERENTE,
+            # SEC-063: escritura fiscal (IVA/alertas). Nace apagada: el admin
+            # debe habilitarla explícitamente en /configuracion/agentes.
+            por_defecto={"gerente": False},
             riesgo="alto",
         ),
         _capacidad(

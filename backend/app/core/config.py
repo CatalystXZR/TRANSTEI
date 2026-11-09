@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     AGENTE_LLM_BASE_URL: str = "https://api.deepseek.com/v1"
     AGENTE_LLM_TIMEOUT_S: float = 45.0
     AGENTE_LLM_MAX_ITERACIONES: int = 4
+    # SEC-065: tope de tool_calls por respuesta del proveedor y por turno.
+    AGENTE_LLM_MAX_TOOL_CALLS: int = 8
+    AGENTE_LLM_MAX_TOOL_CALLS_TURNO: int = 16
     AGENTE_LLM_MAX_MENSAJES_CONTEXTO: int = 30
     AGENTE_PLANES_PREMIUM: str = "premium,pro"
     # Tope de turnos de chat concurrentes por proceso (SEC-053). No es un rate

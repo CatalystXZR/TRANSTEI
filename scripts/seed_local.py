@@ -44,6 +44,22 @@ def cargar_env() -> None:
         os.environ.setdefault(clave.strip(), valor.strip())
 
 
+def resolver_service_key(supabase_url: str) -> str:
+    """Clave de servicio: explícita, o la demo del CLI solo contra local.
+
+    SEC-070: la clave hardcodeada es la de demostración de Supabase local
+    (`iss=supabase-demo`). Nunca debe enviarse a un host remoto.
+    """
+    clave = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+    if clave:
+        return clave
+    if supabase_url.rstrip("/") in {DEFAULT_SUPABASE_URL, "http://localhost:54321"}:
+        return DEFAULT_SERVICE_KEY
+    raise SystemExit(
+        "SUPABASE_SERVICE_ROLE_KEY es obligatoria para un SUPABASE_URL no local."
+    )
+
+
 def db_url() -> str:
     url = os.environ.get("DATABASE_URL", DEFAULT_DB)
     return url.replace("postgresql+psycopg://", "postgresql://")
@@ -55,7 +71,7 @@ def crear_o_obtener_usuario(
     nombre: str = "Admin TEI",
 ) -> UUID:
     supabase_url = os.environ.get("SUPABASE_URL", DEFAULT_SUPABASE_URL).rstrip("/")
-    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", DEFAULT_SERVICE_KEY)
+    service_key = resolver_service_key(supabase_url)
     headers = {
         "apikey": service_key,
         "Authorization": f"Bearer {service_key}",

@@ -9,6 +9,9 @@ from app.nucleo.agente.api import router as nucleo_agente_router
 from app.nucleo.agente.api_contactos import router as nucleo_agente_contactos_router
 from app.nucleo.agente.api_solicitudes import router as nucleo_agente_solicitudes_router
 from app.nucleo.agente.chat.api import router as nucleo_agente_chat_router
+from app.nucleo.agente.chat.api_configuracion import (
+    router as nucleo_agente_configuracion_router,
+)
 from app.nucleo.api_alertas import router as nucleo_alertas_router
 from app.nucleo.api_bloqueos import router as nucleo_bloqueos_router
 from app.nucleo.api_comercial import router as nucleo_comercial_router
@@ -29,6 +32,7 @@ api_router.include_router(nucleo_agente_router)
 api_router.include_router(nucleo_agente_contactos_router)
 api_router.include_router(nucleo_agente_solicitudes_router)
 api_router.include_router(nucleo_agente_chat_router)
+api_router.include_router(nucleo_agente_configuracion_router)
 api_router.include_router(nucleo_maestros_router)
 api_router.include_router(nucleo_comercial_router)
 api_router.include_router(nucleo_bloqueos_router)

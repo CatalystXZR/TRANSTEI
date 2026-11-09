@@ -47,6 +47,19 @@ if [ -f supabase/migrations/0029_tei_admin_gate.sql ]; then
   docker exec -i "$CONTAINER" psql -U supabase_admin -d "$TEST_DB" -v ON_ERROR_STOP=1 \
     < supabase/migrations/0029_tei_admin_gate.sql >/dev/null
 fi
+# SEC-056/068 (0033): 0020 también re-concede UPDATE en el historial del chat y
+# escritura en `tenant_suscripciones`. Se re-aplica para que el clon de test
+# tenga los mismos privilegios que la base de la app.
+if [ -f supabase/migrations/0033_privilegios_tei_app.sql ]; then
+  docker exec -i "$CONTAINER" psql -U supabase_admin -d "$TEST_DB" -v ON_ERROR_STOP=1 \
+    < supabase/migrations/0033_privilegios_tei_app.sql >/dev/null
+fi
+# SEC-066 residual: la función de módulos es de plataforma; el clon debe perder
+# el EXECUTE que PostgreSQL concede a PUBLIC por defecto.
+if [ -f supabase/migrations/0034_revoke_modulo_app.sql ]; then
+  docker exec -i "$CONTAINER" psql -U supabase_admin -d "$TEST_DB" -v ON_ERROR_STOP=1 \
+    < supabase/migrations/0034_revoke_modulo_app.sql >/dev/null
+fi
 # Credencial local/CI documentada (tei_test es desechable; nunca datos reales).
 docker exec "$CONTAINER" psql -U supabase_admin -d postgres \
   -c "ALTER ROLE tei_app PASSWORD 'tei_app';" >/dev/null 2>&1 || true

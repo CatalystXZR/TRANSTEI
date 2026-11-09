@@ -467,12 +467,22 @@ def _ejecutar_accion_operativa(
     El payload persistido es `{"accion": ..., "datos": ...,
     "origen": "chat_inapp", "agente": "secretaria"}`. El ejecutor corre sin
     `commit`: `decidir` y el endpoint cierran una sola transacción.
+
+    SEC-064: la corrección del aprobador manda. Prioridad (igual que
+    `_confirmar_hoja_ruta`): `valores` del request actual; si no vino, la
+    corrección persistida en `valores_modificados`; solo si no hay ninguna, el
+    payload original. La corrección es parcial (la UI envía el diff), por eso se
+    fusiona sobre `datos` y luego se revalida con el schema del dominio.
     """
     payload = solicitud.payload if isinstance(solicitud.payload, dict) else {}
     accion = payload.get("accion")
-    datos = payload.get("datos")
-    if not isinstance(datos, dict):
-        datos = {}
+    originales = payload.get("datos")
+    datos = dict(originales) if isinstance(originales, dict) else {}
+    correccion = valores
+    if correccion is None:
+        correccion = solicitud.valores_modificados
+    if isinstance(correccion, dict):
+        datos.update(correccion)
     if accion == "anular_viaje" and solicitud.viaje_id is not None:
         datos = {**datos, "viaje_id": str(solicitud.viaje_id)}
     ejecutor = EJECUTORES_ACCION.get(accion)

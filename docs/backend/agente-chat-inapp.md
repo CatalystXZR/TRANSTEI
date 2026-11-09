@@ -170,9 +170,18 @@ Reglas de ejecución (`runtime.py:635-670`):
   del mismo destino+clave e inserta la nueva; valor idéntico = `sin_cambios`. No
   toca filas cerradas (la inmutabilidad la impone `0030`).
 - `gerente_listar_reglas`: reglas abiertas.
+- `gerente_actualizar_catalogo` (`herramientas.py:1974`, SEC-063): es la **única**
+  vía del chat para escribir el catálogo cerrado (`iva_porcentaje`, alertas).
+  Capacidad `configuracion.escribir_catalogo`, que **nace apagada**; el admin la
+  habilita en `/configuracion/agentes` (`GET/PUT
+  /nucleo/agente/configuracion`, `api_configuracion.py`). Sin ese opt-in la tool no
+  se ofrece al modelo y el runtime no la ejecuta. La escritura queda auditada por
+  `trg_config_empresa_audit` (`0026`).
 - `gerente_solicitar_modulo`: consulta el muro de pago; si está inactivo devuelve
-  `upsell`, si está activo confirma. **No enciende** `modulos_empresa` (la
-  activación es de plataforma; `tei_app` no tiene escritura desde `0029`).
+  `upsell`, si está activo confirma. **No enciende** `modulos_empresa`: el
+  endpoint `PUT /nucleo/agente/modulos/{id}` se retiró (SEC-066) y la activación
+  queda para el rol de plataforma (RA-16). `tei_app` tampoco puede escribir
+  `tenant_suscripciones` desde `0033` (SEC-068).
 
 ### 3.2 Secretaria
 
@@ -295,8 +304,10 @@ el POST usa un `threading.BoundedSemaphore` por proceso inicializado con
 | Tenant desde el body | No existe `empresa_id`; `extra="forbid"`; empresa desde `X-Empresa-ID` + membresía | `api.py:74-80`, `deps.py:50-102` |
 | Conversación de otra empresa/usuario | `where empresa_id` + `usuario_empresa_id` + `agente`; 404 sin revelar existencia | `runtime.py:117-160`, test 8 |
 | Tool inventada o de otro agente | Allowlist por persona + `herramienta.agente` | `runtime.py:635-651` |
-| Claves reservadas escritas por el Gerente | Solo `directiva_*`; el catálogo se rechaza en el validador, sin rama de escritura | `herramientas.py:95-112`, `herramientas.py:250`, SEC-051 |
-| Módulo premium sin pagar | `modulos_empresa` **y** suscripción activa, interceptado antes de la tool | `servicio_modulos.py:38-112`, `runtime.py:649-658`, SEC-052 |
+| Claves reservadas escritas por el Gerente | `directiva_*` por su propia tool; el catálogo cerrado solo por `gerente_actualizar_catalogo`, con capacidad **apagada por defecto** y opt-in del admin | `herramientas.py:95-112,1974`, `capacidades.py:176-186`, SEC-051/063 |
+| Módulo premium sin pagar | `modulos_empresa` **y** suscripción activa, interceptado antes de la tool; el tenant no puede encender el flag por HTTP | `servicio_modulos.py:38-112`, `runtime.py:727-736`, SEC-052/066 |
+| Historial del chat editable | `tei_app` solo INSERT/SELECT; UPDATE/DELETE revocados en `0033` | `0033_privilegios_tei_app.sql`, SEC-056 |
+| Auto-concesión de plan | `tei_app` sin INSERT/UPDATE en `tenant_suscripciones`; solo SELECT | `0033_privilegios_tei_app.sql`, SEC-068 |
 | Acción crítica ejecutada por el chat | La secretaria solo inserta en `solicitudes`; el efecto ocurre al aprobar | `herramientas.py:552`, test 5 |
 | Doble clic / reintento | Clave de idempotencia del turno (obligatoria, SEC-062); la solicitud usa clave única por invocación (SEC-057) | `runtime.py:484-533`, `api.py:74-80`, tests 2 y SEC-057 |
 | Dos `tool_call` idénticas en el mismo turno | Deduplicación por firma `(nombre, argumentos)`; una ejecución y un turno `tool` por id | `runtime.py:552, 578-592`, SEC-062 |

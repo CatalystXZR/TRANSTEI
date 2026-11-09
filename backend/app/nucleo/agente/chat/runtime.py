@@ -566,6 +566,12 @@ class ServicioChat:
         especificaciones = registro.especificaciones(persona.tools, habilitadas)
         modelo = self._modelo(persona)
         max_iteraciones = max(1, int(settings.AGENTE_LLM_MAX_ITERACIONES))
+        # SEC-065: el proveedor LLM elige cuántas tools trae una respuesta. Se
+        # acota por respuesta y por turno para que un proveedor comprometido o un
+        # prompt injection no cree/altere N registros en una sola petición.
+        max_tools_respuesta = max(1, int(settings.AGENTE_LLM_MAX_TOOL_CALLS))
+        max_tools_turno = max(1, int(settings.AGENTE_LLM_MAX_TOOL_CALLS_TURNO))
+        tools_ejecutadas = 0
 
         herramientas: list[dict[str, Any]] = []
         upsell: dict[str, Any] | None = None
@@ -583,6 +589,18 @@ class ServicioChat:
                 api_key=api_key,
                 modelo=modelo,
             )
+
+            if len(respuesta.llamadas) > max_tools_respuesta:
+                raise AgenteLLMError(
+                    "El asistente intentó ejecutar demasiadas acciones en un "
+                    "solo paso. Reformule la petición en partes más pequeñas."
+                )
+            tools_ejecutadas += len(respuesta.llamadas)
+            if tools_ejecutadas > max_tools_turno:
+                raise AgenteLLMError(
+                    "El asistente superó el máximo de acciones por turno. "
+                    "Reformule la petición en partes más pequeñas."
+                )
 
             if respuesta.llamadas:
                 self._insertar_mensaje(

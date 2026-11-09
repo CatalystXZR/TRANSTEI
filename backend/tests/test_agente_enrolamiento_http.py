@@ -4,7 +4,8 @@ Flujo:
 1. El admin crea el contacto; el backend genera el OTP, lo guarda como hash y
    lo envía por el notificador WhatsApp (modo `fake` en tests).
 2. El admin verifica el código; `otp_estado` pasa a `verificado`.
-3. El flag del módulo se enciende/apaga por la función `admin_set_modulo_empresa`.
+3. El flag del módulo `modulos_empresa` es de plataforma: el endpoint del tenant
+   se retiró (SEC-066) y `tei_app` no tiene EXECUTE sobre la función (0034).
 
 Requiere Supabase local, `tei_test` y `TEST_ADMIN_*` (los pone `make test`).
 """
@@ -100,13 +101,14 @@ def test_admin_enrola_contacto_y_verifica_otp(
     )
     assert r3.status_code == 200 and r3.json()["verificado"] is False
 
-    # Flag del módulo por la función de plataforma.
+    # SEC-066: el flag del módulo es de plataforma; el tenant ya no tiene la
+    # ruta HTTP (la función `admin_set_modulo_empresa` queda para RA-16).
     r4 = client.put(
         f"{RUTA}/modulos/agente-whatsapp",
         headers=headers,
         json={"habilitado": True},
     )
-    assert r4.status_code == 204, r4.text
+    assert r4.status_code == 404, r4.text
 
     db.execute(
         "update nucleo.modulos_empresa set habilitado = false "
