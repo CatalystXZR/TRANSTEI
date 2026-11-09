@@ -295,3 +295,41 @@ rol de las suites. Ver informe O1.3 §7.
 **Residuo:** 0 filas en las 8 tablas del módulo tras las 4 suites; `nucleo.viajes`
 conserva 220 filas. Solo creció `nucleo.auditoria` (append-only, 8519 filas al
 cierre) por las transacciones commiteadas de concurrencia y M9.
+
+---
+
+## 19. Ola 4 — adversariales y regresiones de la revisión independiente (2026-11-09)
+
+> **Verificado:** 2026-11-09 (continuación) · **Método:** 36 pruebas nuevas
+> ejecutadas contra `tei_test` (**33 migraciones**, incluida `0033`) + `make unit`,
+> `make test` (504 passed), `make e2e` (20/20) y `ruff`.
+> **Informe:** [`docs/qa/informes/ola4-adversarial-2026-11-09.md`](informes/ola4-adversarial-2026-11-09.md).
+> **Caduca si:** cambia `servicio_transiciones.py`, `agente/chat/*`,
+> `agente/solicitudes.py`, `agente/chat/api_configuracion.py`, la matriz
+> `transiciones_viaje`, las constraints de `reservas_recurso`, los privilegios de
+> `tei_app` o el router del chat.
+
+| Garantía | Dónde se impone | Prueba (`backend/tests/...:línea`) | ¿Existe? | Cobertura |
+|---|---|---|---|---|
+| `facturado`/`cobrado` no se alcanzan por `/transicion` | Servicio `servicio_transiciones.py:156-165` + triggers `fn_viaje_transicion`/`fn_viaje_facturacion` | `test_ola4_transiciones_adversarial.py:49` | sí | completa (mutada en memoria: la base también frena) |
+| `anulado` no se alcanza por `/transicion` ni con motivo | Servicio `:192-205` + trigger `fn_viaje_transicion` (exige `motivo_anulacion`) | `test_ola4_transiciones_adversarial.py:77` | sí | completa (mutada en memoria: la base frena) |
+| Motivo de anulación ≥ 5 caracteres útiles | Schema `SolicitudAnulacionViaje` `schemas.py:2099-2115` | `test_ola4_transiciones_adversarial.py:119` (4 casos) | sí | completa en HTTP; la DB solo exige no nulo (defensa en profundidad) |
+| Anular viaje de otra empresa ⇒ 404 sin liberar | Servicio `:93-107` (filtro `empresa_id`) | `test_ola4_transiciones_adversarial.py:156` | sí | completa |
+| Anular exige `comercial:aprobar` y no libera si falla | Router `api.py:213-217` | `test_ola4_transiciones_adversarial.py:186` | sí | completa |
+| Doble anulación concurrente: una gana, una 409 | `SELECT ... FOR UPDATE` + matriz | `test_ola4_transiciones_adversarial.py:334` | sí | completa (2 conexiones + espera de locks real) |
+| Transición concurrente: una gana, una 409 | `SELECT ... FOR UPDATE` + matriz | `test_ola4_transiciones_adversarial.py:272` | sí | completa (2 conexiones + espera de locks real) |
+| `EXCLUDE` de reservas impide solapes concurrentes | `0004:744-757` | `test_ola4_concurrencia_reservas.py:48` | sí | completa (2 conexiones; mutación en copia desechable) |
+| SEC-052 tool premium sin módulo ⇒ `upsell` sin ejecutar, aun con override | `runtime.py:723-736` + `servicio_modulos` | `test_ola4_chat_capacidades.py:203` | sí | completa |
+| Capacidad deshabilitada por fila ⇒ error sin escribir | `runtime.py:738-742` + `capacidades.habilitadas` | `test_ola4_chat_capacidades.py:247` | sí | completa |
+| Fila de capacidad gerente no se concede a la secretaria | `capacidades.py:291-306`, `:397-401` | `test_ola4_chat_capacidades.py:284` | sí | completa |
+| SEC-055/061: aprobación del chat no salta el alcance por empresa | `solicitudes.py:524-555` + `servicio_transiciones._cargar_viaje` | `test_ola4_chat_capacidades.py:356` | sí | completa |
+| Idempotencia de turno concurrente: un turno, una llamada al LLM | `runtime.py:502-555` + `uq_agente_chat_msg_idempotencia` `0031:264-266` | `test_ola4_chat_capacidades.py:431` | sí | completa (2 conexiones HTTP reales) |
+| Aislamiento: JWT TEI + `X-Empresa-ID` TES ⇒ 403 en rutas nuevas | `deps.py:68-79` | `test_ola4_aislamiento_http.py:45-97` | sí | completa (5 rutas) |
+| `empresa_id` en body rechazado (no segunda fuente de verdad) | Schemas `extra="forbid"` | `test_ola4_aislamiento_http.py:110-148` | sí | completa (422 con `loc=empresa_id`) |
+| **SEC-069** panel `/nucleo/agente/configuracion` montado | `api/router.py:12-14,35` + `api_configuracion.py:145` (`_agente_out`) | `test_ola4_chat_capacidades.py:338` (admin 200) y `:852` (gerente 403) | sí | completa (200 admin; 403 gerente) |
+| **SEC-063** catálogo fiscal nace apagado y no se escribe por chat | `capacidades.py:185-187` (`por_defecto={"gerente": False}`) | `test_ola4_chat_capacidades.py:787` | sí | completa |
+| **SEC-064** la corrección del aprobador manda en `crear_viaje` | `solicitudes.py:471-485` (merge `valores`/`valores_modificados`) | `test_ola4_chat_capacidades.py:541` | sí | completa (monto 100000→250000) |
+| **SEC-064** la corrección del aprobador manda en `anular_viaje` | `solicitudes.py:471-485` | `test_ola4_chat_capacidades.py:607` | sí | completa (motivo corregido en viaje y evento) |
+| **SEC-065** tope de `tool_calls` por respuesta y por turno | `config.py:47-48`; `runtime.py:569-605` | `test_ola4_chat_capacidades.py:676`, `:716`, `:747` | sí | completa (502 + rollback) |
+| **SEC-066** activación de módulos fuera del tenant | `api_contactos.py:172-174` (ruta retirada) | `test_ola4_chat_capacidades.py:833` | sí | completa (404) |
+| **SEC-056/068** `tei_app` sin UPDATE del historial ni escritura de suscripción | `0033:54-60` | `test_ola4_chat_capacidades.py:869` | sí | completa (42501 con rol real) |
