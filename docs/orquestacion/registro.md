@@ -1491,3 +1491,30 @@ Delegaciones:
 - `arquitectura` → ADR-0009 → en curso.
 - `negocio-finanzas` → `docs/negocio/metricas-agente.md` → en curso.
 Evidencia que falta: resultados de los subagentes, `make unit`, `make test`, `tsc/lint/build`, pruebas adversariales y revisión independiente (`qa`, `auditor-seguridad`).
+
+#### [2026-11-09] Cierre de olas 1–4: commits, migraciones y corrida del TMS
+
+Riesgo: **ALTO** (migraciones, permisos, multiempresa, dinero y LLM) | Estado: **cerrada con deuda declarada**
+
+**Objetivo.** Commitear todo el trabajo pendiente de las olas 1–4, verificar que la base local tiene las migraciones correspondientes y dejar el TMS corriendo.
+
+**Hechos confirmados**
+- `git status --short`: 70 entradas (62 modificadas + 40 nuevas) sin commitear al inicio; el diagnóstico de `equipo`/`estado` del 2026-11-02 estaba incompleto (faltaban R-10..R-12 y el dataset demo).
+- Base local `postgres`: **32/32** migraciones aplicadas (`0001`–`0032`); `public` con **0** tablas; **2** tenants; **51** tablas en `nucleo`.
+- `make unit` → **135 passed** (2026-11-09).
+- `make test` → primer intento **1 failed / 467 passed**: `test_paywall_tool_premium_whatsapp_no_ejecuta_sin_modulo` recibía `error` en vez de `upsell`.
+- Causa raíz: `runtime._ejecutar_tool` evaluaba `capacidad.clave not in habilitadas` **antes** del muro de pago. Como `capacidades.habilitadas()` excluye las capacidades con módulo inactivo, la rama `upsell` era inalcanzable (regresión de la Ola 4 sobre SEC-052).
+- Corrección (mínimo cambio, `backend/app/nucleo/agente/chat/runtime.py`): permiso → módulo (`upsell`) → override → ejecución. `make test` → **468 passed, 0 skipped**.
+- `make e2e` primer intento **17/20**: dos pruebas esperaban 17 ítems de menú (ahora 18 por `/agente/chat`) y una dependía de que `FAC-2026-900001` cayera en la primera página (el dataset demo agregó 133 facturas). Se adaptaron las pruebas, no el producto: conteo 18, `/agente/chat` en `PANTALLAS_NUCLEO` y filtro por número. Segundo intento **20/20**.
+- `npx tsc --noEmit` y `npm run lint` en `frontend/`: sin errores.
+- Backend `:8000`: `GET /health` 200, `/openapi.json` 404 (docs desactivado) y `/api/v1/nucleo/agente/chat/agentes` responde 422 por falta de `X-Empresa-ID` (ruta montada). Frontend `:3000`: login 200 y menú nuevo servido por el Next.js ya en ejecución.
+- `make backend` / `make frontend` no arrancaron procesos nuevos: los puertos ya estaban ocupados por los servidores del repo (PIDs 1471/1765 y 1494), que recargaron el código (verificado por las respuestas anteriores).
+
+**Commits creados (9)**
+`78a08ff` seguridad/SEC-039 · `5906477` transiciones · `0e7a69c` tenant 0030 · `eec4fa5` chat/capacidades 0031–0032 · `be88740` documentación · `b8dc590` dataset demo · `b25cd9b` leyendas frontend · `0cf1be6` ajuste E2E · (más este registro).
+
+**Supuestos y deuda**
+- 🟡 `tei_test` tiene **30** filas en `supabase_migrations` (faltan `0030`/`0031` en el registro) aunque las tablas existen y `make test` pasa: es una inconsistencia de bookkeeping del clon, no un hueco de esquema. Refrescar con `make test-db` antes de confiar en el registro.
+- 🔴 No se probó el chat contra DeepSeek real (no hay claves en la sesión); SEC-053/054/056 siguen abiertos; no hubo revisión independiente nueva de la Ola 4.
+- 🔴 `make restores`/`restore-drill`, concurrencia real de dos conexiones y CI de GitHub Actions no se ejecutaron.
+- No se hizo `git push` (prohibido sin autorización).
