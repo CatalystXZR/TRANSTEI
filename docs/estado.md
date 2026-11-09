@@ -18,7 +18,7 @@
 | Backend `:8000` | 🟢 `GET /health` 200; `/openapi.json` 404 (docs desactivado) y las rutas nuevas responden — 2026-11-09 |
 | Frontend `:3000` | 🟢 Next.js dev sirviendo el menú con `/agente/chat`; `tsc` y `lint` verdes — 2026-11-09 |
 | PostgreSQL `:54322` | 🟢 Supabase local confirmado: contenedor `supabase_db_TRANSTEI` healthy (el listener `ssh` es el port-forward de Colima/Lima, no un túnel externo) — F0 2026-10-29 |
-| Suite de integración | 🟢 ejecutada: **468 passed, 0 skipped** (2026-11-09) |
+| Suite de integración | 🟢 ejecutada: **504 passed, 0 skipped** (2026-11-09) |
 | E2E | 🟢 ejecutados: **20/20 passed** (2026-11-09) |
 | `make unit` | 🟢 ejecutado: **135 passed** (2026-11-09) |
 | Plan de cierre | [`docs/PLAN_DESARROLLO.md`](PLAN_DESARROLLO.md) — F0 cerrada; Fase 2 cerrada; reconciliar numeración de fases |
@@ -29,20 +29,20 @@
 
 | Dato | Valor | Comando |
 |---|---|---|
-| Migraciones en disco | **32** (`0001`–`0032`) | `ls supabase/migrations \| wc -l` |
-| Migraciones en `HEAD` | **32** | `git ls-tree HEAD supabase/migrations/ \| wc -l` |
-| Migraciones aplicadas en la base local | **32** (2026-11-09: `0001`–`0032`) | `docker exec supabase_db_TRANSTEI psql -U postgres -tA -c "select count(*) from supabase_migrations.schema_migrations"` |
+| Migraciones en disco | **34** (`0001`–`0034`) | `ls supabase/migrations \| wc -l` |
+| Migraciones en `HEAD` | **34** (`0001`–`0034`) | `git ls-tree HEAD supabase/migrations/ \| wc -l` |
+| Migraciones aplicadas en la base local | **34** (2026-11-09: `0001`–`0034`; también en `tei_test`) | `docker exec supabase_db_TRANSTEI psql -U postgres -tA -c "select count(*) from supabase_migrations.schema_migrations"` |
 | Tablas en `nucleo` | **51** (incluye `tenant_reglas_entidad`/`tenant_suscripciones`, `agente_chat_*` y `agente_capacidades`) · tablas en `public`: **0** | `select count(*) from pg_tables where schemaname='nucleo'` |
 | Routers montados | **18** `include_router` en `api/router.py` (+4 Ola B anidados en `/nucleo`); 0 de negocio legacy | `grep -c include_router backend/app/api/router.py` |
 | Pantallas | **31** page.tsx (incluye `/agente/chat`, `/configuracion/agentes` y 9 redirecciones 308) | `find frontend/src/app -name page.tsx \| wc -l` |
 | Roles del núcleo | **8** | `backend/app/nucleo/models.py` (`RolEmpresa`) |
 | Unitarias | **135 passed** (2026-11-09, re-ejecutado) | `make unit` |
-| Integración | **468 passed, 0 skipped** (2026-11-09, re-ejecutado) | `make test` |
+| Integración | **504 passed, 0 skipped** (2026-11-09, re-ejecutado) | `make test` |
 | Tenants activos (local) | **2** (TEI + TES) | `select count(*) from nucleo.empresas` |
 | E2E definidos | **20** | `grep -cE "^\s*test\(" frontend/e2e/tei.spec.ts` |
 | E2E ejecutados | **20/20 passed** (2026-11-09, re-ejecutado) | `make e2e` |
 
-> **Re-verificado 2026-11-09:** `make unit` 135 passed; `make test` 468 passed, 0 skipped; `make e2e` 20/20; `tsc` y `lint` verdes. Migraciones 32/32 aplicadas en local; `0032` ya estaba aplicada. Se corrigió el orden del gate de módulos en el runtime del chat (`upsell` antes del override, SEC-052) y se adaptaron dos expectativas E2E al nuevo menú de 18 ítems y al dataset demo.
+> **Re-verificado 2026-11-09 (cierre de seguridad Ola 4):** `make unit` 135 passed; `make test` **504 passed, 0 skipped** (468 base + 36 adversariales); `make e2e` 20/20; `tsc` y `lint` verdes. Migraciones **34/34** en `postgres` y `tei_test`. Se corrigió el orden del gate de módulos (`upsell` antes del override, SEC-052) y se cerraron SEC-056/063/064/065/066/068/069; `0033` revoca escritura de `tei_app` sobre historial/suscripciones y `0034` su `EXECUTE` sobre la función de módulos. Siguen abiertos SEC-067 (identidad), SEC-071 (DPA), SEC-053/054 y SEC-057(a).
 
 ---
 
@@ -107,7 +107,7 @@
 | ID | Tema | Estado | Dueño |
 |---|---|---|---|
 | RA-01 | "Piloto cerrado y probado" sin evidencia (UAT vacía) | 🟡 parcial | `qa` |
-| RA-05 | Restore drill no compara antes/después | 🟡 | `datos` |
+| RA-05 | Restore drill: desde 2026-11-09 **verifica de verdad** (conteos + `restore_ok`, aborta si vacío); falta comparación automática antes/después | 🟡 | `datos` |
 | RA-09 | Informe de auditoría original ausente del repo | 🔴 | usuario |
 | RA-11 | POD: firma/tamaño/content-type ya validados (Ola 2); **visor/URLs firmadas** sin verificar | 🟡 | `auditor-seguridad` |
 | RA-12 | Anon key en frontend (normal); **políticas del bucket `respaldos`** sin verificar | 🟡 | `auditor-seguridad` |
@@ -118,6 +118,10 @@
 | RA-19 | Decisiones tributarias/laborales pendientes (IVA crédito/F29, nómina, comisiones, DTE) | 🔴 | contador |
 | RA-20 | Documentos que citan archivos retirados (16; lista en ADR-0002 §8.2) | 🟡 | varios |
 | RA-21 | Decisiones de producto: RET-06 (tablero sin totales de dinero), RET-12 (secuencia), RET-13 (import CSV) | 🟡 | dueño |
+| RA-22 | SEC-067: un contacto con OTP pendiente reserva el teléfono en el índice **global**; permite squatting/oráculo entre empresas. Requiere decisión de identidad (ADR-0003) | 🔴 abierto | `arquitectura` + `datos` |
+| RA-23 | SEC-071: el chat envía RUT, facturación y márgenes al proveedor LLM externo sin DPA/redacción | 🔴 abierto | dueño + `negocio-finanzas` |
+| RA-24 | SEC-053/054: transacción abierta durante el LLM y sin rate limit distribuido; el semáforo es por proceso | 🟡 parcial | `backend` + operación |
+| RA-25 | SEC-057(a): la clave de idempotencia del chat es por empresa, no por usuario; B con la clave de A recibe 502, no 409 | 🟡 bajo | `backend` |
 
 ---
 
@@ -134,6 +138,7 @@ Los bloqueos son **decisiones** y **verificación en entorno real**:
 6. **Plan de cierre y pendientes del agente**: el plan vigente es [`docs/PLAN_DESARROLLO.md`](PLAN_DESARROLLO.md); los pendientes operativos del agente están en [`docs/desarrollo/backlog.md`](../desarrollo/backlog.md) §6. Cifras re-verificadas el 2026-11-09 (135 unit / 468 integración / 20 E2E).
 7. **SEC-039 cerrado (2026-11-01):** migración `0029` crea el rol `tei_admin` (privilegiado para identidad/ACL/flag) y revoca la escritura directa de `tei_app`; las escrituras de la app pasan por `nucleo.admin_*` (`SECURITY DEFINER`, con `empresa_id = ctx_empresa()`). El enrolamiento (OTP) lo inicia el admin; el envío usa el adaptador WhatsApp `fake` local hasta definir proveedor real (AB-04). Sigue pendiente `tei_platform` (RA-16) y el pooler (RA-15).
 8. **Seguridad operativa cerrada en código (2026-11-01):** `iss` del JWT validado, `/docs`/`/openapi.json` deshabilitados por defecto (`ENABLE_DOCS=false`) y cabeceras de seguridad (`nosniff`, `DENY`, `no-referrer`, `permissions-policy`, `COOP`). Rate limiting queda para staging.
+9. **Revisión Ola 4 (2026-11-09):** SEC-056/063/064/065/066/068/069 corregidos y con prueba; `0033` revoca escritura de `tei_app` sobre historial y suscripciones. Siguen abiertos SEC-067 (identidad, RA-22), SEC-071 (DPA, RA-23), SEC-053/054 (RA-24) y SEC-057(a) (RA-25). Informe: `docs/seguridad/ola4-revision-2026-11-09.md`.
 
 ---
 

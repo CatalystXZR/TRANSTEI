@@ -1518,3 +1518,34 @@ Riesgo: **ALTO** (migraciones, permisos, multiempresa, dinero y LLM) | Estado: *
 - 🔴 No se probó el chat contra DeepSeek real (no hay claves en la sesión); SEC-053/054/056 siguen abiertos; no hubo revisión independiente nueva de la Ola 4.
 - 🔴 `make restores`/`restore-drill`, concurrencia real de dos conexiones y CI de GitHub Actions no se ejecutaron.
 - No se hizo `git push` (prohibido sin autorización).
+
+#### [2026-11-09] Cierre de pendientes: revisión independiente, correcciones SEC y push
+
+Riesgo: **ALTO** (permisos, dinero, multiempresa, migraciones) | Estado: **cerrada con deuda declarada**
+
+**Pendientes ejecutados**
+- `make test-db` → clon reproducible: **34/34** migraciones y 51 tablas en `tei_test`.
+- `make restore-drill` → **corregido**: `docker exec` sin `-i` no ejecutaba el heredoc, así que el paso de verificación era un falso positivo. Ahora exige `restore_ok` y muestra conteos reales (759 viajes, 171.324 filas de auditoría).
+- Revisión independiente `auditor-seguridad`: 9 hallazgos nuevos (SEC-063..071) y estado de los previos. Informe `docs/seguridad/ola4-revision-2026-11-09.md`.
+- QA adversarial: 36 pruebas nuevas (transiciones, concurrencia real de dos conexiones, aislamiento, chat/paywall, idempotencia). Informe `docs/qa/informes/ola4-adversarial-2026-11-09.md` y §19 de la matriz.
+
+**Correcciones aplicadas**
+- **SEC-069**: montado `api_configuracion` en `api/router.py`; agregado el helper `_agente_out` que faltaba. El panel `/configuracion/agentes` responde 200 (admin) y 403 (gerente).
+- **SEC-064**: `_ejecutar_accion_operativa` aplica `valores` / `valores_modificados` sobre el payload antes de ejecutar; revalidado por schema.
+- **SEC-063**: `configuracion.escribir_catalogo` nace **apagada**; el admin la habilita desde el panel.
+- **SEC-065**: topes de `tool_calls` por respuesta (8) y por turno (16), con rollback del turno si se excede.
+- **SEC-066**: retirado `PUT /nucleo/agente/modulos/{id}` y, en `0034`, revocado `EXECUTE` de `tei_app` sobre `admin_set_modulo_empresa` (PostgreSQL lo concedía a PUBLIC).
+- **SEC-056/068**: `0033` revoca UPDATE/DELETE del historial y toda escritura de `tenant_suscripciones` a `tei_app`; conserva INSERT/SELECT y SELECT respectivamente.
+- **SEC-070**: el seed usa la clave demo del CLI solo contra `127.0.0.1`; contra un host remoto exige `SUPABASE_SERVICE_ROLE_KEY`.
+- **SEC-067, SEC-071, SEC-053/054, SEC-057(a)**: no se corrigen; requieren decisión de identidad/ADR-0003, DPA/negocio o infraestructura. Registrados como RA-22..RA-25 en `docs/estado.md`.
+
+**Verificación final**
+- `make unit` → **135 passed** · `make test` → **504 passed, 0 skipped** · `make e2e` → **20/20**.
+- `ruff check` limpio en los archivos nuevos/modificados de prueba; `tsc` y `lint` del frontend sin errores.
+- SQL tests `0033_01/99` y `0034_01/99` ejecutados en `tei_test` (denegación real 42501 y rollback simulado).
+- Backend `:8000` health 200; `/api/v1/nucleo/agente/configuracion` responde 422 sin `X-Empresa-ID` (ruta montada).
+
+**Deuda abierta (no bloquea local)**
+- SEC-067 (squatting de teléfono global), SEC-071 (datos al LLM/DPA), SEC-053/054 (transacción larga y rate limit), SEC-057(a).
+- E2E del panel `/configuracion/agentes`; EXCLUDE de rampla/chofer; suites SQL fuera de `make test`.
+- `git push` autorizado por el usuario para probar CI; ver resultado en el informe de la sesión.
