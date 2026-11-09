@@ -40,7 +40,9 @@ sed -e "/SET log_min_messages TO/d" -e "/^CREATE SCHEMA public;$/d" "$ARCHIVO" \
   | docker exec -i "$CONTENEDOR" psql -U postgres -d "$BASE_TEMP" -v ON_ERROR_STOP=1 >/dev/null
 
 echo "4/5 Verificando tablas y conteos"
-docker exec "$CONTENEDOR" psql -U postgres -d "$BASE_TEMP" -v ON_ERROR_STOP=1 <<'SQL'
+# `-i` es obligatorio: sin stdin el heredoc no llega a psql y la verificación
+# "pasa" sin ejecutar una sola consulta (falso positivo detectado 2026-11-09).
+SALIDA_VERIFICACION=$(docker exec -i "$CONTENEDOR" psql -U postgres -d "$BASE_TEMP" -v ON_ERROR_STOP=1 <<'SQL'
 select 'empresas' as tabla, count(*) from nucleo.empresas
 union all select 'clientes', count(*) from nucleo.clientes
 union all select 'viajes', count(*) from nucleo.viajes
@@ -52,6 +54,12 @@ select 'restore_ok' as resultado
 where exists (select 1 from nucleo.viajes limit 1)
   and exists (select 1 from nucleo.auditoria limit 1);
 SQL
+)
+echo "$SALIDA_VERIFICACION"
+if ! printf '%s' "$SALIDA_VERIFICACION" | grep -q 'restore_ok'; then
+  echo "ABORTADO: el restore no contiene viajes/auditoría; backup en $ARCHIVO"
+  exit 1
+fi
 
 echo "5/5 Eliminando base temporal"
 docker exec "$CONTENEDOR" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
