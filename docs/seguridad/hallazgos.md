@@ -614,3 +614,70 @@ dependen de nada y pueden ir en paralelo con `datos`.
 **Limitación que condiciona todo el informe:** sin `git diff` no puedo atribuir
 SEC-008, SEC-011 y SEC-013 a este cambio. Son defectos verificables del estado
 actual de archivos en alcance, y deben evaluarse como tales.
+
+---
+
+## 9. Revalidación Ola 4 — chat, capacidades y privilegios (2026-11-09)
+
+> Sección añadida por `auditor-seguridad`; **no reescribe** el cuerpo de la
+> auditoría R-01. Los hallazgos SEC-051..062 viven en
+> [`ola3-chat-hallazgos.md`](ola3-chat-hallazgos.md); SEC-063..071 en
+> [`ola4-revision-2026-11-09.md`](ola4-revision-2026-11-09.md) y
+> [`ola4-revalidacion-2026-11-09.md`](ola4-revalidacion-2026-11-09.md).
+>
+> **Método:** lectura del código actual y `git diff` (el entorno permitió `git`,
+> pero **no** `pytest` ni `psql`). El "495 passed" es dato del orquestador, **no**
+> una prueba de esta sesión. La aplicación real de `0033` en `postgres`/`tei_test`
+> queda 🟡/🔴: el DDL y las pruebas SQL existen, pero no las ejecuté.
+
+| ID | Tema | Estado 2026-11-09 | Evidencia |
+|---|---|---|---|
+| SEC-051 | Catálogo cerrado escrito por el gerente | 🟢 **cerrado por SEC-063** (opt-in) | `capacidades.py:176-186`; `herramientas.py:1974-1991`; contrato actualizado |
+| SEC-052 | Muro de pago inalcanzable | 🟢 **cerrado** | `runtime.py:727-736`; `herramientas.py:1665-1683`; `test_ola4_chat_capacidades.py:196-234` |
+| SEC-053 | Transacción abierta durante el LLM; cupo pre-auth por proceso | 🟡 **parcial / abierto** | `chat/api.py:46-67,148-170`; `runtime.py:579-654`; `config.py:48-50` |
+| SEC-054 | Sin rate limit ni presupuesto por usuario/empresa | 🔴 **abierto** | sin middleware de rate limit; `config.py:48-50` |
+| SEC-055 | Admin único no podía aprobar propuestas del chat | 🟢 **cerrado** (decisión) | `solicitudes.py:524-555` |
+| SEC-056 | Historial del chat editable por `tei_app` | 🟢 **cerrado en código** (🟡 aplicación en BD no verificada) | `0033:54-60,63-83`; `supabase/tests/0033_01:24-89`; `tei_app` solo INSERT/SELECT |
+| SEC-057(a) | Clave de idempotencia por empresa, no por usuario | 🔴 **abierto** | `0031:264-266`; `runtime.py:383-411,527-555` |
+| SEC-057(b) | Reutilización de solicitudes ya decididas | 🟢 **cerrado** | `herramientas.py:715-722`; `runtime.py:310-344` |
+| SEC-058 | Reglas por entidad sin consumidor | ℹ️ **observación** | `herramientas.py:360-477` |
+| SEC-059 | Ejecutor del buzón no revalida permiso de dominio | 🟡 **latente** | `api_solicitudes.py:153-169`; `solicitudes.py:416-455` |
+| SEC-060 | Contrato documental desactualizado | 🟡 **parcial** | `docs/backend/agente-chat-inapp.md:170-181,304-310` actualizado en lo fiscal/módulo; quedan referencias de línea antiguas (`runtime.py:635-670` vs `:684-747`), no controles |
+| SEC-061 | Predicado de autoaprobación demasiado amplio | 🟢 **cerrado** | `solicitudes.py:508-521` exige `tipo='otra'` y `accion in ACCIONES_CRITICAS` |
+| SEC-062 | Doble POST / doble `tool_call` duplicaba solicitudes | 🟢 **cerrado** (residual SEC-065) | `chat/api.py:78-80`; `runtime.py:572-619` |
+| SEC-063 | El chat escribe IVA/catálogo | 🟢 **cerrado en código** | `capacidades.py:176-186` (`por_defecto={"gerente": False}`); `api/router.py:12-14,35`; `docs/backend/agente-chat-inapp.md:170-181` |
+| SEC-064 | `modificar` del aprobador se ignoraba | 🟢 **cerrado en código** | `solicitudes.py:459-485` fusiona `valores`/`valores_modificados`; revalida schema |
+| SEC-065 | Sin tope de tool_calls por turno | 🟢 **cerrado en código** (residual de tamaño de argumentos) | `runtime.py:566-606`; `config.py:47-48` |
+| SEC-066 | El tenant podía encender `modulos_empresa` | 🟡 **cerrado en HTTP; residual DB** | `api_contactos.py:172-174` (ruta retirada); `0029:270` conserva EXECUTE para `tei_app` |
+| SEC-067 | Contacto no verificado reserva el teléfono global | 🔴 **abierto** (decisión ADR-0003) | `0021:218-223`; `0029:105-160` |
+| SEC-068 | `tei_app` escribía `tenant_suscripciones` | 🟢 **cerrado en código** (🟡 aplicación en BD no verificada) | `0033:58-80`; `supabase/tests/0033_01:39-87` |
+| SEC-069 | Panel de configuración no montado | 🟢 **cerrado en código** (🟡 test no ejecutado) | `api/router.py:12-14,35`; `api_configuracion.py:145-152`; `test_ola4_chat_capacidades.py:328-340` |
+| SEC-070 | Clave `service_role` demo en el seed | 🟢 **cerrado** | `scripts/seed_local.py:47-61` (demo solo contra `127.0.0.1`/localhost); no se reproduce el valor |
+| SEC-071 | Datos de clientes/márgenes al LLM externo sin DPA | 🔴 **abierto** (negocio/legal) | `runtime.py:416-463`; `herramientas.py:781-1081`; `llm.py:78-93` |
+
+**Nota de consistencia (no editada por mí):** `docs/qa/matriz-trazabilidad.md` §19
+todavía declara que el panel falla (QA-O4-01) y cita `api/router.py:26-43` como
+"falta"; el router ya lo incluye. No modifiqué `docs/qa/**` (fuera de mi alcance):
+queda para `qa` actualizar la matriz. `docs/estado.md` §6.9 ya declara SEC-069
+corregido; la matriz de QA es la que está desalineada.
+
+**Residuales nuevos o no cerrados por las correcciones:**
+
+- **SEC-066 residual:** `nucleo.admin_set_modulo_empresa` sigue con
+  `grant execute ... to tei_app` (`0029:270`) y `0033` no lo revoca. Sin endpoint
+  HTTP, solo un runtime comprometido/SQLi puede llamarla; el flag por sí solo no
+  activa el módulo sin suscripción (SEC-068 cerrado). Es defensa en profundidad,
+  no un bypass de tenant.
+- **SEC-065 residual:** los topes acotan **cantidad** de calls, no el tamaño de
+  `argumentos`/`valor` jsonb; un proveedor comprometido puede enviar un argumento
+  enorme (DoS/token) aunque no ejecute N tools. `AGENTE_LLM_MAX_TOOL_CALLS` y
+  `AGENTE_LLM_MAX_TOOL_CALLS_TURNO` no están en `backend/.env.example`.
+- **SEC-063/064/065 sin prueba de regresión específica:** no encontré tests que
+  habiliten `configuracion.escribir_catalogo`, que apliquen un `modificar` a una
+  solicitud `tipo='otra'` ni que superen `AGENTE_LLM_MAX_TOOL_CALLS`. El "495
+  passed" no cubre esos vectores por sí solo; la verificación es estática.
+- **SEC-056/068:** `0033` revoca privilegios, pero no añade un trigger de
+  inmutabilidad; `postgres`/plataforma conserva `UPDATE/DELETE`. Es coherente con
+  la separación de roles, pero un rol de plataforma comprometido sigue pudiendo
+  reescribir. No hay prueba de que `0033` se haya aplicado en `postgres`/`tei_test`
+  en esta sesión (solo DDL y tests SQL).
