@@ -23,7 +23,13 @@ const RUTAS_RETIRADAS: Array<{ desde: string; hacia: string }> = [
  * reimplementaron contra `/api/v1/nucleo`. Mantienen la misma URL de UI, así que
  * ya no hay grupo legacy en el menú: son ítems del núcleo para cualquier tenant.
  */
-const PANTALLAS_NUCLEO = ["/mantenimiento", "/iva", "/liquidaciones", "/configuracion"];
+const PANTALLAS_NUCLEO = [
+  "/mantenimiento",
+  "/iva",
+  "/liquidaciones",
+  "/configuracion",
+  "/agente/chat",
+];
 
 const NAV = 'nav[aria-label="Navegación principal"] a';
 
@@ -140,6 +146,11 @@ test.describe("TEI — flujo del piloto", () => {
       page.getByRole("heading", { name: "Facturación y cobranza" }),
     ).toBeVisible();
     await expect(page.getByText("Aging de cartera")).toBeVisible();
+    // El seed convive con el dataset demo: se filtra por número para no depender
+    // de que la factura caiga en la primera página del listado.
+    await page
+      .getByPlaceholder("Buscar por número de factura…")
+      .fill("FAC-2026-900001");
     await expect(page.getByText("FAC-2026-900001").first()).toBeVisible();
   });
 
@@ -206,10 +217,10 @@ test.describe("Ola A — rutas legacy retiradas", () => {
     expect(respuesta.headers()["location"]).toContain("/tablero");
   });
 
-  test("TEI: menú con 17 ítems del núcleo, sin las rutas retiradas", async ({ page }) => {
+  test("TEI: menú con 18 ítems del núcleo, sin las rutas retiradas", async ({ page }) => {
     await login(page);
     const enlaces = page.locator(NAV);
-    await expect(enlaces).toHaveCount(17);
+    await expect(enlaces).toHaveCount(18);
 
     const hrefs = await hrefsDelMenu(page);
     for (const item of PANTALLAS_NUCLEO) expect(hrefs).toContain(item);
@@ -221,7 +232,7 @@ test.describe("Ola A — rutas legacy retiradas", () => {
 });
 
 test.describe("Tenant 2 (TES) — menú del núcleo", () => {
-  test("login cae en tablero y el menú es el mismo núcleo (17 ítems, sin grupo legacy)", async ({
+  test("login cae en tablero y el menú es el mismo núcleo (18 ítems, sin grupo legacy)", async ({
     page,
     request,
   }) => {
@@ -232,7 +243,7 @@ test.describe("Tenant 2 (TES) — menú del núcleo", () => {
     // Ola B/C: /mantenimiento, /iva, /liquidaciones y /configuracion ya son
     // pantallas del núcleo; el menú se filtra por rol, no por tenant.
     const enlaces = page.locator(NAV);
-    await expect(enlaces).toHaveCount(17);
+    await expect(enlaces).toHaveCount(18);
     const hrefs = await hrefsDelMenu(page);
     for (const item of PANTALLAS_NUCLEO) {
       expect(hrefs, `${item} debe ofrecerse en el menú del núcleo`).toContain(item);
