@@ -1,7 +1,7 @@
 # Estado del sistema — ERP Transportes TEI
 
 > **Pregunta que responde:** ¿qué está construido, qué está verificado y qué no?
-> **Dueño:** `orquestador` · **Verificado:** 2026-10-29 · **Método:** ejecución + lectura
+> **Dueño:** `orquestador` · **Verificado:** 2026-11-02 (Ola 3) · 2026-11-01 (Fase 2) · 2026-10-29 (F0) · **Método:** ejecución + lectura
 > **Caduca si:** pasan 30 días, cambia el esquema o se agrega un módulo.
 > **Re-verificar con:** los comandos de §2.
 
@@ -14,13 +14,14 @@
 
 | Elemento | Estado |
 |---|---|
-| Rama | `main`, árbol con trabajo sin commitear |
+| Rama | `main`, árbol con cambios sin commitear (seguridad + documentación, 2026-11-01) |
 | Backend `:8000` | 🟡 listener presente |
 | Frontend `:3000` | 🟡 listener presente |
 | PostgreSQL `:54322` | 🟢 Supabase local confirmado: contenedor `supabase_db_TRANSTEI` healthy (el listener `ssh` es el port-forward de Colima/Lima, no un túnel externo) — F0 2026-10-29 |
-| Suite de integración | 🟢 ejecutada: **100 passed, 0 skipped** (pre y post reset) — F0 |
-| E2E | 🟢 ejecutados: **9/9 passed** (pre y post reset) — F0 |
-| `make unit` | 🟢 ejecutado: **52 passed, 1 warning** |
+| Suite de integración | 🟢 ejecutada: **468 passed, 0 skipped** (2026-11-02) |
+| E2E | 🟢 ejecutados: **20/20 passed** (2026-11-01) |
+| `make unit` | 🟢 ejecutado: **135 passed** (2026-11-01) |
+| Plan de cierre | [`docs/PLAN_DESARROLLO.md`](PLAN_DESARROLLO.md) — F0 cerrada; Fase 2 cerrada; reconciliar numeración de fases |
 
 ---
 
@@ -28,18 +29,20 @@
 
 | Dato | Valor | Comando |
 |---|---|---|
-| Migraciones en disco | **28** (`0001`–`0028`) | `ls supabase/migrations \| wc -l` |
-| Migraciones en `HEAD` | **28** | `git ls-tree HEAD supabase/migrations/ \| wc -l` |
-| Migraciones aplicadas en la base local | **28** (reset reproducible 2026-11-01: `0001`–`0028`) | `docker exec supabase_db_TRANSTEI psql -U postgres -tA -c "select count(*) from supabase_migrations.schema_migrations"` |
-| Tablas en `nucleo` | **46** · tablas en `public`: **0** | `grep -rh "create table nucleo" supabase/migrations \| wc -l` |
-| Routers montados | **20** (1 auth + 15 núcleo + 4 Ola B); 0 de negocio legacy | `grep -c include_router backend/app/api/router.py` |
-| Pantallas | **29** page.tsx (20 de negocio + 9 redirecciones 308) | `find frontend/src/app -name page.tsx \| wc -l` |
+| Migraciones en disco | **31** (`0001`–`0031`) | `ls supabase/migrations \| wc -l` |
+| Migraciones en `HEAD` | **28** (`0029`–`0031` sin commitear) | `git ls-tree HEAD supabase/migrations/ \| wc -l` |
+| Migraciones aplicadas en la base local | **31** (2026-11-02: `0001`–`0031`) | `docker exec supabase_db_TRANSTEI psql -U postgres -tA -c "select count(*) from supabase_migrations.schema_migrations"` |
+| Tablas en `nucleo` | **50** (`46` + `tenant_reglas_entidad`/`tenant_suscripciones` + `agente_chat_*`) · tablas en `public`: **0** | `select count(*) from pg_tables where schemaname='nucleo'` |
+| Routers montados | **18** `include_router` en `api/router.py` (+4 Ola B anidados en `/nucleo`); 0 de negocio legacy | `grep -c include_router backend/app/api/router.py` |
+| Pantallas | **30** page.tsx (incluye `/agente/chat` y 9 redirecciones 308) | `find frontend/src/app -name page.tsx \| wc -l` |
 | Roles del núcleo | **8** | `backend/app/nucleo/models.py` (`RolEmpresa`) |
-| Unitarias | **128 passed** (fase 2, 2026-10-31) | `make unit` |
-| Integración | **415 passed, 0 skipped** (fase 2, 2026-10-31) | `make test` (tei_test) |
+| Unitarias | **135 passed** (2026-11-01, re-ejecutado) | `make unit` |
+| Integración | **468 passed, 0 skipped** (2026-11-02, re-ejecutado) | `make test` |
 | Tenants activos (local) | **2** (TEI + TES) | `select count(*) from nucleo.empresas` |
-| E2E definidos | **9** | `grep -cE "^\s*test\(" frontend/e2e/tei.spec.ts` |
-| E2E ejecutados | **9/9 passed** | `make e2e` (F0 2026-10-29) |
+| E2E definidos | **20** | `grep -cE "^\s*test\(" frontend/e2e/tei.spec.ts` |
+| E2E ejecutados | **20/20 passed** (2026-11-01, re-ejecutado) | `make e2e` |
+
+> **Re-verificado 2026-11-02:** `make unit` 135 passed; `make test` 468 passed, 0 skipped; E2E **no re-ejecutado** desde 2026-11-01 (20/20). Migraciones 31 aplicadas en local; `0030` y `0031` con RLS+FORCE y pruebas SQL propias.
 
 ---
 
@@ -71,7 +74,7 @@
 | Despacho / disponibilidad | `/despacho` | `servicio_disponibilidad.py` | 🟢 3 `EXCLUDE` en base |
 | Agenda | `/agenda` | `api_bloqueos.py` | 🟢 |
 | Expediente documental | `/expediente`, `/expediente/[id]` | `servicio_expediente.py` | 🟢 |
-| POD | — | `servicio_pod.py` | 🟡 storage no verificado |
+| POD | — | `servicio_pod.py` | 🟡 firma/tamaño validadas; visor/URLs firmadas sin verificar (RA-11) |
 | PWA conductor | `/conductor` | `api_conductor.py` | 🟡 offline no verificado |
 | Comercial (OC, tarifas) | `/comercial` | `servicio_comercial.py` | 🟢 |
 | Gastos | — | `servicio_gastos.py` | 🟢 |
@@ -81,7 +84,7 @@
 | Maestros | `/maestros` | `servicio_maestros.py` | 🟢 |
 | Auditoría | `/auditoria` | `servicio_auditoria.py` | 🟢 append-only |
 | Permisos | `/permisos` | `api_permisos.py` | 🟢 8 roles |
-| Cutover | `/cutover` | `servicio_cutover.py` | 🔴 **fail-open** (RA-04) |
+| Cutover (datos) | — | `servicio_cutover.py` | ⚪ gate retirado en Fase 2; el servicio/script se conserva para cutover de datos local |
 
 ---
 
@@ -95,7 +98,7 @@
 | Aislamiento multiempresa (RA-03) | RLS habilitado sin políticas verificadas | `select current_user, rolbypassrls from pg_roles` |
 | Restore drill real | Escribe en `backups/` y crea base temporal | `make restore-drill` (requiere autorización) |
 | "CI en verde" | `.github/workflows/ci.yml` existe, pero ejecuta `pytest` **sin servicio PostgreSQL** y no corre E2E: un verde de CI no cubre integración ni navegador | leer `.github/workflows/ci.yml` |
-| Cutover ejecutable | No hay evidencia de `--dry-run` ejecutado; el script es compatible con `0015` pero deja los viajes sin recursos | `make cutover-dry` + ver `operacion/cutover.md` |
+| Cutover ejecutable | ⚪ superado: `public` fue retirado (0028) y la Ola D ejecutó el cutover local (2026-11-01). No aplica a producción. | `docs/operacion/cutover-ejecutado-2026-11-01.md` |
 
 ---
 
@@ -128,6 +131,9 @@ Los bloqueos son **decisiones** y **verificación en entorno real**:
 3. **CI real** (RA-18): validar el workflow en el primer push.
 4. **Decisiones de negocio** (RA-19/RA-21): IVA/crédito/F29, nómina, comisiones, DTE, tablero, import CSV, ratificación formal de D-2.
 5. **Deuda de seguridad operativa**: rate limiting, cabeceras del frontend, `/docs` en producción, `issuer` del JWT (F0-07/08/09/11).
+6. **Plan de cierre y pendientes del agente**: el plan vigente es [`docs/PLAN_DESARROLLO.md`](PLAN_DESARROLLO.md); los pendientes operativos del agente están en [`docs/desarrollo/backlog.md`](../desarrollo/backlog.md) §6. Cifras re-verificadas el 2026-11-01 (135 unit / 413 integración / 20 E2E).
+7. **SEC-039 cerrado (2026-11-01):** migración `0029` crea el rol `tei_admin` (privilegiado para identidad/ACL/flag) y revoca la escritura directa de `tei_app`; las escrituras de la app pasan por `nucleo.admin_*` (`SECURITY DEFINER`, con `empresa_id = ctx_empresa()`). El enrolamiento (OTP) lo inicia el admin; el envío usa el adaptador WhatsApp `fake` local hasta definir proveedor real (AB-04). Sigue pendiente `tei_platform` (RA-16) y el pooler (RA-15).
+8. **Seguridad operativa cerrada en código (2026-11-01):** `iss` del JWT validado, `/docs`/`/openapi.json` deshabilitados por defecto (`ENABLE_DOCS=false`) y cabeceras de seguridad (`nosniff`, `DENY`, `no-referrer`, `permissions-policy`, `COOP`). Rate limiting queda para staging.
 
 ---
 

@@ -1,3 +1,5 @@
+> ⚠️ **Aviso de vigencia (2026-11-01):** cita archivos/cifras anteriores al retiro del legacy (`public`, `lib/api.ts`, `backend/app/api/routes/*`, `kpi_engine.py`). No citar como estado actual; ver `docs/estado.md` §2–§6 y `docs/PLAN_DESARROLLO.md`.
+
 # Registro de invariantes — estado real por invariante
 
 > **Pregunta que responde:** ¿qué invariante existe, qué lo impone y qué sigue sin garantía?
@@ -1052,3 +1054,134 @@ invariante "`public` vacío" no es una restricción de PostgreSQL, se detecta co
 reglas del legacy `public`. **Quedan sin objeto**: no existen las tablas que las
 imponían. No se borran del registro (historia), pero su estado real pasa a
 "n/a — tabla retirada".
+
+---
+
+## 14. Adenda 2026-11-02 — configuración de tenant por entidad y suscripciones (`0030`)
+
+Aplicado **solo en `tei_test`** el 2026-11-02 con `supabase_admin` (la base de la
+app `postgres` **no** se tocó; ver comando pendiente de autorización en
+`docs/datos/tenant-config-agentes.md` §7). Contrato: Apéndice A de
+`docs/arquitectura/adr/ADR-0008-config-tenant-y-autoridad-estados.md`.
+
+`nucleo.tenant_reglas_entidad` guarda reglas por empresa **y** por entidad
+concreta (cliente, chofer, tracto, rampla, contacto); `nucleo.tenant_suscripciones`
+guarda plan/estado con vigencia. No se creó `tenant_config`: duplicaría
+`nucleo.configuracion_empresa` (ADR-0008 §B.0).
+
+| ID | Invariante | Estado en base | Mecanismo | SQLSTATE | Prueba |
+|---|---|---|---|---|---|
+| INV-TEN01 | Una regla tiene exactamente una entidad destino y es coherente con `entidad` | **impuesto (DDL)** | `ck_regla_una_entidad` (`num_nonnulls(...) = 1` + coherencia por enum) · `0030` | 23514 | `0030_01` 1C ✅ |
+| INV-TEN02 | La entidad destino pertenece a la misma empresa que la regla | **impuesto (DDL)** | 5 FKs compuestas `(empresa_id, <fk>_id)` → `<tabla>(empresa_id, id)` · `0030` | 23503 | `0030_01` 1I ✅ |
+| INV-TEN03 | No hay dos reglas de la misma (empresa, entidad, clave, destino) con vigencias solapadas | **impuesto (DDL)** | `ex_regla_vigencia` (gist, 5 `coalesce(<fk>, 000…0)` + `tstzrange [)`) · `0030` | 23P01 | `0030_01` 1G ✅ |
+| INV-TEN04 | A lo sumo una regla abierta por (empresa, entidad, clave, destino) | **impuesto (DDL)** | `uq_regla_vigente` (UNIQUE parcial con centinelas, `WHERE vigente_hasta IS NULL`) · `0030` | 23505 / 23P01 | `0030_01` 1F ✅ |
+| INV-TEN05 | Una regla cerrada es historial inmutable y las reglas no se borran | **impuesto (DDL)** | `fn_regla_entidad_inmutable()` + `trg_tenant_reglas_inmutable` (`before update or delete`) · `0030` | 23514 | `0030_01` 1H ✅ |
+| INV-TEN06 | No hay dos suscripciones solapadas por (empresa, plan) | **impuesto (DDL)** | `ex_suscripcion_vigencia` (gist) · `0030` | 23P01 | `0030_02` 2G ✅ |
+| INV-TEN07 | A lo sumo una suscripción abierta por (empresa, plan) | **impuesto (DDL)** | `uq_suscripcion_vigente` (UNIQUE parcial) · `0030` | 23505 / 23P01 | `0030_02` 2F ✅ |
+| INV-TEN08 | `estado` de suscripción ∈ {`activa`,`suspendida`,`cancelada`} y `plan_codigo` con formato | **impuesto (DDL)** | `ck_suscripcion_estado` + `ck_suscripcion_plan_formato` · `0030` | 23514 | `0030_02` 2C/2D ✅ |
+| INV-TEN09 | Toda fila es invisible/inescribible fuera de `app.empresa_id` | **impuesto (DDL)** | RLS `ENABLE`+`FORCE` + política `tenant_empresa` con `ctx_empresa()` · `0030` | 42501 / 0 filas | `0030_01` 1K y `0030_03` B/C/E ✅ (`tei_app`, no `postgres`) |
+| INV-TEN10 | `tei_app` no puede borrar reglas ni suscripciones | **impuesto (privilegio)** | `GRANT SELECT, INSERT, UPDATE` sin `DELETE`; `DELETE` solo a `postgres` · `0030` | 42501 | `0030_03` 3D ✅ |
+
+**Escritores cubiertos:** `tei_app` (probado con `SET LOCAL ROLE`, NOBYPASSRLS),
+backend futuro, seeds, scripts y `psql` que escriban con un rol sujeto a las
+constraints/RLS. **No cubre** a un superusuario/BYPASSRLS que deshabilite un
+trigger o escriba sin `app.empresa_id`; tampoco cubre "qué claves y qué forma de
+`valor` son legítimas" (catálogo del servicio, `D-27`).
+
+**Límites explícitos:** no hay precio, moneda, cupos, `limites jsonb` ni
+`habilitado` (prohibidos por A.4 hasta que `D-25`/`D-26` fijen punto de
+cumplimiento). La suscripción **no** es un gate: el apagado de módulos sigue en
+`nucleo.modulos_empresa` (ADR-0008 Ap. C.1). No hay cierre automático de vigencia
+ni trigger de inmutabilidad en suscripciones: el contrato A.5 solo pide
+touch/version/audit.
+
+**Deuda de prueba:** las pruebas SQL `0030_01`–`0030_03` y el ciclo de rollback
+`0030_99` se ejecutaron en `tei_test`; no hay prueba de concurrencia con dos
+conexiones para el `EXCLUDE` (las constraints son atómicas por definición, pero
+no se ejecutó el escenario de dos escritores simultáneos). `make test` siguió en
+verde (423).
+
+---
+
+## 15. Adenda 2026-11-02 — memoria del chat in-app (`0031`)
+
+Aplicado **solo en `tei_test`** el 2026-11-02 con `supabase_admin` (la base de la
+app `postgres` **no** se tocó; comando pendiente de autorización en
+`docs/datos/agente-chat-inapp.md` §9). Detalle, DDL y salidas de prueba en
+`docs/datos/agente-chat-inapp.md`.
+
+`nucleo.agente_chat_conversaciones` y `nucleo.agente_chat_mensajes` son tablas
+**nuevas** para el chat in-app del dueño con los agentes `gerente`/`secretaria`;
+no reutilizan `nucleo.conversaciones` / `nucleo.conversacion_mensajes` (WhatsApp,
+`0021`), que exigen `contacto_id` y `wa_message_id`. No se alteraron las tablas
+de WhatsApp ni `solicitudes`.
+
+| ID | Invariante | Estado en base | Mecanismo | SQLSTATE | Prueba |
+|---|---|---|---|---|---|
+| INV-CHAT01 | Una conversación activa por (empresa, usuario_empresa, agente) | **impuesto (DDL)** | `uq_agente_chat_conv_activa` (UNIQUE parcial `WHERE activa`) · `0031` | 23505 | `0031_01` 1C + concurrencia 2 conexiones ✅ |
+| INV-CHAT02 | `activa` y `cerrada_en` son coherentes (`activa OR cerrada_en`) | **impuesto (DDL)** | `ck_agente_chat_conv_cierre` · `0031` | 23514 | `0031_01` 1D ✅ |
+| INV-CHAT03 | El usuario de la conversación pertenece a la misma empresa | **impuesto (DDL)** | FK compuesta `(empresa_id, usuario_empresa_id)` → `usuarios_empresa(empresa_id, id)` · `0031` | 23503 | `0031_01` 1E ✅ |
+| INV-CHAT04 | El mensaje pertenece a una conversación de la misma empresa | **impuesto (DDL)** | FK compuesta `(empresa_id, conversacion_id)` → `agente_chat_conversaciones(empresa_id, id)` · `0031` | 23503 | `0031_01` 1G ✅ |
+| INV-CHAT05 | Un turno `tool` declara `tool_call_id` | **impuesto (DDL)** | `ck_agente_chat_msg_tool_call` · `0031` | 23514 | `0031_01` 1F ✅ |
+| INV-CHAT06 | Un turno deja `contenido` o `tool_calls` (`tool`/`system` exentos) | **impuesto (DDL)** | `ck_agente_chat_msg_contenido` · `0031` | 23514 | `0031_01` 1F ✅ |
+| INV-CHAT07 | Una `clave_idempotencia` no se repite dentro de la empresa | **impuesto (DDL)** | `uq_agente_chat_msg_idempotencia` (UNIQUE parcial, `WHERE clave_idempotencia IS NOT NULL`) · `0031` | 23505 | `0031_01` 1H ✅ |
+| INV-CHAT08 | Toda fila es invisible/inescribible fuera de `app.empresa_id` | **impuesto (DDL)** | RLS `ENABLE`+`FORCE` + política `tenant_empresa` con `ctx_empresa()` · `0031` | 42501 / 0 filas | `0031_01` 1J y `0031_02` B/C/E ✅ (`tei_app`, no `postgres`) |
+| INV-CHAT09 | `tei_app` no puede borrar conversaciones ni mensajes | **impuesto (privilegio)** | `GRANT SELECT, INSERT, UPDATE` sin `DELETE`; `DELETE` solo a `postgres` · `0031` | 42501 | `0031_01` 1K y `0031_02` 2D ✅ |
+
+**Escritores cubiertos:** `tei_app` (probado con `SET LOCAL ROLE`, NOBYPASSRLS),
+backend futuro, seeds y scripts que escriban con un rol sujeto a constraints/RLS.
+**No cubre** a un superusuario/BYPASSRLS que deshabilite un trigger o escriba sin
+`app.empresa_id`.
+
+**Límites explícitos:** no hay trigger de inmutabilidad en mensajes ni
+`fn_auditoria` en el chat (decisión: append-only de diseño, sin inundar
+`nucleo.auditoria`). El paso de una conversación cerrada a activa lo gobierna el
+servicio; la base solo impide dos activas simultáneas. La forma de
+`tool_calls`/`metadata` no se valida (contrato del runtime). Se agregaron
+`updated_at`/`updated_by` a `agente_chat_mensajes` porque `nucleo.fn_touch()`
+(0004:74-87) las exige; sin ellas todo `UPDATE` fallaría con `42703`.
+
+**Deuda de prueba:** las pruebas `0031_01`–`0031_02` y el ciclo de rollback
+`0031_99` se ejecutaron en `tei_test`; la concurrencia de `INV-CHAT01` se probó
+con dos conexiones reales (una bloqueada ~3 s y rechazada con 23505) y el
+mecanismo se validó por mutación (sin el índice, dos activas conviven).
+`make test` siguió en verde (423).
+
+## 16. Adenda 2026-11-02 — overrides de capacidades del chat in-app (`0032`)
+
+Aplicado en **`tei_test` y `postgres`** el 2026-11-02 con `supabase_admin`, y
+registrado en `supabase_migrations.schema_migrations` (`0032`) en ambas bases.
+Detalle, DDL y salidas reales en `docs/datos/agente-capacidades.md`.
+
+`nucleo.agente_capacidades` guarda overrides por `(empresa, agente, capacidad)`:
+fila ausente = valor por defecto del código. No es catálogo de capacidades, ni
+gate de módulos (`0023`), ni reglas por entidad (`0030`), ni memoria del chat
+(`0031`). No se alteró ninguna tabla existente.
+
+| ID | Invariante | Estado en base | Mecanismo | SQLSTATE | Prueba |
+|---|---|---|---|---|---|
+| INV-AGCAP01 | No hay dos filas para (empresa, agente, capacidad) | **impuesto (DDL)** | `agente_capacidades_unica` UNIQUE · `0032:169` | 23505 | `0032_01` 1C ✅ + concurrencia 2 conexiones ✅ + mutación ✅ |
+| INV-AGCAP02 | `agente` ∈ {gerente, secretaria} y `capacidad` cumple `^[a-z][a-z0-9_.]{2,80}$` | **impuesto (DDL)** | `agente_capacidades_agente_check` y `agente_capacidades_capacidad_check` · `0032:161-162` | 23514 | `0032_01` 1D ✅ (9 formatos inválidos) |
+| INV-AGCAP03 | Toda fila es invisible/inescribible fuera de `app.empresa_id` | **impuesto (DDL)** | RLS `ENABLE`+`FORCE` + política `tenant_empresa` con `ctx_empresa()` · `0032:218-224` | 42501 / 0 filas | `0032_01` 1G ✅ con `tei_app` (NOBYPASSRLS) |
+| INV-AGCAP04 | `tei_app` no puede borrar overrides | **impuesto (privilegio)** | `GRANT SELECT, INSERT, UPDATE` sin `DELETE`; `DELETE` solo a `postgres` · `0032:236-237` | 42501 | `0032_01` 1H ✅ |
+| INV-AGCAP05 | `INSERT`/`UPDATE`/`DELETE` dejan rastro en `nucleo.auditoria` | **impuesto (trigger)** | `trg_agente_capacidades_audit` → `fn_auditoria()` (SECURITY DEFINER) · `0032:210-212` | — | `0032_01` 1I ✅ (incluye `auth_id`) |
+| INV-AGCAP06 | Cada `UPDATE` refresca `updated_at` y sube `version` | **impuesto (trigger)** | `trg_agente_capacidades_touch` → `fn_touch()` y `trg_agente_capacidades_version` → `fn_version()` · `0032:202-208` | — | `0032_01` 1F ✅ |
+
+**Escritores cubiertos:** `tei_app` (probado con `SET LOCAL ROLE`, NOBYPASSRLS),
+backend futuro, seeds y scripts que escriban con un rol sujeto a constraints y
+RLS. **No cubre** a un superusuario/`BYPASSRLS` que deshabilite triggers o
+escriba sin `app.empresa_id`.
+
+**Límites explícitos:** el catálogo de capacidades y su valor por defecto viven
+en el código; la base solo valida el formato. Los límites duros por agente (p.
+ej. "secretaria no emite facturas") son reglas del servicio: esta tabla solo
+expresa el override. No hay borrado lógico ni historial; deshabilitar es
+`habilitada = false`. `fn_auditoria()` registra `tabla =
+'nucleo.agente_capacidades'` (con esquema), no el nombre pelado.
+
+**Deuda de prueba:** `0032_01` y `0032_99` se ejecutaron en `tei_test` y
+`postgres`; la concurrencia de `INV-AGCAP01` se probó con dos conexiones (la
+segunda bloqueó ~2 s hasta el `ROLLBACK` de la primera) y el `UNIQUE` se validó
+por mutación dentro de la transacción. No se mutaron RLS ni GRANTs y no se
+ejecutó `make test` en esta sesión.
+

@@ -1,3 +1,5 @@
+> ⚠️ **Aviso de vigencia (2026-11-01):** cita archivos/cifras anteriores al retiro del legacy (`public`, `lib/api.ts`, `backend/app/api/routes/*`, `kpi_engine.py`). No citar como estado actual; ver `docs/estado.md` §2–§6 y `docs/PLAN_DESARROLLO.md`.
+
 # Implementación de reglas — mapa regla → código
 
 > **Pregunta que responde:** ¿dónde se calcula cada regla y cuántas versiones existen?

@@ -170,7 +170,7 @@ resuélvela tú. No lances subagentes por reflejo; cada delegación cuesta conte
 | **Alto** | Dinero, permisos, autenticación, multiempresa, persistencia, disponibilidad, migraciones, cutover, facturación, pagos, anulación, auditoría | Lo anterior + pruebas adversariales + concurrencia real si aplica + revisión independiente (`qa` y/o `auditor-seguridad`) + plan de rollback verificado en papel |
 
 **Regla de escalamiento:** ante duda entre dos niveles, aplica el mayor. Si la tarea
-toca `public` y `nucleo` a la vez, es al menos Medio; si toca dinero o tenant, es Alto.
+toca persistencia y contrato HTTP a la vez, es al menos Medio; si toca dinero o tenant, es Alto.
 
 Antes de delegar, escribe (en tu razonamiento y en el registro):
 
@@ -182,7 +182,7 @@ No objetivos:
 Evidencia disponible:
 Evidencia faltante:
 Áreas/archivos:
-Legacy/núcleo/compartida:
+Esquema/módulo: `nucleo` (único esquema de negocio activo)
 Rollback:                (cómo se revierte sin perder datos)
 ```
 
@@ -194,7 +194,7 @@ Rollback:                (cómo se revierte sin perder datos)
    antes de tocar nada.
 3. Traza el flujo real: UI → cliente HTTP → router → auth → servicio → modelo →
    migración/constraint.
-4. Determina si el área es legacy (`public`), núcleo (`nucleo`) o compartida.
+4. Confirma que el área pertenece a `nucleo` (único esquema de negocio activo); si algo apunta a `public`, trátalo como referencia histórica.
 5. No leas `.env`; no vuelques archivos completos al contexto: busca y lee rangos.
 
 ### Paso 2 — Plan por olas
@@ -232,7 +232,7 @@ define el criterio de parada.
 
 | Necesidad | Agente | Produce |
 |---|---|---|
-| Decidir estructura, límites, cutover, fuentes de verdad | `arquitectura` | ADRs, mapas, deuda en `docs/arquitectura/` |
+| Decidir estructura, límites, evolución del esquema, fuentes de verdad | `arquitectura` | ADRs, mapas, deuda en `docs/arquitectura/` |
 | Diseñar constraints, migraciones, RLS, concurrencia en BD | `datos` | Migraciones (con aprobación), invariantes, pruebas de BD |
 | Endpoints, servicios, transacciones, contratos HTTP | `backend` | Código backend + contrato + pruebas de su cambio |
 | Pantallas, tipos, estados, accesibilidad | `frontend` | Código frontend + verificación |
@@ -249,7 +249,7 @@ Contexto mínimo: <hechos comprobados con archivo:línea, rutas, salidas de prue
 Hecho vs. supuesto: <qué está confirmado y qué no>
 Áreas/archivos que PUEDES tocar: <lista exacta>
 Áreas/archivos que NO debes tocar: <lista exacta>
-Restricciones: <legacy/núcleo, sin migraciones aplicadas, sin secretos, sin push>
+Restricciones: <solo `nucleo`, sin migraciones aplicadas, sin secretos, sin push>
 Entregable: <formato exacto y ruta>
 Criterios de aceptación: <observables>
 Pruebas requeridas: <comando o tipo>
@@ -326,8 +326,8 @@ Resultado final y enlaces a artefactos:
 
 ## 7. Reglas específicas del ERP
 
-- No introduzcas una **tercera fuente de verdad**. `public` y `nucleo` coexisten.
-- No migres ni elimines legacy por iniciativa propia.
+- `nucleo` es el **único esquema de negocio activo**. No introduzcas una segunda fuente de verdad ni reabras `public` sin ADR y autorización.
+- No reintroduzcas el legacy ni muevas datos o módulos por iniciativa propia.
 - No declares disponibilidad o aislamiento multiempresa sin prueba en PostgreSQL
   con conexiones reales.
 - "La UI valida" no es un control de seguridad.
@@ -382,7 +382,7 @@ No dejes el repositorio en estado ambiguo (cambios a medias sin explicar).
 3. ¿El riesgo se clasificó correctamente y se cumplió su definición de hecho?
 4. ¿Hay `skip`, `xfail`, `except` amplios o pruebas borradas en el diff?
 5. ¿Hubo revisión independiente donde el riesgo es Alto?
-6. ¿El legacy sigue funcionando?
+6. ¿El núcleo y el frontend siguen funcionando?
 7. ¿Está claro el rollback?
 8. ¿Dije explícitamente lo que NO se verificó?
 

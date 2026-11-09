@@ -1,10 +1,10 @@
 # PLAN_DESARROLLO.md — Cierre del Núcleo del ERP Transportes TEI
 
 > **Pregunta que responde:** ¿qué hay que construir, en qué orden, con qué criterios y qué pruebas, para dejar el **Núcleo** 100 % cerrado, seguro y estable?
-> **Dueño:** `orquestador` · **Estado:** vigente (documento vivo) · **Creado:** 2026-10-29
+> **Dueño:** `orquestador` · **Estado:** vigente (documento vivo) · **Creado:** 2026-10-29 · **Reconciliado:** 2026-11-01
 > **Método:** consolidación de las decisiones del dueño + lectura de `docs/` + verificación de `git`
 > **Regla:** este plan **no reemplaza** `AGENTS.md`; lo complementa. Si hay contradicción, manda `AGENTS.md` y se reporta.
-> **F0 no está ejecutado.** Este documento solo transcribe el plan. La ejecución empieza cuando el dueño lo autorice.
+> **Reconciliación 2026-11-01:** el repo avanzó. F0 cerrada (veredicto A), Fase 1 y Fase 2 cerradas, `public` retirado (`0028`) y 28 migraciones en `HEAD`. Ver §0.2. Las fases F3–F7 siguen vigentes; la numeración del repo (Fase 1/Fase 2) se mapea en §0.2.
 
 ---
 
@@ -27,6 +27,24 @@
 | `en gate` | Construcción terminada, gate de pruebas en ejecución |
 | `cerrada` | Gate aprobado, evidencia registrada, dueño aceptó |
 | `bloqueada` | Depende de una decisión del dueño o de un tercero |
+
+### 0.2 Estado real (reconciliación 2026-11-01)
+
+| Fase del plan | Estado real | Evidencia |
+|---|---|---|
+| F0 — Due diligence | **cerrada** (veredicto A: refactor) | `docs/qa/informes/F0-due-diligence.md` |
+| F1 — Un solo piso | **cerrada** (Fase 1 + Fase 2 del repo; Olas A–E) | `docs/estado.md` addendum; `ADR-0002` |
+| F2 — Conectores | **parcial**: registry, gate, tools y buzón O2.1–O2.2 construidos; hooks/slots por componente incompletos | `docs/backend/informes/o2-1-registry-gate-tools.md`; `docs/desarrollo/backlog.md` §6 |
+| F3 — Tenancy/plataforma | **parcial**: RLS dos engines, 2 tenants y **SEC-039 cerrado** (`tei_admin`); faltan `tei_platform` y pooler | `ADR-0005`; `docs/estado.md` RA-15/16/17 |
+| F4 — Integridad/dinero | **parcial**: invariantes del agente O1.2; faltan los de núcleo (factura/gasto/pago) y odómetro | `docs/seguridad/hallazgos-o2-1.md`; `docs/datos/invariantes.md` |
+| F5 — Storage/backups | **pendiente**: restore drill con comparación, PITR/snapshots, archivo anual | `docs/estado.md` RA-05 |
+| F6 — Hardening | **pendiente** | — |
+| F7 — Staging/producción | **pendiente** | `docs/estado.md` §6 |
+
+**Pendientes inmediatos de seguridad y documentación (2026-11-01):**
+- **Cerrados 2026-11-01:** SEC-039 (`0029`, `tei_admin`), validación de `iss` del JWT, `/docs` deshabilitado, cabeceras de seguridad, avisos de vigencia documental.
+- Seguridad pendiente: revisión O2.2; D-12 (proveedor WhatsApp real, AB-04); POD visor/URLs; rate limit (staging); pooler (RA-15); `tei_platform` (RA-16); RLS ADR-0005 (RA-17); restore drill (RA-05); CI (RA-18).
+- Documentación: este plan reconciliado; los 16 documentos de `ADR-0002` §8.2 ya llevan aviso de vigencia.
 
 ---
 
@@ -305,7 +323,7 @@ No existe "100 % seguro"; se define un umbral objetivo:
 
 ### F0 — Due diligence y línea base
 
-**Estado:** `pendiente` (no ejecutada).
+**Estado:** `cerrada` (2026-10-29; veredicto A: refactor). Evidencia: `docs/qa/informes/F0-due-diligence.md`.
 
 **Objetivo.** Decidir con evidencia entre **refactor**, **reconstrucción parcial** o **reconstrucción total**, y dejar una línea base reproducible. **No se cambia código de producto en F0.**
 
@@ -359,7 +377,7 @@ No existe "100 % seguro"; se define un umbral objetivo:
 
 ### F1 — Consolidación a un solo piso
 
-**Estado:** `pendiente`.
+**Estado:** `cerrada` (Fase 1 + Fase 2 del repo; 2026-11-01). Evidencia: `docs/estado.md` addendum; `ADR-0002`.
 
 **Objetivo.** Eliminar `public` (legacy) y el cutover; dejar **un solo esquema** con todos los componentes del Núcleo.
 
@@ -407,7 +425,7 @@ No existe "100 % seguro"; se define un umbral objetivo:
 
 ### F2 — Núcleo + conectores (plug & play)
 
-**Estado:** `pendiente`.
+**Estado:** `parcial` (registry/gate/tools/buzón O2.1–O2.2 construidos; conectores por componente incompletos).
 
 **Objetivo.** Que cada componente del Núcleo publique su **Conector** y que un módulo se acople **sin modificar el Núcleo**.
 

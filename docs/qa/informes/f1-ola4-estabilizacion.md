@@ -1,3 +1,5 @@
+> ⚠️ **Aviso de vigencia (2026-11-01):** cita archivos/cifras anteriores al retiro del legacy (`public`, `lib/api.ts`, `backend/app/api/routes/*`, `kpi_engine.py`). No citar como estado actual; ver `docs/estado.md` §2–§6 y `docs/PLAN_DESARROLLO.md`.
+
 # F1 Ola 4 — Estabilización de flakiness y validación RLS (qa)
 
 > Depositado por el orquestador (2026-10-30): el agente `qa` agotó pasos antes de escribir el archivo; contenido íntegro de su respuesta. Verificación del orquestador: `make unit` 67 · `make test` 219 passed (2026-10-30).

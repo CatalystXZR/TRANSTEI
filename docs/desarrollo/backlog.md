@@ -1,9 +1,11 @@
 # Backlog — qué se está construyendo y qué sigue
 
 > **Pregunta que responde:** ¿en qué va el plan de trabajo y qué es lo próximo?
-> **Dueño:** `orquestador` · **Verificado:** 2026-10-31 (§6, módulo agente) / 2026-10-29 (§2–§3, sin re-verificar) · **Método:** lectura de código + planes archivados + suites ejecutadas
+> **Dueño:** `orquestador` · **Verificado:** 2026-11-01 (Fase 2) / 2026-10-31 (§6, agente) · **Método:** lectura de código + planes archivados + suites ejecutadas
 > **Caduca si:** se cierra un P0, cambia el alcance o se abre un frente nuevo.
 > **Re-verificar con:** `ls frontend/src/app/\(app\)` y `ls backend/app/nucleo`
+>
+> ⚠️ **Plan vigente:** [`docs/PLAN_DESARROLLO.md`](../PLAN_DESARROLLO.md). Las §1–§3 son **históricas** (pre Fase 2); el estado real está en [`docs/estado.md`](../estado.md) §2–§6, y los pendientes operativos del agente en **§6** de este documento.
 
 > El **estado verificado** está en [`docs/estado.md`](../estado.md). Este documento
 > no repite cifras: describe el trabajo y dónde está cada pieza.
@@ -20,6 +22,8 @@ E2E no se ejecutaron).
 ---
 
 ## 2. Estado por bloque
+
+> **Histórico (pre Fase 2).** Varios P0 ya están cerrados (F0, F1, Fase 2). No citar esta tabla como estado; ver [`docs/estado.md`](../estado.md).
 
 | P0 | Tema | Backend | Pantalla | Brecha principal |
 |---|---|---|---|---|
@@ -39,21 +43,30 @@ E2E no se ejecutaron).
 
 ---
 
-## 3. Lo próximo, en orden
+## 3. Pendientes reales (2026-11-01)
 
-> Este orden cubre el **P0 legacy**. El módulo agente WhatsApp tiene su propio
-> orden por olas en [§6.8](#68-orden-recomendado).
+> Fuente: `docs/estado.md` §5–§6 y **§6** de este documento. El plan vigente es
+> [`docs/PLAN_DESARROLLO.md`](../PLAN_DESARROLLO.md). La tabla §2 es histórica.
 
-| # | Trabajo | Por qué primero | Dueño |
-|---|---|---|---|
-| 1 | **Ejecutar `make test` y `make e2e` con base real y registrar la salida** | Sin línea base, todo "terminado" es 🔴 | `qa` |
-| 2 | **Resolver el cutover roto por `0015`** (cargar documentos antes, o migrar en `borrador`) | Es el paso que habilita retirar el legacy | `arquitectura` + `datos` |
-| 3 | **Cerrar SEC-002**: snapshot de la liquidación al emitir | Documento firmado no reproducible | `backend` + `datos` |
-| 4 | **Unificar comisión**: `kpi_engine.py:368-381` vs `liquidaciones.py:51-96` | El tablero sobreestima | `backend` |
-| 5 | **Demostrar aislamiento de tenant** (rol efectivo + RLS con políticas) | RA-03; hoy no es garantía | `datos` + `auditor-seguridad` |
-| 6 | **Prueba de concurrencia real** en disponibilidad (dos conexiones) | RA-02; el `EXCLUDE` es correcto pero no se probó | `qa` |
-| 7 | **Llenar la matriz de trazabilidad** (invariante → prueba) | Hoy hay garantías sin cobertura | `qa` |
-| 8 | **Backup con comparación antes/después** | RA-05: el drill no detecta pérdida | `datos` |
+| # | Pendiente | Tipo | Dueño | Ref. |
+|---|---|---|---|---|
+| 1 | Revisión independiente de O2.2 (buzón de solicitudes) | Seguridad/QA | `auditor-seguridad` + `qa` | §6.5 |
+| 2 | ~~Cerrar SEC-039~~ ✅ **cerrado 2026-11-01** (`0029`): `tei_admin` + `nucleo.admin_*`; `tei_app` solo lectura en identidad/ACL/flag | Seguridad | — | `0029` |
+| 3 | Decidir ADR-0007 (ruteo `número Meta → empresa_id`) | Arquitectura | `arquitectura` + dueño | §6.3 |
+| 4 | Corpus O0 (audios/fotos/PDFs reales para ASR/OCR) | Negocio | dueño | §6.4 |
+| 5 | **D-12 (OTP)**: flujo admin→WhatsApp + verificación implementado (`0029`, `api_contactos`); falta proveedor WhatsApp real (AB-04) | Seguridad | dueño + `datos` | §6.2 |
+| 6 | Restore drill con comparación antes/después | Datos | `datos` | RA-05 |
+| 7 | Pooler real (`transaction`) + `SET LOCAL` + límites | Datos/operación | `datos` | RA-15 |
+| 8 | Rol de plataforma formal (`tei_platform`) | Datos/seguridad | `datos` | RA-16 |
+| 9 | Deudas RLS del ADR-0005 (R-1, R-5, R-9) | Datos | `datos` + `backend` | RA-17 |
+| 10 | CI en GitHub Actions (Supabase + E2E) | Operación | operación | RA-18 |
+| 11 | Decisiones tributarias/laborales (IVA/F29, nómina, comisiones, DTE) | Negocio/legal | contador | RA-19 |
+| 12 | Documentos que citan archivos retirados (16) | Documentación | varios | RA-20 |
+| 13 | Decisiones de producto (RET-06/12/13) | Producto | dueño | RA-21 |
+| 14 | Deuda de seguridad operativa (rate limit, headers, `/docs`, issuer JWT) | Seguridad | `backend` + `auditor-seguridad` | estado §6.5 |
+| 15 | POD: visor/URLs firmadas; anon key/bucket | Seguridad | `auditor-seguridad` | RA-11/RA-12 |
+| 16 | UAT real (hoy vacía) | QA/negocio | `qa` + dueño | RA-01 |
+| 17 | Reconciliar `PLAN_DESARROLLO.md` con el avance real (F0 y Fase 2 cerradas) | Planificación | `orquestador` | plan |
 
 ---
 
@@ -65,7 +78,7 @@ E2E no se ejecutaron).
 | GPS / telemetría | Solo check-in manual | dueño |
 | Conciliación bancaria | No existe | dueño + contador |
 | Nómina legal (AFP, salud, gratificación) | No implementado | asesor laboral |
-| SaaS multiempresa | `nucleo` preparado, no expuesto | dueño |
+| SaaS multiempresa | Implementado en local con RLS y 2 tenants (TEI + TES); falta producción/pooler (RA-15/16) | dueño |
 | Factoring / simulador de caja | Solo propuesta histórica | dueño |
 
 ---
@@ -82,8 +95,8 @@ E2E no se ejecutaron).
 ## 6. Módulo agente WhatsApp — pendientes
 
 > Frente distinto del P0 legacy. Estado verificado 2026-10-31.
-> Línea base: `make test` → **304 passed, 0 failed, 0 skipped**;
-> `make unit` → 124 passed. Detalle en
+> Línea base 2026-11-01: `make test` → **413 passed, 0 failed, 0 skipped**;
+> `make unit` → **135 passed**; `make e2e` → **20 passed**. Detalle en
 > [`docs/backend/informes/o2-1-registry-gate-tools.md`](../backend/informes/o2-1-registry-gate-tools.md)
 > y [`docs/seguridad/hallazgos-o2-1.md`](../seguridad/hallazgos-o2-1.md).
 
@@ -151,7 +164,7 @@ E2E no se ejecutaron).
 |---|---|---|---|
 | ~~SEC-033~~ ✅ | baja | **Cerrado** (`5fd401c`): el registry valida la forma y descarta el texto libre; contrato §7.3.1. Verificado por mutación | — |
 | ~~SEC-038~~ ✅ | info | **Cerrado** (`5fd401c`): registra sqlstate + tipo, nunca el `repr` | — |
-| SEC-039 | **media** | El rol `tei_app` puede escribir identidad, ACL y flag que el gate consume. **Sigue abierto** y es el único que debe cerrarse antes de cualquier contacto real | `datos` + `arquitectura` |
+| ~~SEC-039~~ ✅ | media | **Cerrado 2026-11-01** (`0029`): `tei_admin` + `nucleo.admin_*`; `tei_app` solo SELECT en identidad/ACL/flag | — |
 | ~~SEC-040~~ ✅ | info | **Cerrado** (`c36791d`): lectura canónica "cargar no es habilitar" anotada en ambas secciones | — |
 | ~~timeout~~ ✅ | — | **Cerrado** (`5fd401c`): `pg_sleep` real bajo `statement_timeout` produce 57014 → `TIMEOUT_TOOL` | — |
 

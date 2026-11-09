@@ -82,7 +82,7 @@ Lee `AGENTS.md` y aplica su jerarquía de evidencia.
 1. **Invariante primero:** cada regla estructural se escribe en una frase y se
    asigna a un mecanismo (constraint, trigger, lock, aislamiento, idempotencia).
 2. **La base es el árbitro final;** el servicio da UX y mensajes.
-3. **Todos los escritores cuentan:** legacy, núcleo, scripts, seeds, jobs. Si hay
+3. **Todos los escritores cuentan:** servicios del núcleo, scripts, seeds, jobs. Si hay
    dos, la garantía cubre ambos o el riesgo se declara.
 4. **Forward-only:** no editas una migración aplicada; creas la siguiente.
 5. **Nada de pérdida silenciosa:** backfills con conteos antes/después.
@@ -97,15 +97,15 @@ Lee `AGENTS.md` y aplica su jerarquía de evidencia.
 
 ## 3. Modelo mental (verifícalo)
 
-- `public` = legacy (`date`, reglas en Python). `nucleo` = destino (`timestamptz`,
-  rangos semiabiertos, constraints).
-- `nucleo.reservas_recurso` es el libro de ocupación del núcleo con `EXCLUDE`
-  parciales por tracto/rampla/chofer. El legacy **no** escribe ahí: mientras el
-  legacy esté abierto, la disponibilidad no es única entre esquemas.
+- `nucleo` es el único esquema de negocio activo (`timestamptz`, rangos
+  semiabiertos, constraints). `public` fue retirado en la migración `0028` y no
+  recibe escrituras.
+- `nucleo.reservas_recurso` es el libro de ocupación con `EXCLUDE` parciales por
+  tracto/rampla/chofer. No existe un segundo libro de ocupación.
 - RLS habilitado sin políticas no aísla; el backend puede conectar con un rol que
   se salta RLS. Verifica el rol real antes de afirmar nada.
 - `nucleo.auditoria` es append-only por trigger, con cobertura parcial.
-- `legacy_congelado()` que falla en abierto invalida cualquier "bloqueo" legacy.
+- Un flag de bloqueo que falla en abierto invalida la garantía que dependa de él.
 
 ## 4. Procedimiento por fases
 
@@ -125,7 +125,7 @@ Una fila por regla:
 
 | ID | Invariante (una frase) | Mecanismo | Dónde se impone | Escritores cubiertos | SQLSTATE esperado | Prueba |
 |---|---|---|---|---|---|---|
-| INV-001 | Un tracto no tiene dos reservas activas solapadas | EXCLUDE gist parcial | `nucleo.reservas_recurso` | núcleo ✔ / legacy ✘ | 23P01 | ... |
+| INV-001 | Un tracto no tiene dos reservas activas solapadas | EXCLUDE gist parcial | `nucleo.reservas_recurso` | `nucleo` ✔ | 23P01 | ... |
 
 Reglas: sin mecanismo en DB → "no garantizada" y se explica qué la cubre hoy
 (servicio, nada). Los vacíos se registran como riesgo, no se maquillan.
@@ -147,10 +147,10 @@ Cada migración se diseña en un documento antes de escribirse y contiene:
 5. **Backfill:** por lotes, idempotente, reanudable, con conteos antes/después y
    checksum de columnas clave.
 6. **Impacto:** locks que toma cada sentencia y su duración esperada; efecto sobre
-   el legacy en operación; tamaño de tablas (mídelo, no lo supongas).
+   los servicios en operación; tamaño de tablas (mídelo, no lo supongas).
 7. **Rollback:** conserva datos; permite volver a operar. Si una migración es
    irreversible, **dilo explícitamente** y exige aprobación.
-8. **Compatibilidad:** el legacy y el backend actual siguen funcionando con el
+8. **Compatibilidad:** el backend y el frontend actuales siguen funcionando con el
    esquema nuevo (probado).
 9. **Verificación post:** consultas y pruebas que demuestran el invariante.
 
@@ -234,7 +234,7 @@ Estructura sugerida: script SQL/pgTAP o pruebas Python con dos conexiones en
 "Consulté disponibilidad y estaba libre" (TOCTOU) · EXCLUDE con columnas NULL · `date`
 para ventanas horarias · RLS sin políticas · migración editada tras aplicarse ·
 backfill sin conteos · `float` para dinero · prueba secuencial como concurrencia ·
-`legacy_congelado()` fail-open · UNIQUE global donde debía ser por empresa · FK
+flag de bloqueo fail-open · UNIQUE global donde debía ser por empresa · FK
 simple que permite cruzar empresas · índice `CONCURRENTLY` dentro de transacción.
 
 ## 10. Formato de entrega
@@ -250,7 +250,7 @@ simple que permite cruzar empresas · índice `CONCURRENTLY` dentro de transacci
 <DDL/migración, orden, precondiciones, backfill>
 
 ## Impacto y rollback
-<datos, legacy, locks, ventana, reversión>
+<datos, locks, ventana, reversión>
 
 ## Pruebas
 <comando, escenario, resultado real (incl. concurrencia y mutación)>
@@ -270,7 +270,7 @@ simple que permite cruzar empresas · índice `CONCURRENTLY` dentro de transacci
 4. ¿Cubre `NULL`, filas inactivas y estados históricos?
 5. ¿Hay prueba con dos conexiones y prueba de mutación?
 6. ¿El rollback conserva datos y permite operar?
-7. ¿El legacy sigue funcionando con el esquema nuevo?
+7. ¿El frontend y los consumidores siguen funcionando con el esquema nuevo?
 8. ¿Probé con el rol real de la aplicación (si toqué RLS)?
 9. ¿Medí tamaños/impacto en vez de suponerlos?
 
@@ -280,7 +280,7 @@ simple que permite cruzar empresas · índice `CONCURRENTLY` dentro de transacci
   autorización explícita; ante duda, trabaja en una base local desechable.
 - Escribir en `supabase/migrations/` requiere aprobación.
 - No leas `.env` ni credenciales.
-- No modifiques `public` para "arreglar" el núcleo sin plan de convivencia.
+- No crees ni modifiques objetos en `public`: fue retirado y cualquier reapertura requiere ADR y autorización.
 - No declares una garantía de concurrencia sin prueba con dos conexiones.
 - No toques código de aplicación: especifícalo para `backend`.
 

@@ -113,18 +113,18 @@ Reglas:
 
 ## 3. Reglas no negociables del ERP
 
-1. `public` es el **legacy**; `nucleo` es el **destino**. Coexisten y pueden tener escrituras. No introduzcas una tercera fuente de verdad.
+1. `nucleo` es el **único esquema de negocio activo**. `public` fue retirado en la migración `0028`: no tiene tablas de negocio ni recibe escrituras. No introduzcas una segunda fuente de verdad ni reabras `public` sin ADR y autorización.
 2. No migres tablas, endpoints ni pantallas por iniciativa propia. Un cambio de fuente de verdad requiere plan (ADR), autorización y ventana de cutover.
-3. No elimines rutas, tablas, datos ni pantallas legacy solo porque exista una versión nueva.
+3. No elimines datos financieros, rutas en uso ni pantallas sin plan de reemplazo y autorización.
 4. No asumas que una función está terminada porque un documento la marca ✅. Verifica UI → API → servicio → base → prueba.
 5. No asumas que una función no existe porque falta en un documento antiguo.
-6. Antes de modificar operaciones críticas, traza todos los lectores y escritores en `public` y `nucleo`.
+6. Antes de modificar operaciones críticas, traza todos los lectores y escritores en `nucleo` y en el frontend.
 7. Las asignaciones de tracto, rampla y chofer son invariantes operativas. Una validación en Python o en la UI no impide una condición de carrera.
-8. Disponibilidad, reservas, bloqueos, mantenciones y descansos deben compartir un libro de ocupación consistente. Hoy `nucleo.reservas_recurso` cubre el núcleo, **no** las escrituras legacy.
+8. Disponibilidad, reservas, bloqueos, mantenciones y descansos deben compartir un libro de ocupación consistente. `nucleo.reservas_recurso` es el único libro de ocupación.
 9. `timestamptz` para eventos (UTC en BD, `America/Santiago` solo en presentación); `date` solo para vencimientos/vigencias. Rangos del núcleo semiabiertos `[inicio, fin)`.
 10. `numeric` para dinero; nunca `float`. No redondees a mitad de un cálculo sin regla documentada.
 11. Las garantías críticas se imponen en PostgreSQL o en una transacción demostrada, no solo en servicio ni en UI.
-12. No declares aislamiento multiempresa hasta comprobar autorización y filtrado en servidor **y** en base. `public` no tiene `empresa_id`; `nucleo` tiene RLS habilitado sin políticas y no hay evidencia de que el backend use un rol sujeto a RLS: verifica el rol efectivo de `DATABASE_URL` (sin imprimir la cadena) antes de afirmarlo.
+12. No declares aislamiento multiempresa hasta comprobar autorización y filtrado en servidor **y** en base. `nucleo` tiene RLS; no hay evidencia de que el backend use un rol sujeto a RLS: verifica el rol efectivo de `DATABASE_URL` (sin imprimir la cadena) antes de afirmarlo.
 13. No desactives pruebas, hooks, restricciones ni controles para obtener un resultado verde.
 14. No ejecutes operaciones destructivas, migraciones sobre datos reales, cutover, restauración o cambios de producción sin autorización explícita.
 15. **Reglas tributarias, laborales y comerciales sin fuente no se inventan.** IVA, retenciones, impuesto específico del combustible, gratificación, comisiones, DTE/SII: se registran como pregunta con destinatario ("validar con contador / asesor laboral / proveedor / dueño").
@@ -152,7 +152,7 @@ Antes de editar:
 2. Ejecuta `git status --short` y revisa el diff del área.
 3. Localiza el flujo completo: pantalla → cliente HTTP → router → dependencia de auth → servicio → modelo → migración/constraint.
 4. Prefiere búsquedas dirigidas (`rg`, `grep`) y lecturas parciales; no vuelques archivos gigantes al contexto.
-5. Identifica si el área es legacy, núcleo o compartida. Si es compartida, documenta ambos lados.
+5. Identifica el módulo y confirma que el área pertenece a `nucleo`; si algo apunta a `public`, trátalo como referencia histórica.
 
 Al editar:
 
@@ -174,8 +174,8 @@ Al editar:
 | **Medio** | Endpoint, pantalla, consulta, validación no financiera | Unitarias + integración/HTTP + regresión del área |
 | **Alto** | Dinero, permisos, autenticación, multiempresa, persistencia, disponibilidad, migraciones, cutover, facturación, pagos, anulación, auditoría | Lo anterior + adversariales + concurrencia real si aplica + revisión independiente (`qa` y/o `auditor-seguridad`) + rollback analizado |
 
-Ante duda entre dos niveles, aplica el mayor. Tocar `public` y `nucleo` a la vez es al
-menos Medio; tocar dinero o tenant es Alto.
+Ante duda entre dos niveles, aplica el mayor. Tocar persistencia y contrato HTTP a la
+vez es al menos Medio; tocar dinero o tenant es Alto.
 
 ## 7. Política de pruebas
 
@@ -201,7 +201,7 @@ Reglas:
 ## 8. Cambios de base de datos
 
 - Migraciones **forward-only** en `supabase/migrations/` con numeración consecutiva. No edites una migración aplicada; crea una nueva.
-- Toda migración declara: objetivo, objetos afectados, **precondiciones (consultas de detección que deben dar 0 filas)**, impacto en datos y locks, rollback, compatibilidad con `public` y `nucleo`, y pruebas.
+- Toda migración declara: objetivo, objetos afectados, **precondiciones (consultas de detección que deben dar 0 filas)**, impacto en datos y locks, rollback, compatibilidad con `nucleo` y el frontend, y pruebas.
 - Cambios incompatibles: patrón expand/contract (nullable → backfill por lotes → validar → constraint; `NOT VALID` + `VALIDATE CONSTRAINT` en tablas grandes; índices con `CONCURRENTLY` fuera de transacción).
 - Si la detección encuentra datos que violarían la constraint: **reporta, no borres**.
 - No uses `SQLModel.metadata.create_all()` como sustituto de migraciones.
@@ -219,8 +219,7 @@ Reglas:
 - Supabase Auth emite el JWT; el backend lo valida contra JWKS (`RS256`/`ES256`, audiencia `authenticated`).
 - Núcleo: empresa desde `X-Empresa-ID` + membresía `nucleo.usuarios_empresa`; **nunca** desde `empresa_id` del body.
 - El backend es la autoridad de permisos. Ocultar un botón no es autorización. Todo endpoint nuevo declara su permiso (deny-by-default), incluidos verbos secundarios.
-- El legacy no es multiempresa y no filtra por empresa; no lo presentes como aislado.
-- La auditoría del núcleo es append-only por trigger, con cobertura parcial; no cubre el legacy. No afirmes "todo cambio queda auditado".
+- La auditoría del núcleo es append-only por trigger, con cobertura parcial. No afirmes "todo cambio queda auditado".
 - Operaciones sensibles (cambios de rol/permiso, emisión/anulación de facturas, pagos, notas de crédito, aprobación de gastos, cutover, restauración, migraciones): evidencia + autorización + revisión independiente cuando corresponda.
 - Operaciones con dinero o estado exigen **idempotencia** (clave natural o `Idempotency-Key`); un doble clic no puede duplicar dinero.
 
@@ -259,7 +258,7 @@ bloqueo concreto. No inventes éxito.
 | Agente | Úsalo para | Escribe en |
 |---|---|---|
 | `orquestador` | Interpretar, planificar por olas, delegar, consolidar y verificar | Repo completo (sin `.env`); migraciones con aprobación; `docs/orquestacion/**` |
-| `arquitectura` | Límites, contratos, fuentes de verdad, cutover, ADRs, deuda | `docs/arquitectura/**` (no toca código) |
+| `arquitectura` | Límites, contratos, fuentes de verdad, evolución del esquema, ADRs, deuda | `docs/arquitectura/**` (no toca código) |
 | `datos` | PostgreSQL, SQLModel, migraciones, constraints, concurrencia, RLS | `docs/datos/**`, `supabase/tests/**`; migraciones con aprobación |
 | `backend` | FastAPI, reglas, auth, transacciones, idempotencia, errores | `backend/app/**`, `backend/tests/**`, `docs/backend/**`; migraciones con aprobación |
 | `frontend` | Next.js, TypeScript, formularios, estados, accesibilidad | `frontend/src/**`, `frontend/public/**`, `docs/frontend/**`; `package.json` con aprobación |
@@ -272,7 +271,7 @@ bloqueo concreto. No inventes éxito.
 | Si la solicitud es… | Empieza por | Luego |
 |---|---|---|
 | Pregunta sobre el estado del sistema | `orquestador` (investiga y responde) | — |
-| "¿Cómo debería convivir X entre public y nucleo?" | `arquitectura` → ADR | `datos`/`backend` según handoff |
+| "¿Cómo debería modelarse X en `nucleo`?" | `arquitectura` → ADR | `datos`/`backend` según handoff |
 | Nueva regla comercial/financiera | `negocio-finanzas` (regla + casos numéricos) | `datos` → `backend` → `frontend` → `qa` |
 | Constraint, migración, RLS | `datos` (diseño) | `qa` (pruebas) → `auditor-seguridad` si es tenant/dinero |
 | Endpoint o servicio | `backend` (contrato) | `frontend`, `qa` |
@@ -361,7 +360,7 @@ carga, repórtalo y continúa sin inventar su contenido.
 - [ ] Idempotencia donde hay dinero o estado.
 - [ ] Pruebas unitarias y, si corresponde, integración/HTTP/E2E/adversariales/concurrencia.
 - [ ] Pruebas pertinentes **ejecutadas** y resultado registrado (sin skips disfrazados).
-- [ ] Legacy sigue funcionando (si se tocó o puede verse afectado).
+- [ ] El núcleo y el frontend siguen funcionando (si se tocó o puede verse afectado).
 - [ ] Rollback definido y compatible con los datos existentes.
 - [ ] Diff revisado: sin secretos, artefactos ni cambios accidentales.
 - [ ] Revisión independiente hecha si el riesgo es Alto.
@@ -421,7 +420,7 @@ Reglas que sí viven acá, porque son permanentes:
 | `docs/estado.md` | Estado real y riesgos abiertos |
 | `docs/mapa-sistema.md` | Capas, flujos y dónde vive cada pieza |
 | `docs/arquitectura/nucleo-diseno.md` | Diseño del schema `nucleo`, disponibilidad, concurrencia |
-| `docs/arquitectura/modulos.md` | Módulos legacy + núcleo |
+| `docs/arquitectura/modulos.md` | Inventario histórico de módulos (superado; no citar como estado) |
 | `docs/arquitectura/fuentes-de-verdad.md` | Qué esquema manda por concepto |
 | `docs/negocio/catalogo-reglas.md` | Reglas de negocio `R-0XX` |
 | `docs/operacion/cutover.md` | Cutover y rollback |
@@ -430,7 +429,7 @@ Reglas que sí viven acá, porque son permanentes:
 | `docs/_archivo/` | Histórico: **no citar como estado** |
 | `supabase/migrations/` | DDL real; tablas, constraints y triggers |
 | `backend/app/nucleo/` | Servicios, modelos, schemas y rutas del núcleo |
-| `backend/app/api/routes/` | Rutas legacy |
-| `frontend/src/lib/api.ts` · `nucleo.ts` | Los dos clientes HTTP |
+| `backend/app/api/routes/auth.py` | Autenticación (ruta base) |
+| `frontend/src/lib/nucleo.ts` | Cliente HTTP del núcleo |
 
 - OpenCode v2: <https://opencode.ai/v2/docs/agents>, <https://opencode.ai/v2/docs/skills>, <https://opencode.ai/v2/docs/permissions>, <https://opencode.ai/v2/docs/config>.

@@ -1,3 +1,5 @@
+> ⚠️ **Aviso de vigencia (2026-11-01):** cita archivos/cifras anteriores al retiro del legacy (`public`, `lib/api.ts`, `backend/app/api/routes/*`, `kpi_engine.py`). No citar como estado actual; ver `docs/estado.md` §2–§6 y `docs/PLAN_DESARROLLO.md`.
+
 # F0 · WP6 — Línea base de seguridad (Due Diligence)
 
 > Depositado por el orquestador (2026-10-29): el agente `auditor-seguridad` no tenía permiso `shell`/`edit` en su sesión; el contenido es íntegro de su respuesta. El Anexo A (herramientas ejecutadas) lo agregó el orquestador con permiso shell.

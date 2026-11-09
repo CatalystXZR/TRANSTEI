@@ -314,6 +314,9 @@ Lo que no cierra es **de defensa en profundidad**, no de bypass:
   (`tipo(exc.orig).__name__` + `sqlstate`).
 
 ### SEC-039 [informativa · preexistente, no atribuible] El rol del agente puede escribir las tres llaves del gate y la identidad
+> **Estado 2026-11-01: CERRADO** por `0029_tei_admin_gate.sql`: `tei_app` pierde
+> INSERT/UPDATE/DELETE sobre identidad/ACL/flag; las escrituras pasan por
+> `nucleo.admin_*` (SECURITY DEFINER, con `empresa_id = ctx_empresa()`).
 - **Estado:** confirmado · **Evidencia:** `supabase/migrations/0021:855-860`
   (`grant select, insert, update` sobre `contactos_whatsapp` y
   `permisos_contacto` a `tei_app`) y `0023:253` (`select, insert, update` sobre

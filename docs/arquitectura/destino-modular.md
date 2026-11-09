@@ -1,3 +1,5 @@
+> ⚠️ **Aviso de vigencia (2026-11-01):** cita archivos/cifras anteriores al retiro del legacy (`public`, `lib/api.ts`, `backend/app/api/routes/*`, `kpi_engine.py`). No citar como estado actual; ver `docs/estado.md` §2–§6 y `docs/PLAN_DESARROLLO.md`.
+
 # Destino modular del ERP TEI — fronteras, contratos, orquestación y escalabilidad
 
 > **Pregunta que responde:** ¿cuál es el destino modular del sistema y qué lo justifica?

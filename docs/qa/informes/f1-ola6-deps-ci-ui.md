@@ -1,3 +1,5 @@
+> ⚠️ **Aviso de vigencia (2026-11-01):** cita archivos/cifras anteriores al retiro del legacy (`public`, `lib/api.ts`, `backend/app/api/routes/*`, `kpi_engine.py`). No citar como estado actual; ver `docs/estado.md` §2–§6 y `docs/PLAN_DESARROLLO.md`.
+
 # F1 — Ola 6: dependencias, CI E2E y UI del POD (2026-10-31)
 
 > Ejecutado por el orquestador dentro del reparto acordado con la sesión paralela (dueña del módulo agente). Archivos tocados: `backend/requirements*.txt`, `.github/workflows/ci.yml`, `frontend/package.json` + lock, `frontend/src/components/expediente/pod-panel.tsx`.

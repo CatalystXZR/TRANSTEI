@@ -1,3 +1,5 @@
+> ⚠️ **Aviso de vigencia (2026-11-01):** cita archivos/cifras anteriores al retiro del legacy (`public`, `lib/api.ts`, `backend/app/api/routes/*`, `kpi_engine.py`). No citar como estado actual; ver `docs/estado.md` §2–§6 y `docs/PLAN_DESARROLLO.md`.
+
 # Auditoría de seguridad e integridad — R-01 (comisión) / R-02 (licencia A5) / 0015 (ocupación)
 
 - **Rol:** `auditor-seguridad` (revisión independiente, sin acceso a la conclusión del autor).

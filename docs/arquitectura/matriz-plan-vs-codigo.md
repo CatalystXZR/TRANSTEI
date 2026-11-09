@@ -1,3 +1,5 @@
+> ⚠️ **Aviso de vigencia (2026-11-01):** cita archivos/cifras anteriores al retiro del legacy (`public`, `lib/api.ts`, `backend/app/api/routes/*`, `kpi_engine.py`). No citar como estado actual; ver `docs/estado.md` §2–§6 y `docs/PLAN_DESARROLLO.md`.
+
 # Matriz de reconciliación — `docs/_archivo/planes/PLAN_MAESTRO_ERP_V2.md` vs. repositorio
 
 > **Pregunta que responde:** ¿qué afirmaba el plan maestro y qué existe realmente hoy?

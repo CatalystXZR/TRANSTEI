@@ -1,3 +1,5 @@
+> ⚠️ **Aviso de vigencia (2026-11-01):** cita archivos/cifras anteriores al retiro del legacy (`public`, `lib/api.ts`, `backend/app/api/routes/*`, `kpi_engine.py`). No citar como estado actual; ver `docs/estado.md` §2–§6 y `docs/PLAN_DESARROLLO.md`.
+
 # F0 — Due Diligence y Línea Base · ERP Transportes TEI SpA
 
 > **Fecha:** 2026-10-29 · **Orquestador:** `orquestador` · **Misión:** F0 (solo lectura + ejecución de pruebas + documentación)

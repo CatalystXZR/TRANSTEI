@@ -1,3 +1,5 @@
+> ⚠️ **Aviso de vigencia (2026-11-01):** cita archivos/cifras anteriores al retiro del legacy (`public`, `lib/api.ts`, `backend/app/api/routes/*`, `kpi_engine.py`). No citar como estado actual; ver `docs/estado.md` §2–§6 y `docs/PLAN_DESARROLLO.md`.
+
 # F0-WP1 — Due Diligence Frontend (solo lectura)
 
 > Depositado por el orquestador (2026-10-29): el agente `frontend` no tiene permiso de escritura en `docs/qa/informes/`; el contenido es íntegro de su respuesta. F0 es solo lectura.

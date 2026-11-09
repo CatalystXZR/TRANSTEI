@@ -108,7 +108,7 @@ documentado está conectado al frontend, ni que un documento describe lo impleme
 5. **Una operación de negocio = una transacción** con todos sus efectos (estado,
    reserva, saldo, auditoría).
 6. **Idempotencia donde hay dinero o estado.**
-7. **Compatibilidad antes que elegancia:** no rompas el frontend ni el legacy.
+7. **Compatibilidad antes que elegancia:** no rompas el frontend ni los consumidores.
 8. **Evidencia o no pasó.**
 
 ## 2. Niveles de certeza
@@ -118,13 +118,12 @@ documentado está conectado al frontend, ni que un documento describe lo impleme
 
 ## 3. Mapa real del backend (verifícalo, no lo asumas)
 
-- Prefijo `/api/v1`. Routers legacy en `backend/app/api/routes/`; núcleo en
-  `backend/app/nucleo/api_*.py`.
+- Prefijo `/api/v1`. Routers del núcleo en `backend/app/nucleo/api_*.py`;
+  `backend/app/api/routes/` solo conserva `auth.py`.
 - Auth: Supabase JWT validado contra JWKS en `app/core/security.py`.
-- Legacy: `get_current_user` busca `public.usuarios` por `auth_id`; roles
-  `admin/operacion/contabilidad`; **no** filtra por empresa.
 - Núcleo: `get_contexto_empresa` exige `X-Empresa-ID`, resuelve membresía en
   `nucleo.usuarios_empresa` y rol; permisos por módulo en `nucleo/permisos.py`.
+- No hay rutas de negocio fuera de `nucleo`; si aparece una, trátala como deuda.
 - Errores de dominio del núcleo: `ErrorNucleo` (`codigo`, `mensaje`, `contexto`,
   `errores`) con mapeo HTTP estable.
 - `get_session()` con SQLModel: las transacciones **no** son automáticas en todos
@@ -134,8 +133,8 @@ documentado está conectado al frontend, ni que un documento describe lo impleme
 
 **Fase 0 — Reconocimiento (lectura).** Traza el flujo actual: ruta → dependencia
 de auth/permiso → schema de entrada → servicio → modelo → constraint. Localiza el
-cliente frontend que lo consume (`frontend/src/lib/api.ts` o `nucleo.ts`) y los
-tests existentes. Anota si el área es legacy, núcleo o compartida.
+cliente frontend que lo consume (`frontend/src/lib/nucleo.ts`) y los
+tests existentes. Anota el módulo y confirma que el área es `nucleo`.
 
 **Fase 1 — Contrato.** Define y escribe en `docs/backend/contratos/<tema>.md`:
 método, ruta, request (tipos, obligatorios, límites), response, códigos de estado,
@@ -156,7 +155,7 @@ la constraint no existe.
 
 **Fase 5 — Implementación mínima** respetando los patrones del módulo.
 
-**Fase 6 — Verificación.** Pruebas del área, regresión legacy si se tocó legacy,
+**Fase 6 — Verificación.** Pruebas del área, regresión del frontend si se tocó,
 lint/tipos. Pega comandos y salidas reales.
 
 **Fase 7 — Handoff.** Entrega al frontend el contrato exacto y a `qa`/`auditor-
@@ -230,10 +229,10 @@ PostgreSQL al cliente (puede filtrar estructura interna).
 
 - No uses `create_all()` ni DDL en runtime.
 - No agregues `try/except Exception` que oculte fallos; registra y propaga.
-- No dupliques endpoints legacy en el núcleo sin plan de contrato y cutover.
+- No dupliques endpoints en el núcleo sin plan de contrato y migración del consumidor.
 - No cambies el contrato de un endpoint en uso sin revisar frontend y tests.
 - No desactives auth, permisos o validaciones para pasar una prueba.
-- No borres rutas legacy.
+- No borres rutas en uso sin plan de reemplazo.
 - No declares un endpoint integrado sin revisar el cliente frontend.
 - Si falta una regla de negocio (tasa, comisión, redondeo), **pregunta/escala**;
   no la inventes.
@@ -254,7 +253,7 @@ romper el schema de respuesta · `except` amplio · confundir "endpoint existe" 
 | Persistencia/constraint | integración PostgreSQL real |
 | Contrato | `TestClient`/HTTP: 2xx, 4xx, permisos |
 | Concurrencia (reservas, folios, pagos, estados) | dos conexiones reales |
-| Regresión | suite del área (+ legacy si se tocó) |
+| Regresión | suite del área (+ frontend si se tocó) |
 
 Reporta comando y salida. Distingue passed/failed/skipped; un `skip` no cuenta.
 
@@ -277,7 +276,7 @@ Reporta comando y salida. Distingue passed/failed/skipped; un `skip` no cuenta.
 <comando + resultado real>
 
 ## Compatibilidad
-<legacy, frontend, consumidores>
+<frontend, consumidores, datos históricos>
 
 ## Handoff
 <qué necesita frontend; qué debe revisar qa/auditor-seguridad>
@@ -294,7 +293,7 @@ Reporta comando y salida. Distingue passed/failed/skipped; un `skip` no cuenta.
 4. ¿Los conflictos devuelven 409/422 con código de dominio y no 500?
 5. ¿Hay idempotencia en operaciones con dinero/estado?
 6. ¿La transacción cubre todos los efectos y no hay commits parciales?
-7. ¿El frontend y el legacy siguen funcionando (contrato revisado)?
+7. ¿El frontend y los consumidores siguen funcionando (contrato revisado)?
 8. ¿Inventé alguna regla de negocio, tasa o norma? (Debe ser "no".)
 9. ¿Pegué salidas reales y listé lo no verificado?
 

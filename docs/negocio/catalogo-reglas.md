@@ -1,7 +1,9 @@
+> ⚠️ **Aviso de vigencia (2026-11-01):** cita archivos/cifras anteriores al retiro del legacy (`public`, `lib/api.ts`, `backend/app/api/routes/*`, `kpi_engine.py`). No citar como estado actual; ver `docs/estado.md` §2–§6 y `docs/PLAN_DESARROLLO.md`.
+
 # Catálogo de reglas de negocio — ERP Transportes TEI SpA
 
 > **Pregunta que responde:** ¿cuál es la regla de negocio `R-0XX`, su fórmula y su estado de implementación?
-> **Dueño:** `negocio-finanzas` · **Verificado:** 2026-10-31 para **R-05…R-09** y **CN-03…CN-09** (FASE 2, retiro del legacy); R-01…R-04 conservan su verificación del 2026-10-29/30, no re-ejecutada · **Método:** lectura de código + DDL de migraciones + decisiones del dueño
+> **Dueño:** `negocio-finanzas` · **Verificado:** 2026-11-04 para **R-10…R-12** (métricas económicas del chat in-app; lectura de código y DDL, sin ejecución de pruebas) y 2026-10-31 para **R-05…R-09** y **CN-03…CN-09** (FASE 2, retiro del legacy); R-01…R-04 conservan su verificación del 2026-10-29/30, no re-ejecutada · **Método:** lectura de código + DDL de migraciones + decisiones del dueño
 > **Caduca si:** cambia una regla, su implementación o se cierra una `D-NN`.
 > **Re-verificar con:** `grep -n "R-0" docs/negocio/catalogo-reglas.md | head`
 
@@ -482,6 +484,237 @@ crudos, `:30-47`, y `nombre`/`razon_social` vienen de un CSV subido); import que
 la sesión a medias (un `commit` para todo el archivo, `:229,274`).
 
 **Caso numérico:** CN-09.
+
+---
+
+## R-10 — Saldo, factura pendiente y aging
+
+**Enunciado:** el saldo de una factura es `total − pagos − notas de crédito aplicadas`;
+una factura está pendiente si `saldo > 0` y no está `anulada`; el atraso es
+`max(0, hoy − fecha_vencimiento)` y se reparte en cinco tramos. La regla describe lo
+que el servicio ya hace; **no fija** el tratamiento tributario de la nota de crédito
+(`P-12`).
+
+**Fuente:** implementación del núcleo `backend/app/nucleo/servicio_facturacion.py:169-232,777-812`
+y DDL `supabase/migrations/0013_facturacion.sql:10-38,163-212`. No hay decisión escrita
+del dueño ni del contador sobre el neteo de NC; la parte tributaria queda como `P-12`.
+
+**Fórmula:**
+
+```text
+saldo(f)       = f.total − Σ pagos(f).monto − Σ notas(f).monto   [notas.estado = 'aplicada']
+pendiente(f)   = saldo(f) > 0 AND f.estado <> 'anulada'
+dias_atraso(f) = max(0, (hoy − f.fecha_vencimiento).días)
+bucket(f)      = 'por_vencer' si dias_atraso = 0
+               = '0_30'       si 1 ≤ dias_atraso ≤ 30
+               = '31_60'      si 31 ≤ dias_atraso ≤ 60
+               = '61_90'      si 61 ≤ dias_atraso ≤ 90
+               = 'mas_90'     si dias_atraso ≥ 91
+total_cxc      = Σ saldo(f) para pendiente(f)
+total_vencido  = Σ saldo(f) para pendiente(f) AND dias_atraso(f) > 0
+```
+
+- **Unidades/moneda:** CLP, `numeric(14,2)`.
+- **Base:** `f.total` (columna generada `neto + iva`, `0013:21`); pagos y NC se suman
+  por factura.
+- **Signo:** pagos y NC restan; nunca deben dejar saldo negativo (INV-F02/INV-F03).
+- **Redondeo:** `ROUND_HALF_UP` a 0,01 por factura y en los totales
+  (`_d`, `servicio_facturacion.py:63-64`; saldo en `:207`).
+- **Momento:** al consultar; el saldo es **vivo** (un pago posterior lo cambia). El
+  `estado` lo recalcula el trigger `fn_factura_estado` (`0013:163-212`) con
+  `current_date` de la sesión.
+- **Corte:** `hoy` en la zona de la empresa (`servicio_facturacion.py:103-104`).
+
+**Entradas:** `facturas_nucleo.total/fecha_vencimiento/estado`; `pagos_nucleo.monto/fecha`;
+`notas_credito_nucleo.monto/estado`. Los pagos y NC pueden agregarse después del
+cálculo → el saldo cambia; el `total` se lee tal como quedó almacenado en la factura.
+
+**Estados que la habilitan:** factura `emitida`, `parcial`, `vencida` o `pagada`;
+`anulada` se excluye. La NC solo resta si `estado = 'aplicada'`.
+
+**Implementación real:** `ServicioFacturacion._saldos()` `servicio_facturacion.py:169-183`;
+`_aging()` `:185-195`; `_resumen()` `:197-232`; `aging()` `:777-812`; guardas de pago
+`:682-689` y NC `:717-722`; trigger `fn_factura_estado` `0013:163-212`; endpoint
+`GET /nucleo/cobranza/aging` (`api_facturacion.py:124-128`).
+
+**Clasificación:** `implementada` (servicio y endpoint) · **parcial** en base:
+INV-F02/INV-F03 solo se validan en la aplicación.
+
+**Evidencia:** lectura de código y DDL (2026-11-04). No se ejecutaron consultas ni
+pruebas en esta sesión; las pruebas de `test_nucleo_facturacion.py:230-360` están
+**declaradas, no ejecutadas**.
+
+**Invariantes asociados:** INV-F02 (pago ≤ saldo), INV-F03 (NC ≤ saldo), INV-F01 (un
+viaje no se factura dos veces). El aging depende de que F02/F03 se cumplan.
+
+**Riesgos:**
+
+- Pago o NC insertados por SQL directo (o por un endpoint que no replique la guarda)
+  pueden dejar saldo negativo y distorsionar M-04/M-05.
+- `aging()` trunca a 1000 facturas (`:778`) y hace N+1 consultas; no sirve como
+  agregado del chat.
+- `fn_factura_estado` usa `current_date` de la sesión (`0013:194`) mientras Python usa
+  `hoy` en zona de la empresa: cerca de medianoche el estado puede decir `vencida` con
+  0 días de atraso.
+- No existe aging histórico ni endpoint de anulación de factura en el núcleo;
+  `estado='anulada'` se respeta pero no se produce por API.
+
+**Ejemplo numérico:** CN-102.
+
+---
+
+## R-11 — Costo directo y margen de viaje (definición para el chat)
+
+**Enunciado:** para el chat, el costo directo de un viaje es la suma de los gastos
+**aprobados y activos** por su `monto_neto` más la **comisión del chofer** calculada
+sobre `monto_total_neto`; el margen del viaje es `monto_total_neto − costo_directo`.
+Por tracto y período, el margen es la suma de sus viajes cerrados. La composición es
+una **decisión pendiente** (`D-23`) y la base del ingreso también (`D-25`).
+
+**Fuente:** implementación `ServicioGastos.costos()` (`backend/app/nucleo/servicio_gastos.py:437-506`)
+y su copia persistida `fn_viaje_costos` (`supabase/migrations/0011_gastos.sql:91-135`,
+trigger `:137-156`). No hay decisión escrita del dueño sobre mantención/overhead
+(`D-20`, `D-23`) ni sobre recargos (`D-25`).
+
+**Fórmula:**
+
+```text
+ingreso_viaje  = v.monto_total_neto            -- generada: valor_flete_neto + monto_recargos (0004:621-623)
+gastos_viaje   = Σ g.monto_neto                -- g.estado='aprobado' AND g.activo
+comision_viaje = ROUND_HALF_UP(v.monto_total_neto × c.porcentaje_comision, 2)   si v.chofer_id IS NOT NULL
+               = 0                                                              si v.chofer_id IS NULL
+costo_directo  = gastos_viaje + comision_viaje
+margen_viaje   = ingreso_viaje − costo_directo
+margen_tracto  = Σ margen_viaje   para v.tracto_id = :t y v.fin_real ∈ [desde, hasta)
+margen_pct     = ROUND_HALF_UP(margen_tracto / ingreso_tracto × 100, 2)   si ingreso_tracto > 0; si no, NULL
+```
+
+- **Unidades/moneda:** CLP, `numeric(14,2)`; porcentaje en puntos porcentuales.
+- **Base del ingreso:** `monto_total_neto` (incluye recargos). **No** se usa
+  `valor_flete_neto` suelto; esa es la base de la nómina legacy
+  (`liquidaciones.py:92-95`) y está en discusión (`D-01`, `D-25`).
+- **Base de la comisión:** el mismo `monto_total_neto` (`servicio_gastos.py:460`).
+- **Signo:** gastos y comisión restan; el margen puede ser negativo (no hay `CHECK`).
+- **Redondeo:** la comisión se cuantiza a 0,01 con `HALF_UP`; en `costos()` el `_d()`
+  final (`:461`) redondea la suma, lo que equivale a redondear la comisión por viaje
+  porque los gastos ya tienen 2 decimales. `fn_viaje_costos` usa `round(numeric, 2)` de
+  PostgreSQL (HALF_UP para positivos).
+- **Momento:** al consultar; **no hay snapshot**. Si se aprueba un gasto después o
+  cambia `porcentaje_comision`, el margen del viaje histórico cambia.
+- **Exclusión:** viaje `anulado` o con `fin_real IS NULL` no entra al agregado; gastos
+  `pendiente`, `rechazado` o `activo=false` no suman.
+
+**Entradas:** `viajes.monto_total_neto/tracto_id/chofer_id/fin_real/estado`;
+`viaje_gastos.monto_neto/estado/activo`; `choferes.porcentaje_comision`.
+`monto_total_neto` es columna generada (`0004:623`) y la aplicación no la escribe;
+`porcentaje_comision` y los gastos **sí** pueden cambiar después del cálculo.
+
+**Estados que la habilitan:** viaje cerrado (`fin_real` no nulo) y no `anulado`; gasto
+`aprobado` y `activo`.
+
+**Implementación real:** `ServicioGastos.costos()` `servicio_gastos.py:437-506`;
+comisión `:456-461`; `margen_pct` `:464-466`; `fn_viaje_costos` `0011:91-135` + trigger
+`0011:137-156`. El **agregado por tracto y período no existe**.
+
+**Clasificación:** `parcial` — el cálculo por viaje existe; la composición del margen
+(`D-23`) y la base del ingreso (`D-25`) no están decididas. La copia persistida no
+tiene lector y puede quedar obsoleta.
+
+**Evidencia:** lectura de código y DDL (2026-11-04). `test_nucleo_gastos.py:227-276`
+está **declarada, no ejecutada**.
+
+**Invariantes asociados:** INV-G01 (rechazado no suma), INV-G02 (no se aprueba dos
+veces), INV-M01 (no mezcla viaje/empresa), INV-A01 (anulación conserva rastro).
+
+**Riesgos:**
+
+- **Tercera versión latente:** `fn_viaje_costos` escribe `viajes.costo_variable_real` /
+  `costo_total_real` y ningún código de aplicación la lee; si cambia el % del chofer o
+  el flete sin tocar un gasto, queda obsoleta.
+- **Mismo nombre, dos números:** `ServicioRentabilidad.rentabilidad_viaje()` llama
+  `margen` a ingreso − costo variable (`servicio_rentabilidad.py:192`) y `costo_total` a
+  variable + fijo (`:201`); no es el margen de esta regla.
+- **Redondeo de %:** `costos()` usa `quantize(0.01)` sin `rounding` → `HALF_EVEN`
+  (`:464-466`), mientras los montos usan `HALF_UP`; Δ 0,01 pp (CN-103).
+- **Histórico mutable:** cambiar `porcentaje_comision` recalcula viajes pasados; no hay
+  snapshot.
+- **Costo incompleto:** no incluye mantención (`D-20`), overhead ni costo financiero
+  (`D-23`); presentarlo como "utilidad del camión" sería incorrecto.
+
+**Ejemplo numérico:** CN-103.
+
+---
+
+## R-12 — Período y exclusiones de las métricas del chat
+
+**Enunciado (propuesta, pendiente de decisión):** cada métrica del chat usa una columna
+de fecha distinta y un conjunto explícito de exclusiones; el período es semiabierto
+`[desde, hasta)` y se interpreta en la zona horaria de la empresa. La regla **no está
+decidida** por el dueño (`D-22`, `D-24`); describe la convención que el chat debe
+implementar para que dos respuestas no cuenten el mismo viaje dos veces.
+
+**Fuente:** convención del repo `[desde, hasta)` (AGENTS.md §3.9); implementación de
+referencia `servicio_facturacion.py:103-104` (hoy en zona empresa); propuesta en
+[`metricas-agente.md`](metricas-agente.md) §2.2 y §3.8. No hay decisión del dueño sobre
+mes calendario/móvil ni sobre qué estados cuentan como flete.
+
+**Fórmula (mapa de poblaciones):**
+
+```text
+M-01 facturado   : facturas_nucleo.fecha_emision   ∈ [desde, hasta); estado <> 'anulada'
+M-01 cobrado     : pagos_nucleo.fecha              ∈ [desde, hasta)
+M-01 gastos      : viaje_gastos.fecha              ∈ [desde, hasta); estado='aprobado' AND activo
+M-01 margen      : viajes.fin_real                 ∈ [desde, hasta); estado <> 'anulado'
+M-03 fletes      : viajes.inicio_planificado       ∈ [desde, hasta); estado NOT IN ('anulado','borrador','cotizado')
+M-04/M-05 cartera: corte = hoy; sin período; saldo > 0; estado <> 'anulada'
+M-07 IVA débito  : facturas_nucleo.fecha_emision   ∈ [desde, hasta); estado <> 'anulada'
+```
+
+- `timestamptz` (`inicio_planificado`, `fin_real`) se compara contra
+  `(:desde::timestamp AT TIME ZONE :tz)` y `(:hasta::timestamp AT TIME ZONE :tz)`, con
+  `tz = empresa.zona_horaria`. `::date` o UTC desplaza viajes nocturnos (CN-104).
+- `date` (`fecha_emision`, `pagos.fecha`, `viaje_gastos.fecha`) se compara directo.
+- La tool debe rechazar `desde >= hasta` y un rango mayor a 366 días.
+- **Signo/moneda:** no aplican; la regla solo selecciona filas. Los montos se expresan
+  en CLP y se redondean al presentar.
+- **Redondeo:** no aplica al período; los montos se redondean al presentar.
+
+**Entradas:** `empresa.zona_horaria`; `desde`/`hasta` que resuelve la tool (presets
+`mes_actual`, `mes_anterior`, `ultimos_30_dias`, `personalizado`). El período usado se
+devuelve en la respuesta para que el modelo no lo invente.
+
+**Estados que la habilitan:** no hay transición de estado; es una regla de consulta.
+Depende de que los estados (`anulado`, `borrador`, `cotizado`) tengan el significado que
+el dueño confirme (`D-24`).
+
+**Implementación real:** no existe el agregado. Hay tres inconsistencias de borde:
+`servicio_iva.py:68` usa `fecha_emision <= :hasta`; `servicio_expediente.py:394-395` usa
+`inicio_planificado <= hasta`; `fn_factura_estado` usa `current_date` (`0013:194`). La
+zona de la empresa sí se usa en `servicio_facturacion.py:103-104`.
+
+**Clasificación:** `decisión pendiente` — la convención técnica está clara, pero el
+dueño no eligió mes calendario/móvil ni la población de fletes (`D-22`, `D-24`).
+
+**Evidencia:** lectura de código y DDL (2026-11-04); no se ejecutaron consultas. Los
+casos CN-104/CN-105 muestran el efecto de un día de más.
+
+**Invariantes asociados:** INV-A01 (exclusión de anulados conservando rastro). **No hay
+INV asignado al borde de período**; se propone a `datos` un invariante de no
+solapamiento entre períodos consecutivos.
+
+**Riesgos:**
+
+- **Doble conteo o pérdida en el borde:** un viaje con `fin_real` el primer día del mes
+  siguiente cae en el mes siguiente si se usa `[desde, hasta)`; si se usa `<=`, cae en
+  ambos.
+- **Zona horaria:** interpretar `timestamptz` en UTC mueve viajes nocturnos de mes
+  (CN-104).
+- **Poblaciones mezcladas:** facturado, cobrado, gastos y margen usan fechas distintas;
+  no se cumple `margen = facturado − gastos` (§3.8 de `metricas-agente.md`).
+- **Estados no decididos:** contar `borrador`/`cotizado` como flete infla M-03 (`D-24`).
+
+**Ejemplo numérico:** CN-104 (mes cruzado y zona horaria) y CN-105 (borde inclusivo del
+IVA).
 
 ---
 

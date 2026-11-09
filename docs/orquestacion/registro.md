@@ -1445,3 +1445,49 @@ Hechos confirmados:
 - `servicio_cutover.estado()` ya no lee `public.viajes` (0 fijo histórico).
 - Verificación: 128 unit · 404 integración (0 skipped) · E2E 20/20 · `make db-reset` 0001–0028 reproducible · `public` 0 tablas.
 Pendientes: restore drill del backup; scripts de rollback 0024_99/0025_99/0026_99 quedan históricos (asumían public); formalizar rol `tei_platform`; CI real en el primer push.
+
+#### Ola 2 + Ola 1 — transiciones de oficina, anulación de viaje y config de tenant (2026-11-02)
+Riesgo: ALTO (estados + disponibilidad + esquema multiempresa) | Estado: Ola 2 cerrada; Ola 1 aplicada solo en `tei_test`
+Hechos confirmados:
+- Ola 2 (`backend/app/nucleo/servicio_transiciones.py`, nuevo): `POST /nucleo/viajes/{id}/transicion` (`operacion:escribir`) lee la matriz `nucleo.transiciones_viaje` y rechaza `facturado`/`cobrado`/`anulado`; `POST /nucleo/viajes/{id}/anular` (`comercial:aprobar`) exige motivo ≥5, libera reservas con actor/motivo y deja evento. La garantía de legalidad sigue en `fn_viaje_transicion` (`0004:1511-1547`).
+- Corrección de auditoría previa: la matriz **sí** se aplica en PostgreSQL desde `0004`; el hueco real era la vía de oficina, no la garantía.
+- Ola 1 (`0030_tenant_config_agentes.sql`): `tenant_reglas_entidad` (5 FKs compuestas, `ck_regla_una_entidad`, `EXCLUDE` con centinelas, historial inmutable) y `tenant_suscripciones` (plan/estado/vigencia, sin precios ni límites). `tenant_config` **no** se creó: duplicaría `configuracion_empresa` (ADR-0008 §B.0). RLS+FORCE, `tei_app` sin DELETE.
+- Verificación: `make unit` 135 · `make test` 423 (0 skipped) · 4 pruebas SQL de 0030 OK (incluye RLS con `tei_app`, cross-tenant 42501 y ciclo rollback/re-aplicar).
+Pendiente: aplicar `0030` en la base `postgres` (autorización del dueño); concurrencia real de dos conexiones sobre `EXCLUDE` y transiciones (`qa`); unificar `TRANSICIONES_CONDUCTOR` con la matriz; decisión de factura (nota de crédito es el mecanismo vigente, `P-*` contador); `D-25`/`D-26` para plan/límites.
+
+#### Ola 3 — chat in-app, runtime de agentes y muro de pago (2026-11-02)
+Riesgo: ALTO (LLM + escritura de configuración + buzón de acciones críticas + tenancy) | Estado: runtime, UI y esquema aplicados en `postgres`
+Hechos confirmados:
+- `0030` aplicada en `postgres` y registrada en `supabase_migrations` (30 migraciones).
+- `0031_agente_chat_inapp.sql`: memoria del chat en `nucleo.agente_chat_conversaciones` / `agente_chat_mensajes` (RLS+FORCE, `tei_app` sin DELETE, idempotencia por clave). Aplicada **solo en `tei_test`**.
+- Runtime: `POST /nucleo/agente/chat`, `GET /nucleo/agente/chat/agentes`, `GET /nucleo/agente/chat/{id}`; permiso `agente:chat` solo `admin` (AB-02).
+- Dos agentes con credenciales separadas en Pydantic Settings (variables `GERENTE_*` y `SECRETARIA_*`); proveedor por defecto DeepSeek (API OpenAI-compatible). Cero claves en el repo; `.env.example` documenta los nombres.
+- Gerente: escritura directa en `configuracion_empresa` (`directiva_*`) y `tenant_reglas_entidad`, idempotente por clave natural y sin commit propio (el turno cierra la transacción).
+- Secretaria: solo crea `solicitudes` (`tipo='otra'`); aprobar ejecuta `crear_viaje`/`anular_viaje` en la misma transacción (`commit=False`).
+- Muro de pago: `modulos_empresa` + `tenant_suscripciones` (`estado='activa'` y plan premium) → `upsell` sin ejecutar la tool.
+- Frontend: `/agente/chat` (selector de agente, historial, idempotencia por envío, upsell, errores 502/503/504, a11y). `tsc`, `lint` y `build` verdes.
+- Verificación: `make unit` 135 · `make test` 468 (0 skipped) · 45 tests nuevos de chat.
+- Revisión independiente `auditor-seguridad` (`docs/seguridad/ola3-chat-hallazgos.md`): sin Críticos/Altos. SEC-051 (Gerente escribía IVA), SEC-052 (paywall inalcanzable), SEC-055 (admin único no podía aprobar), SEC-057 (clave reutilizaba solicitudes decididas) y SEC-062 (doble turno/tool duplicaba solicitudes) **cerrados** con prueba. SEC-053 queda **parcial** (transacción abierta durante el LLM; semáforo por proceso), SEC-054 (sin rate limit distribuido) y SEC-056 (historial del chat editable por `tei_app`) abiertos y declarados.
+- `0031` aplicada en `postgres` y registrada (31 migraciones). Pruebas SQL `0031_01`/`0031_02` ejecutadas contra `postgres` con rollback: 0 filas residuales; `tei_app` sin DELETE.
+Pendiente: prueba real contra DeepSeek (sin claves en la sesión); concurrencia de dos turnos simultáneos; E2E del chat; SEC-053 parcial (transacción abierta durante el LLM), SEC-054 (rate limit) y SEC-056 (historial del chat editable por `tei_app`); decisión de retención/compactación de memoria.
+
+#### Ola 4 — capacidades configurables por agente y panel admin (2026-11-02)
+Riesgo: ALTO (permisos, datos financieros, multiempresa, escritura desde LLM) | Estado: **en curso**
+Objetivo: que el gerente consulte y ejecute casi cualquier operación con datos reales; que la secretaria cree fletes al buzón y vea clientes/facturas pendientes sin acceder nunca a márgenes, costos o balances; panel `/configuracion/agentes` para habilitar/deshabilitar capacidades por empresa y agente; módulos premium gateados.
+Hechos confirmados (reconocimiento):
+- El chat solo lo usa el rol humano `admin` (`permisos.py:18,69-73`); el rol `gerente` está excluido por AB-02.
+- El gerente no puede escribir el catálogo cerrado (`herramientas.py:247-272`, `servicio_configuracion.py:180-184`, SEC-051).
+- La secretaria solo inserta en `nucleo.solicitudes` (`herramientas.py:550-690`); no ejecuta la acción.
+- La UI del chat muestra el texto tal cual (`chat-panel.tsx:382-388`), por eso se ven los `**`.
+- `nucleo.modulos_empresa` del tenant piloto no tiene `finanzas-pro`; no hay suscripciones. Decisión de esta entrega: `finanzas.leer_estrategico` no se ata a `finanzas_pro` (el requisito explícito es que el gerente responda margen); `whatsapp.recordatorio` sigue gateada.
+Decisiones:
+- Catálogo de capacidades en código + overrides en `nucleo.agente_capacidades` (0032) + límites duros por agente + permiso humano + auditoría.
+- Reversa controlada de SEC-051: tool explícita `gerente_actualizar_catalogo`, capacidad `configuracion.escribir_catalogo`, permiso `configuracion:escribir`; `gerente_upsert_directiva` sigue rechazando el catálogo.
+- Prompts naturales, sin “Puedo/No puedo”, sin `**`, sin `directiva_`; saneamiento determinista en backend.
+Delegaciones:
+- `datos` → migración 0032 + pruebas SQL + aplicación en `tei_test`/`postgres` → en curso.
+- `backend` → catálogo, runtime, tools, API, prompts, saneamiento, tests → en curso.
+- `frontend` → `/configuracion/agentes` + nav + tipos → en curso.
+- `arquitectura` → ADR-0009 → en curso.
+- `negocio-finanzas` → `docs/negocio/metricas-agente.md` → en curso.
+Evidencia que falta: resultados de los subagentes, `make unit`, `make test`, `tsc/lint/build`, pruebas adversariales y revisión independiente (`qa`, `auditor-seguridad`).

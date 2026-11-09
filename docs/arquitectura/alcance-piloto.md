@@ -1,3 +1,5 @@
+> ⚠️ **Aviso de vigencia (2026-11-01):** cita archivos/cifras anteriores al retiro del legacy (`public`, `lib/api.ts`, `backend/app/api/routes/*`, `kpi_engine.py`). No citar como estado actual; ver `docs/estado.md` §2–§6 y `docs/PLAN_DESARROLLO.md`.
+
 # Alcance del piloto de 90 días — qué está construido, qué falta y cómo ejecutarlo
 
 > ⚠️ **Aviso 2026-10-31.** Este alcance es del **2026-10-29**, antes de las Olas

@@ -1,3 +1,5 @@
+> ⚠️ **Aviso de vigencia (2026-11-01):** cita archivos/cifras anteriores al retiro del legacy (`public`, `lib/api.ts`, `backend/app/api/routes/*`, `kpi_engine.py`). No citar como estado actual; ver `docs/estado.md` §2–§6 y `docs/PLAN_DESARROLLO.md`.
+
 # F1 Ola 2 — Pruebas adversariales (2026-10-29/30)
 
 > Depositado por el orquestador: el agente `qa` agotó pasos antes de escribir el archivo y de correr la última pasada; contenido íntegro de su respuesta + **Anexo A (verificación del orquestador, 2026-10-30)** con los resultados reales de la re-ejecución.
