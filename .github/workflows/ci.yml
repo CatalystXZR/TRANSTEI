@@ -45,7 +45,7 @@ jobs:
         working-directory: .
         run: ./scripts/bootstrap_db_roles.sh
 
-      - name: Aplicar migraciones (0001–0023)
+      - name: Aplicar todas las migraciones
         working-directory: .
         run: supabase db reset
 
@@ -142,7 +142,7 @@ jobs:
       - name: Bootstrap del rol de aplicación (tei_app)
         run: ./scripts/bootstrap_db_roles.sh
 
-      - name: Aplicar migraciones (0001–0023)
+      - name: Aplicar todas las migraciones
         run: supabase db reset
 
       - name: Credencial local del rol de app (RLS)
