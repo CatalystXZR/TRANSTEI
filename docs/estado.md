@@ -128,7 +128,7 @@
 | RA-15 | Pooler real (transaction) con `SET LOCAL` + `tei_app` y límites de conexión | 🔴 no probado | `datos` + operación |
 | RA-16 | Rol de plataforma formal (`tei_platform`); hoy el cutover usó `postgres` (BYPASSRLS) | 🔴 | `datos` |
 | RA-17 | Deudas RLS del ADR-0005: R-1 (GUC antes de autorizar), R-5 (FK `reserva.viaje_id` sin empresa), R-9 (auditoría) | 🟡 | `datos` + `backend` |
-| RA-18 | CI nunca ejecutado en GitHub Actions (workflow con Supabase + E2E) | 🔴 | operación |
+| RA-18 | CI nunca ejecutado en GitHub Actions (workflow con Supabase + E2E) | 🔴 **evidencia nueva 2026-11-12:** el workflow **sí se dispara** con push (`gh run list`), pero todos los jobs fallan en 2 s con *"The job was not started because your account is locked due to a billing issue"* (runs `40945378405` y `40945728446` del 2026-10-29 y `43339641716` del 2026-11-13 — fallos históricos nunca vistos por falta de pushes). Bloqueo: **facturación de GitHub del dueño**, no defecto del repo | operación |
 | RA-19 | Decisiones tributarias/laborales pendientes (IVA crédito/F29, nómina, comisiones, DTE) | 🔴 | contador |
 | RA-20 | Documentos que citan archivos retirados (16; lista en ADR-0002 §8.2) | 🟡 | varios |
 | RA-21 | Decisiones de producto: RET-06 (tablero sin totales de dinero), RET-12 (secuencia), RET-13 (import CSV) | 🟡 | dueño |
