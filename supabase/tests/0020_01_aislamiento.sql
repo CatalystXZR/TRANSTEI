@@ -13,8 +13,9 @@
 --   H) `empresas`/`usuarios_empresa`: la empresa actual + las del propio
 --      auth_id; nunca la de otro tenant.
 --   I) `auditoria`: INSERT solo con la empresa del contexto; UPDATE denegado.
---   J) Catálogos globales: `transiciones_viaje` lectura sí, escritura no;
---      `cutover_control` lectura y update sí, insert no.
+--   J) Catálogos globales: `transiciones_viaje` lectura sí, escritura no.
+--      (La tabla `cutover_control` fue retirada en la migración `0035`,
+--      2026-11-12; su aserción histórica se eliminó de esta prueba.)
 --   K) `siguiente_folio` con empresa ajena ⇒ 42501 (vía función del núcleo).
 --   L) El contexto muere con el COMMIT: una transacción nueva en la MISMA
 --      conexión (caso pool) ve 0 filas.
@@ -71,7 +72,7 @@ begin
       from pg_class c join pg_namespace n on n.oid = c.relnamespace
      where n.nspname = 'nucleo' and c.relkind = 'r'
        and c.relname not in ('empresas', 'usuarios_empresa', 'auditoria',
-                             'transiciones_viaje', 'cutover_control')
+                             'transiciones_viaje')
      order by c.relname
   loop
     execute format('select count(*) from nucleo.%I', r.relname) into v_n;
@@ -98,10 +99,6 @@ begin
   select count(*) into v_n from nucleo.transiciones_viaje;
   if v_n = 0 then
     raise exception 'FALLO 0020-1A: transiciones_viaje debería ser legible (catálogo global) y devolvió 0';
-  end if;
-  select count(*) into v_n from nucleo.cutover_control;
-  if v_n <> 1 then
-    raise exception 'FALLO 0020-1A: cutover_control debería tener exactamente 1 fila, tiene %', v_n;
   end if;
 
   raise notice 'OK 0020-1A sin contexto: 0 filas en tablas de tenant, catálogos globales legibles';
@@ -217,7 +214,7 @@ begin
     v_aceptado := true;
   exception
     when insufficient_privilege then
-      raise notice 'OK 0020-1E alta de empresa rechazada (por diseño: la hace seed/cutover)';
+      raise notice 'OK 0020-1E alta de empresa rechazada (por diseño: la hace el seed)';
   end;
   if v_aceptado then
     raise exception 'FALLO 0020-1E: el alta de empresa fue ACEPTADA con tei_app';
@@ -385,21 +382,6 @@ begin
   if v_aceptado then
     raise exception 'FALLO 0020-1J: INSERT en transiciones_viaje fue ACEPTADO';
   end if;
-
-  v_aceptado := false;
-  begin
-    insert into nucleo.cutover_control (id) values (false);
-    v_aceptado := true;
-  exception
-    when insufficient_privilege then
-      raise notice 'OK 0020-1J cutover_control: INSERT denegado';
-  end;
-  if v_aceptado then
-    raise exception 'FALLO 0020-1J: INSERT en cutover_control fue ACEPTADO';
-  end if;
-
-  update nucleo.cutover_control set motivo = motivo where id = true;
-  raise notice 'OK 0020-1J cutover_control: UPDATE permitido (control global)';
 
   v_aceptado := false;
   begin

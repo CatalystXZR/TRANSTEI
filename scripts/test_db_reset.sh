@@ -36,6 +36,15 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA nucleo, public TO postgres;
 GRANT ALL ON ALL TABLES IN SCHEMA nucleo, public TO postgres;" >/dev/null
 
 echo "== [5/5] RLS en el clon + credencial local del rol de app =="
+# El clon ya trae el estado final (el dump copia policies, ACLs y datos). Estas
+# re-aplicaciones son replay de la historia correctiva en ORDEN: con `0035` la
+# tabla `nucleo.cutover_control` no existe en el dump, así que `0020` (que la
+# referenciaba) solo resuelve si se recrea primero con `0014` y se vuelve a
+# retirar con `0035`. Cadena completa: 0014 → 0020 → 0029 → 0033 → 0034 → 0035.
+if [ -f supabase/migrations/0014_cutover.sql ]; then
+  docker exec -i "$CONTAINER" psql -U supabase_admin -d "$TEST_DB" -v ON_ERROR_STOP=1 \
+    < supabase/migrations/0014_cutover.sql >/dev/null
+fi
 if [ -f supabase/migrations/0020_rls_multiempresa.sql ]; then
   docker exec -i "$CONTAINER" psql -U supabase_admin -d "$TEST_DB" -v ON_ERROR_STOP=1 \
     < supabase/migrations/0020_rls_multiempresa.sql >/dev/null
@@ -59,6 +68,12 @@ fi
 if [ -f supabase/migrations/0034_revoke_modulo_app.sql ]; then
   docker exec -i "$CONTAINER" psql -U supabase_admin -d "$TEST_DB" -v ON_ERROR_STOP=1 \
     < supabase/migrations/0034_revoke_modulo_app.sql >/dev/null
+fi
+# 0035: retiro de `cutover_control`; el replay termina con la tabla ausente,
+# igual que en la base de la app.
+if [ -f supabase/migrations/0035_retiro_cutover_control.sql ]; then
+  docker exec -i "$CONTAINER" psql -U supabase_admin -d "$TEST_DB" -v ON_ERROR_STOP=1 \
+    < supabase/migrations/0035_retiro_cutover_control.sql >/dev/null
 fi
 # Credencial local/CI documentada (tei_test es desechable; nunca datos reales).
 docker exec "$CONTAINER" psql -U supabase_admin -d postgres \
