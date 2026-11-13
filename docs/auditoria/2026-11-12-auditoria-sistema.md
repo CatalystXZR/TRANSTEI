@@ -9,7 +9,7 @@
 > **Naming:** el producto **no tiene nombre comercial**. Se comercializa bajo licencia
 > B2B por **TEI Advisory**. Su piloto/caso original es Transportes TEI SpA. No es
 > "TRANSTEI" ni un ERP por y para una sola empresa: es multiempresa desde el esquema.
-> **Estado del repo al auditar:** cambios de la entrega 2026-11-12 sin commitear (autorización pendiente del dueño).
+> **Estado del repo al auditar:** cambios de la entrega 2026-11-12 sin commitear (autorización pendiente del dueño). **Post-cierre:** el dueño autorizó el commit del 2026-11-12; la entrega quedó en `478a86d` (BD), `06ff1ed` (backend), `c8db948` (frontend) y `4eaee02` (docs/auditoría).
 
 ---
 

@@ -14,7 +14,7 @@
 
 | Elemento | Estado |
 |---|---|
-| Rama | `main`, árbol de trabajo con la entrega 2026-11-12 (retiro legacy) sin commitear |
+| Rama | `main`, árbol limpio; 4 commits de la erradicación del legacy (2026-11-12) |
 | Backend `:8000` | 🟢 sirviendo; 18 `include_router`, 0 rutas de cutover — 2026-11-12 |
 | Frontend `:3000` | 🟢 dev sirviendo; rutas legacy → 404; `tsc` y `lint` verdes — 2026-11-12 |
 | PostgreSQL `:54322` | 🟢 Supabase local confirmado: contenedor `supabase_db_TRANSTEI` healthy — 2026-11-12 |
@@ -30,7 +30,7 @@
 | Dato | Valor | Comando |
 |---|---|---|
 | Migraciones en disco | **35** (`0001`–`0035`) | `ls supabase/migrations \| wc -l` |
-| Migraciones en `HEAD` | **34** (`0001`–`0034`; `0035` untracked) | `git ls-tree HEAD supabase/migrations/ \| wc -l` |
+| Migraciones en `HEAD` | **35** (`0001`–`0035`, commit `478a86d` del 2026-11-12) | `git ls-tree HEAD supabase/migrations/ \| wc -l` |
 | Migraciones aplicadas en la base local | **35** (2026-11-12: `0001`–`0035`; también en `tei_test`) | `docker exec supabase_db_TRANSTEI psql -U postgres -tA -c "select count(*) from supabase_migrations.schema_migrations"` |
 | Tablas en `nucleo` | **50** (`0035` retiró `cutover_control`: 51 → 50) · tablas en `public`: **0** | `select count(*) from pg_tables where schemaname='nucleo'` |
 | Políticas RLS en `nucleo` | **54** | `select count(*) from pg_policies where schemaname='nucleo'` |

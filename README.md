@@ -96,7 +96,7 @@ Resumen a la fecha de esta actualización:
 | Área | Evidencia en el repo | Verificación |
 |---|---|---|
 | Esquema | `nucleo` único (50 tablas); `public` retirado en `0028` (0 tablas) | 🟢 migración aplicada y documentada |
-| Migraciones | `supabase/migrations/0001`–`0035` | 🟢 35 en disco y aplicadas en la base local; `0035` untracked |
+| Migraciones | `supabase/migrations/0001`–`0035` | 🟢 35/35 en disco, en `HEAD` y aplicadas en la base local |
 | API núcleo | routers en `backend/app/nucleo/api*.py` (18 `include_router`) | 🟢 montados en `backend/app/api/router.py` |
 | Identidad | `GET /api/v1/auth/me` (JWT + `nucleo.usuarios_empresa`) | 🟢 único endpoint fuera de `/nucleo` |
 | Pantallas | `frontend/src/app/(app)/`; PWA en `/conductor`; agente en `/agente/chat` | 🟢 rutas y manifest presentes; rutas legacy → 404 |
