@@ -5,8 +5,12 @@ type Cuenta = { email: string; password: string };
 const ADMIN: Cuenta = { email: "admin@tei.local", password: "TEI2026!" };
 const TENANT2: Cuenta = { email: "admin2@tei.local", password: "TEI2026!" };
 
-/** Ola A del retiro legacy (2026-10-31): URL retirada → equivalente del núcleo. */
-const RUTAS_RETIRADAS: Array<{ desde: string; hacia: string }> = [
+/**
+ * Ola A — rutas legacy eliminadas (F1, 2026-11-12): cada URL dejó de existir y
+ * responde 404. `hacia` queda como referencia histórica del equivalente del
+ * núcleo al que redirigía la página retirada (Ola A, 2026-10-31).
+ */
+const RUTAS_ELIMINADAS: Array<{ desde: string; hacia: string }> = [
   { desde: "/dashboard", hacia: "/tablero" },
   { desde: "/viajes", hacia: "/despacho" },
   { desde: "/viajes/123", hacia: "/expediente" },
@@ -182,32 +186,23 @@ test.describe("TEI — flujo del piloto", () => {
     await expect(page.getByText(/VJ-2026-|Sin viaje activo/).first()).toBeVisible();
   });
 
-  test("cutover: estado actual y runbook", async ({ page }) => {
-    await login(page);
-    await page.goto("/cutover");
-    await expect(
-      page.getByRole("heading", { name: "Cutover legacy → núcleo" }),
-    ).toBeVisible();
-    // El congelamiento es un estado GLOBAL y mutable por operación. La prueba
-    // verifica que la pantalla refleje un estado válido, no un estado concreto:
-    // fijar "Congelada" la hacía pasar solo con el sistema congelado, y dejó de
-    // ser cierta al descongelarlo (hallazgo H-1 del registro de orquestación).
-    await expect(page.getByText(/^(Congelada|Abierta)$/).first()).toBeVisible();
-    await expect(page.getByText("Runbook rápido")).toBeVisible();
+  test("cutover: la pantalla legacy ya no existe (404)", async ({ request }) => {
+    // El cutover se ejecutó el 2026-11-01 (Ola D) y el código legacy restante se
+    // eliminó el 2026-11-12 (F1): /cutover ya no es una ruta, responde 404 en
+    // lugar de montar el panel de estado.
+    const respuesta = await request.get("/cutover", { maxRedirects: 0 });
+    expect(respuesta.status()).toBe(404);
   });
 });
 
-test.describe("Ola A — rutas legacy retiradas", () => {
-  test("las 9 rutas retiradas responden 308 hacia su equivalente del núcleo", async ({
-    request,
-  }) => {
-    for (const { desde, hacia } of RUTAS_RETIRADAS) {
+test.describe("Ola A — rutas legacy eliminadas (F1, 2026-11-12)", () => {
+  test("las 9 rutas legacy eliminadas responden 404", async ({ request }) => {
+    for (const { desde } of RUTAS_ELIMINADAS) {
       const respuesta = await request.get(desde, { maxRedirects: 0 });
-      expect(respuesta.status(), `${desde} debe ser una redirección permanente`).toBe(308);
       expect(
-        respuesta.headers()["location"],
-        `${desde} debe apuntar a ${hacia}`,
-      ).toContain(hacia);
+        respuesta.status(),
+        `${desde} debe responder 404: la página legacy ya no existe`,
+      ).toBe(404);
     }
   });
 
@@ -217,22 +212,27 @@ test.describe("Ola A — rutas legacy retiradas", () => {
     expect(respuesta.headers()["location"]).toContain("/tablero");
   });
 
-  test("TEI: menú con 18 ítems del núcleo, sin las rutas retiradas", async ({ page }) => {
+  test("TEI: menú con 17 ítems del núcleo, sin rutas legacy ni cutover", async ({
+    page,
+  }) => {
     await login(page);
+    // 18 ítems del núcleo menos el ítem "Cutover legacy" retirado del menú
+    // (frontend/src/lib/navigation.ts:83, F1 2026-11-12) = 17 para el rol admin.
     const enlaces = page.locator(NAV);
-    await expect(enlaces).toHaveCount(18);
+    await expect(enlaces).toHaveCount(17);
 
     const hrefs = await hrefsDelMenu(page);
     for (const item of PANTALLAS_NUCLEO) expect(hrefs).toContain(item);
-    for (const { desde } of RUTAS_RETIRADAS) {
+    for (const { desde } of RUTAS_ELIMINADAS) {
       if (desde === "/viajes/123") continue;
       expect(hrefs, `${desde} no debe ofrecerse en el menú`).not.toContain(desde);
     }
+    expect(hrefs, "/cutover no debe ofrecerse en el menú").not.toContain("/cutover");
   });
 });
 
 test.describe("Tenant 2 (TES) — menú del núcleo", () => {
-  test("login cae en tablero y el menú es el mismo núcleo (18 ítems, sin grupo legacy)", async ({
+  test("login cae en tablero y el menú es el mismo núcleo (17 ítems, sin grupo legacy)", async ({
     page,
     request,
   }) => {
@@ -243,16 +243,16 @@ test.describe("Tenant 2 (TES) — menú del núcleo", () => {
     // Ola B/C: /mantenimiento, /iva, /liquidaciones y /configuracion ya son
     // pantallas del núcleo; el menú se filtra por rol, no por tenant.
     const enlaces = page.locator(NAV);
-    await expect(enlaces).toHaveCount(18);
+    await expect(enlaces).toHaveCount(17);
     const hrefs = await hrefsDelMenu(page);
     for (const item of PANTALLAS_NUCLEO) {
       expect(hrefs, `${item} debe ofrecerse en el menú del núcleo`).toContain(item);
     }
 
-    // El retiro es del servidor: /dashboard responde 308 para cualquier tenant.
-    const redirigida = await request.get("/dashboard", { maxRedirects: 0 });
-    expect(redirigida.status()).toBe(308);
-    expect(redirigida.headers()["location"]).toContain("/tablero");
+    // Rutas legacy eliminadas (F1, 2026-11-12): /dashboard responde 404 para
+    // cualquier tenant.
+    const eliminada = await request.get("/dashboard", { maxRedirects: 0 });
+    expect(eliminada.status()).toBe(404);
 
     // Y la pantalla ya no es legacy: monta el núcleo en vez de rebotar a despacho.
     await page.goto("/mantenimiento");

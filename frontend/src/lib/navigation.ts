@@ -16,7 +16,6 @@ import {
   Crown,
   FileClock,
   KeyRound,
-  ArrowRightLeft,
   type LucideIcon,
 } from "lucide-react";
 import type { Rol } from "@/types";
@@ -80,7 +79,6 @@ export const NAV_GRUPOS: NavGrupo[] = [
     items: [
       { href: "/auditoria", label: "Auditoría", icon: FileClock, roles: TODOS },
       { href: "/permisos", label: "Roles y permisos", icon: KeyRound, roles: TODOS },
-      { href: "/cutover", label: "Cutover legacy", icon: ArrowRightLeft, roles: ["admin", "contabilidad"] },
       { href: "/configuracion", label: "Configuración", icon: Settings, roles: ["admin"] },
     ],
   },

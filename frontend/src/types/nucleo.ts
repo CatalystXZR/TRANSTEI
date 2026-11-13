@@ -1360,17 +1360,3 @@ export interface ConfiguracionNucleo {
 export interface ConfiguracionUpdateNucleo {
   valor: JsonNucleo;
 }
-
-/* ------------------------------------------------------------------ */
-/* P0-13 Cutover                                                       */
-/* ------------------------------------------------------------------ */
-export interface CutoverEstadoNucleo {
-  legacy_escritura_congelada: boolean;
-  congelada_en: string | null;
-  congelada_por: string | null;
-  motivo: string | null;
-  updated_at: string | null;
-  legacy_viajes_abiertos: number;
-  nucleo_viajes: number;
-  mensaje: string;
-}
