@@ -1,7 +1,6 @@
 """Pruebas unitarias de la Ola 2 (Fase 1) de seguridad e higiene del backend.
 
 Cubre:
-- F-01: `legacy_congelado()` fail-closed ante error de lectura o fila ausente.
 - F-03: handler global de IntegrityError con mapeo por sqlstate.
 - F0-05: firma por magic bytes, content-type canónico y lectura acotada.
 
@@ -15,7 +14,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -23,74 +21,6 @@ from starlette.requests import Request
 
 from app.nucleo import storage
 from app.nucleo.errores import DatosInvalidos
-from app.nucleo.servicio_cutover import invalidar_cache, legacy_congelado
-
-# ---------------------------------------------------------------------------
-# F-01: fail-closed del flag de cutover
-# ---------------------------------------------------------------------------
-
-
-class _ResultadoNone:
-    def scalar_one_or_none(self):
-        return None
-
-
-class _SesionFalsa:
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        return False
-
-    def execute(self, *args, **kwargs):
-        return _ResultadoNone()
-
-
-def test_legacy_congelado_fail_closed_ante_error_de_lectura(monkeypatch, caplog):
-    invalidar_cache()
-
-    def boom():
-        raise RuntimeError("sin conexión a la base")
-
-    monkeypatch.setattr("app.core.database.get_engine", boom)
-    with caplog.at_level(logging.ERROR, logger="app.nucleo.servicio_cutover"):
-        resultado = legacy_congelado()
-    assert resultado is True
-    assert any("fail-closed" in m for m in caplog.messages)
-    invalidar_cache()
-
-
-def test_legacy_congelado_fail_closed_ante_fila_ausente(monkeypatch, caplog):
-    invalidar_cache()
-    monkeypatch.setattr(
-        "app.nucleo.servicio_cutover.Session", lambda engine: _SesionFalsa()
-    )
-    monkeypatch.setattr("app.core.database.get_engine", lambda: object())
-    with caplog.at_level(logging.WARNING, logger="app.nucleo.servicio_cutover"):
-        resultado = legacy_congelado()
-    assert resultado is True
-    assert any("fail-closed" in m for m in caplog.messages)
-    invalidar_cache()
-
-
-def test_legacy_congelado_respeta_cache_sin_reconsultar(monkeypatch):
-    invalidar_cache()
-    llamadas = 0
-
-    def boom():
-        nonlocal llamadas
-        llamadas += 1
-        raise RuntimeError("no debería consultarse")
-
-    monkeypatch.setattr("app.core.database.get_engine", boom)
-    assert legacy_congelado() is True  # llena la caché fail-closed
-    assert llamadas == 1
-
-    # Con caché fresca no consulta la base: el fallo de arriba no se repite.
-    assert legacy_congelado() is True
-    assert llamadas == 1
-    invalidar_cache()
-
 
 # ---------------------------------------------------------------------------
 # F-03: handler global de IntegrityError

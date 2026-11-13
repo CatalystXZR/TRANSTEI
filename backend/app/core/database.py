@@ -10,11 +10,9 @@ Dos motores, dos DSN, dos roles:
   `nucleo`. Es el único motor cuyas consultas quedan filtradas por las
   políticas RLS de `supabase/migrations/0020_rls_multiempresa.sql`.
 
-La frontera es el **esquema**, no el endpoint. La única excepción declarada es
-el conteo de viajes legacy abiertos en `app/nucleo/servicio_cutover.py`, que
-abre su propia sesión sobre el motor legacy (lectura de plataforma, no de
-tenant); cualquier otra lectura de `public` desde el núcleo es un defecto y lo
-vigila `backend/tests/test_f1_ola5_dos_engines.py`.
+La frontera es el **esquema**, no el endpoint: toda lectura de `public` desde
+el núcleo es un defecto y la vigila
+`backend/tests/test_f1_ola5_dos_engines.py`.
 
 Contexto por transacción
 ------------------------

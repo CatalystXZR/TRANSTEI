@@ -1,8 +1,8 @@
 from fastapi import APIRouter
 
-# Ola C (ADR-0002 §6.5, 2026-10-31): los routers legacy de negocio se
-# desmontaron. Solo queda `auth` porque `/auth/me` lo usa el shell y la
-# identidad se retira en la Ola E (G0.1).
+# Retiro legacy completado (Ola E, 2026-11): no queda ningún router de negocio
+# fuera del núcleo. `auth` se conserva solo por `/auth/me`, que el shell
+# consume para resolver la identidad del usuario.
 from app.api.routes import auth
 from app.nucleo.api import router as nucleo_router
 from app.nucleo.agente.api import router as nucleo_agente_router
@@ -16,7 +16,6 @@ from app.nucleo.api_alertas import router as nucleo_alertas_router
 from app.nucleo.api_bloqueos import router as nucleo_bloqueos_router
 from app.nucleo.api_comercial import router as nucleo_comercial_router
 from app.nucleo.api_conductor import router as nucleo_conductor_router
-from app.nucleo.api_cutover import router as nucleo_cutover_router
 from app.nucleo.api_expediente import router as nucleo_expediente_router
 from app.nucleo.api_facturacion import router as nucleo_facturacion_router
 from app.nucleo.api_gastos import router as nucleo_gastos_router
@@ -44,4 +43,3 @@ api_router.include_router(nucleo_rentabilidad_router)
 api_router.include_router(nucleo_facturacion_router)
 api_router.include_router(nucleo_alertas_router)
 api_router.include_router(nucleo_permisos_router)
-api_router.include_router(nucleo_cutover_router)

@@ -2,7 +2,6 @@
 
 Cubre, con evidencia ejecutable, los hallazgos asignados al agente `backend`:
 
-- SEC-016: `congelar()`/`descongelar()` verifican `rowcount` (fila de control).
 - SEC-017: el 23514 no interpola el mensaje crudo de PostgreSQL (ver
   `tests/test_seguridad_ola2.py::test_traducir_23514_sin_texto_de_postgres`).
 - Hallazgo qa (Media): la firma del POD es SOLO imagen (PDF renombrado `.jpg`
@@ -30,9 +29,8 @@ from sqlmodel import Session, create_engine
 from app.core.config import settings
 from app.main import app
 from app.nucleo.deps import ContextoEmpresa, RolEmpresa, get_contexto_empresa
-from app.nucleo.errores import DatosInvalidos, ErrorPersistencia
+from app.nucleo.errores import DatosInvalidos
 from app.nucleo.models import Empresa, Tracto
-from app.nucleo.servicio_cutover import ServicioCutover, invalidar_cache
 from app.nucleo.servicio_pod import ServicioPOD
 from contexto_helpers import contexto_de_prueba
 from rut_helpers import rut_empresa
@@ -60,69 +58,6 @@ def _url() -> str:
     if not url:
         pytest.skip("Sin NUCLEO_TEST_DATABASE_URL; se omite integración")
     return url
-
-
-# ---------------------------------------------------------------------------
-# SEC-016 — congelar() no puede "triunfar" sin la fila de control
-# ---------------------------------------------------------------------------
-
-
-class _ResultadoRowcount:
-    def __init__(self, rowcount: int) -> None:
-        self.rowcount = rowcount
-
-
-class _SesionFalsa:
-    def __init__(self, rowcount: int) -> None:
-        self._rowcount = rowcount
-        self.commits = 0
-        self.rollbacks = 0
-        self.sentencias: list[str] = []
-
-    def execute(self, *args, **kwargs):
-        self.sentencias.append(str(args[0] if args else kwargs.get("statement")))
-        return _ResultadoRowcount(self._rowcount)
-
-    def commit(self) -> None:
-        self.commits += 1
-
-    def rollback(self) -> None:
-        self.rollbacks += 1
-
-
-class _Contexto:
-    auth_id = "auth-test"
-    request_id = None
-    empresa = None
-
-
-@pytest.mark.parametrize("metodo", ["congelar", "descongelar"])
-def test_cutover_sin_fila_de_control_falla(metodo):
-    """rowcount == 0 → ErrorPersistencia clara, sin commit (SEC-016)."""
-    invalidar_cache()
-    session = _SesionFalsa(rowcount=0)
-    servicio = ServicioCutover(session, _Contexto())  # type: ignore[arg-type]
-
-    with pytest.raises(ErrorPersistencia) as excinfo:
-        getattr(servicio, metodo)("prueba unitaria")
-
-    assert session.commits == 0, "no debe commitear un update que no afectó filas"
-    assert session.rollbacks == 1
-    assert "nucleo.cutover_control" in excinfo.value.mensaje
-    assert "no se pudo" in excinfo.value.mensaje.lower()
-
-
-@pytest.mark.parametrize("metodo", ["congelar", "descongelar"])
-def test_cutover_con_fila_de_control_commitea(metodo):
-    """rowcount == 1 → commit e invalidación de caché (camino normal)."""
-    invalidar_cache()
-    session = _SesionFalsa(rowcount=1)
-    servicio = ServicioCutover(session, _Contexto())  # type: ignore[arg-type]
-    servicio.estado = lambda: "estado-falso"  # type: ignore[method-assign]
-
-    assert getattr(servicio, metodo)("prueba unitaria") == "estado-falso"
-    assert session.commits == 1
-    assert session.rollbacks == 0
 
 
 # ---------------------------------------------------------------------------

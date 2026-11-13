@@ -13,7 +13,7 @@ Cubre los cuatro módulos portados a `nucleo` (0024–0026):
 Las pruebas que necesitan base se omiten si `NUCLEO_TEST_DATABASE_URL` no está
 definida (misma regla que el resto de la suite, RA-13). Las que ejercen los
 servicios corren con el rol real `tei_app` (RLS vigente) y las fixtures se
-siembran con el rol privilegiado, igual que el seed/cutover. Las HTTP sustituyen
+siembran con el rol privilegiado, igual que el seed. Las HTTP sustituyen
 `get_contexto_empresa` por un contexto construido, pero **no** desactivan
 `requiere_permiso`: el 403 se mide sobre la matriz real de roles.
 """

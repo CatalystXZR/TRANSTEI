@@ -17,7 +17,6 @@ from app.nucleo.errores import (
     manejador_error_nucleo,
     traducir_integrity_error,
 )
-from app.nucleo.servicio_cutover import legacy_congelado
 from app.nucleo.servicio_pod import MAX_FIRMA_BYTES, MAX_FOTOS
 from app.nucleo.storage import MAX_BYTES
 from app.nucleo.tiempo import ErrorTemporal
@@ -221,9 +220,9 @@ app = FastAPI(
 )
 
 # Pila de middlewares, de afuera hacia adentro (el último `add_middleware`
-# queda más afuera): congelar-legacy → CORS → tope de cuerpo → contexto →
-# router. El tope queda dentro de CORS para que el 413 lleve sus headers y corta
-# antes de leer el cuerpo.
+# queda más afuera): CORS → tope de cuerpo → contexto → router. El tope queda
+# dentro de CORS para que el 413 lleve sus headers y corta antes de leer el
+# cuerpo.
 app.add_middleware(ContextoRequestMiddleware)
 app.add_middleware(LimiteCuerpoMiddleware)
 
@@ -251,34 +250,6 @@ app.add_middleware(
 app.add_middleware(CabecerasSeguridadMiddleware)
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
-
-
-@app.middleware("http")
-async def congelar_escritura_legacy(request: Request, call_next):
-    """Bloquea escrituras legacy cuando el cutover está congelado.
-
-    El schema `nucleo` y el login siguen operativos. Las lecturas legacy no se
-    bloquean para permitir consultas de contingencia.
-    """
-    path = request.url.path
-    prefijo = settings.API_V1_PREFIX
-    es_legacy = (
-        path.startswith(prefijo)
-        and not path.startswith(f"{prefijo}/nucleo")
-        and not path.startswith(f"{prefijo}/auth")
-    )
-    if request.method not in {"GET", "HEAD", "OPTIONS"} and es_legacy and legacy_congelado():
-        return JSONResponse(
-            status_code=409,
-            content={
-                "codigo": "CUTOVER_LEGACY_CONGELADO",
-                "mensaje": (
-                    "La escritura legacy está congelada por el cutover. "
-                    "Use el módulo del núcleo o descongele desde /nucleo/cutover."
-                ),
-            },
-        )
-    return await call_next(request)
 
 
 @app.exception_handler(IntegrityError)

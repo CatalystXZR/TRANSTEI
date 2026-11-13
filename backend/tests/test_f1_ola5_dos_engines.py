@@ -14,8 +14,8 @@ Qué prueba
 5. Fallback sin `NUCLEO_DATABASE_URL`: se usa `DATABASE_URL`, se registra
    `RLS inerte: configure NUCLEO_DATABASE_URL` y la sesión sigue funcionando.
 6. Guarda de rol: un DSN explícito que conecta con `BYPASSRLS` ⇒ 503.
-7. Prueba estática: solo `servicio_cutover.py` referencia `public.` o importa el
-   engine legacy (excepción declarada del ADR-0005 §3.2 regla 4).
+7. Prueba estática: ningún archivo del núcleo referencia `public.` ni importa
+   el engine legacy (ADR-0005 §3.2 regla 4).
 
 Autorización de las pruebas HTTP
 --------------------------------
@@ -397,12 +397,10 @@ def test_guarda_en_fallback_solo_avisa(caplog):
 # ---------------------------------------------------------------------------
 # 7. Frontera estática: el núcleo no lee `public`
 # ---------------------------------------------------------------------------
-def test_solo_servicio_cutover_usa_el_engine_legacy():
+def test_ningun_archivo_del_nucleo_usa_el_engine_legacy():
     raiz = Path(__file__).resolve().parents[1] / "app" / "nucleo"
     infracciones: list[str] = []
     for archivo in sorted(raiz.glob("*.py")):
-        if archivo.name == "servicio_cutover.py":
-            continue
         contenido = archivo.read_text(encoding="utf-8")
         if re.search(r"\bpublic\.", contenido):
             infracciones.append(f"{archivo.name}: referencia a public.*")

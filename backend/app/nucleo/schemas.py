@@ -1791,26 +1791,6 @@ class TablaAuditoriaOut(BaseModel):
     total: int
 
 
-# ---------------------------------------------------------------------------
-# P0-13 Cutover
-# ---------------------------------------------------------------------------
-class CutoverEstadoOut(BaseModel):
-    legacy_escritura_congelada: bool
-    congelada_en: datetime | None = None
-    congelada_por: str | None = None
-    motivo: str | None = None
-    updated_at: datetime | None = None
-    legacy_viajes_abiertos: int = 0
-    nucleo_viajes: int = 0
-    mensaje: str
-
-
-class CutoverAccion(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    motivo: str = Field(min_length=5, max_length=500)
-
-
 class ErrorOut(BaseModel):
     codigo: str
     mensaje: str

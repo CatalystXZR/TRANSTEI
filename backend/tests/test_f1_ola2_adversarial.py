@@ -2,17 +2,15 @@
 
 Revisión independiente de QA sobre los cambios del agente backend (Ola 2):
 
-1. Fail-closed del cutover (`servicio_cutover.legacy_congelado`) y middleware
-   `app.main` que bloquea escrituras legacy con 409 CUTOVER_LEGACY_CONGELADO.
-2. Mapeo SQLSTATE->HTTP global (23505/23P01->409, 23514/23502/23503->422).
-3. Validación de firma (magic bytes) y content-type canónico en uploads
+1. Mapeo SQLSTATE->HTTP global (23505/23P01->409, 23514/23502/23503->422).
+2. Validación de firma (magic bytes) y content-type canónico en uploads
    (`storage.py`, `api_pod.py`, `api_maestros.py`, `servicio_maestros.py`).
-4. DEBUG=False por defecto (`config.py`).
+3. DEBUG=False por defecto (`config.py`).
 
 Estrategia: el camino feliz ya está cubierto por `test_seguridad_ola2.py`.
 Acá se atacan los supuestos: firma vs extensión vs content-type declarado,
-tamaños límite, poliglotas, concurrencia real (2 hilos), datos de otra empresa
-y el contrato HTTP del middleware (antes/después de congelar).
+tamaños límite, poliglotas, concurrencia real (2 hilos) y datos de otra
+empresa.
 
 Los casos que esperan 201/200 suben archivos reales al bucket local de Storage
 (mismo patrón que `test_nucleo_pod.py`, datos de prueba desechables). Los casos
@@ -57,7 +55,6 @@ from app.nucleo.models import (
     Tracto,
     Viaje,
 )
-from app.nucleo.servicio_cutover import invalidar_cache, legacy_congelado
 from contexto_helpers import contexto_de_prueba
 from rut_helpers import rut_empresa
 
@@ -636,174 +633,6 @@ def test_pod_doble_envio_concurrente(client, env_pod):
         _limpiar_override()
         # nucleo.pod es append-only (fn_pod_no_borrar): no se limpia; cada test
         # usa un viaje nuevo (fixture por función).
-
-
-# ---------------------------------------------------------------------------
-# B. Cutover fail-closed
-# ---------------------------------------------------------------------------
-
-
-class _ResultadoValor:
-    def __init__(self, valor):
-        self._valor = valor
-
-    def scalar_one_or_none(self):
-        return self._valor
-
-
-class _SesionValor:
-    def __init__(self, valor):
-        self._valor = valor
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        return False
-
-    def execute(self, *args, **kwargs):
-        return _ResultadoValor(self._valor)
-
-
-@pytest.mark.parametrize("valor, esperado", [(True, True), (False, False)])
-def test_legacy_congelado_fila_presente(monkeypatch, valor, esperado):
-    invalidar_cache()
-    monkeypatch.setattr(
-        "app.nucleo.servicio_cutover.Session", lambda engine: _SesionValor(valor)
-    )
-    monkeypatch.setattr("app.core.database.get_engine", lambda: object())
-    assert legacy_congelado() is esperado
-    invalidar_cache()
-
-
-def test_middleware_congelado_bloquea_escritura_legacy(client, db):
-    """HTTP real (in-process): flag true -> POST legacy -> 409 CUTOVER_LEGACY_CONGELADO.
-
-    Ola C (ADR-0002 §6.5): los routers legacy de negocio ya **no existen**, así
-    que esta prueba verifica el orden `middleware -> router` sobre el prefijo
-    `/api/v1` que queda vigilado (defensa en profundidad hasta la Ola E). La
-    ruta usada (`/viajes`) es deliberadamente una ruta retirada: el 409 lo emite
-    el middleware antes del enrutado, y sin congelamiento la misma ruta responde
-    404 (ver `test_f2_ola_c_retiro_routers.py`).
-    """
-    with db.cursor() as cur:
-        cur.execute("select 1 from nucleo.cutover_control where id = true")
-        if cur.fetchone() is None:
-            cur.execute("insert into nucleo.cutover_control (id) values (true)")
-        cur.execute(
-            "select legacy_escritura_congelada from nucleo.cutover_control where id = true"
-        )
-        original = cur.fetchone()[0]
-    invalidar_cache()
-    try:
-        with db.cursor() as cur:
-            cur.execute(
-                "update nucleo.cutover_control set legacy_escritura_congelada = true where id = true"
-            )
-            db.commit()
-        # Sin token: el middleware corta antes del auth.
-        resp = client.post(f"{API}/viajes", json={"origen": "X"})
-        assert resp.status_code == 409, resp.text
-        assert resp.json()["codigo"] == "CUTOVER_LEGACY_CONGELADO"
-        # Las lecturas de un prefijo retirado no se bloquean: 404 del router
-        # (ya no hay ruta legacy), nunca 409 del middleware.
-        resp_get = client.get(f"{API}/viajes")
-        assert resp_get.status_code == 404, resp_get.text
-        # Las escrituras del núcleo NO se bloquean (422 de validación, no 409).
-        resp_nucleo = client.post(f"{API}/nucleo/documentos", data={})
-        assert resp_nucleo.status_code != 409
-        assert resp_nucleo.json().get("codigo") != "CUTOVER_LEGACY_CONGELADO"
-    finally:
-        with db.cursor() as cur:
-            cur.execute(
-                "update nucleo.cutover_control set legacy_escritura_congelada = %s where id = true",
-                (original,),
-            )
-            db.commit()
-        invalidar_cache()
-
-
-def test_middleware_congelado_bloquea_con_credenciales(client, db, headers_admin):
-    """Con token real de admin la escritura legacy congelada también se bloquea."""
-    with db.cursor() as cur:
-        cur.execute("select 1 from nucleo.cutover_control where id = true")
-        if cur.fetchone() is None:
-            cur.execute("insert into nucleo.cutover_control (id) values (true)")
-        cur.execute(
-            "select legacy_escritura_congelada from nucleo.cutover_control where id = true"
-        )
-        original = cur.fetchone()[0]
-    invalidar_cache()
-    try:
-        with db.cursor() as cur:
-            cur.execute(
-                "update nucleo.cutover_control set legacy_escritura_congelada = true where id = true"
-            )
-            db.commit()
-        resp = client.post(
-            f"{API}/viajes",
-            json={"origen": "X", "destino": "Y"},
-            headers=headers_admin,
-        )
-        assert resp.status_code == 409, resp.text
-        assert resp.json()["codigo"] == "CUTOVER_LEGACY_CONGELADO"
-    finally:
-        with db.cursor() as cur:
-            cur.execute(
-                "update nucleo.cutover_control set legacy_escritura_congelada = %s where id = true",
-                (original,),
-            )
-            db.commit()
-        invalidar_cache()
-
-
-def test_middleware_sin_flag_deja_pasar(client, db):
-    """Flag false: el middleware deja pasar y la ruta retirada responde 404.
-
-    Antes de la Ola C el contrato era 401 (auth de la ruta legacy). Hoy la ruta
-    ya no existe: 404 del router, nunca 409 del middleware.
-    """
-    with db.cursor() as cur:
-        cur.execute(
-            "update nucleo.cutover_control set legacy_escritura_congelada = false where id = true"
-        )
-        db.commit()
-    invalidar_cache()
-    try:
-        resp = client.post(f"{API}/viajes", json={"origen": "X"})
-        assert resp.status_code == 404, resp.text
-        assert resp.json().get("codigo") != "CUTOVER_LEGACY_CONGELADO"
-    finally:
-        invalidar_cache()
-
-
-def test_middleware_mutacion_sin_garantia(monkeypatch, client, db):
-    """Sanidad (mutación): si legacy_congelado() devuelve False (garantía
-    retirada), el middleware NO bloquea aunque la fila esté congelada.
-
-    Demuestra que el 409 de test_middleware_congelado_bloquea_* depende del
-    mecanismo, no de un artefacto del test.
-    """
-    with db.cursor() as cur:
-        cur.execute(
-            "update nucleo.cutover_control set legacy_escritura_congelada = true where id = true"
-        )
-        db.commit()
-    invalidar_cache()
-    monkeypatch.setattr("app.main.legacy_congelado", lambda: False)
-    try:
-        resp = client.post(f"{API}/viajes", json={"origen": "X"})
-        # Ruta retirada en la Ola C: sin la garantía el request llega al router.
-        assert resp.status_code == 404, resp.text
-        assert resp.json().get("codigo") != "CUTOVER_LEGACY_CONGELADO"
-    finally:
-        invalidar_cache()
-        with db.cursor() as cur:
-            cur.execute(
-                "update nucleo.cutover_control set legacy_escritura_congelada = false where id = true"
-            )
-            db.commit()
-        invalidar_cache()
 
 
 # ---------------------------------------------------------------------------
