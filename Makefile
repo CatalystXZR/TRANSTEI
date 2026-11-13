@@ -9,7 +9,7 @@ DB_URL_TEST := postgresql+psycopg://postgres:postgres@127.0.0.1:54322/tei_test
 DB_URL_NUCLEO_LOCAL := postgresql+psycopg://tei_app:tei_app@127.0.0.1:54322/postgres
 DB_URL_NUCLEO_TEST := postgresql+psycopg://tei_app:tei_app@127.0.0.1:54322/tei_test
 
-.PHONY: help db-up db-down db-reset bootstrap-roles seed seed-tenant2 backend frontend test test-db unit e2e restore-drill cutover-dry cutover
+.PHONY: help db-up db-down db-reset bootstrap-roles seed seed-tenant2 backend frontend test test-db unit e2e restore-drill
 
 help:
 	@echo "TEI — desarrollo local"
@@ -25,8 +25,6 @@ help:
 	@echo "  make test-db         (Re)crea tei_test como clon de la base local (solo test)"
 	@echo "  make e2e             Playwright E2E (frontend en :3000)"
 	@echo "  make restore-drill   Backup + restore en base temporal + verificación"
-	@echo "  make cutover-dry     Dry-run de migración legacy → núcleo"
-	@echo "  make cutover         Migra legacy y congela su escritura"
 	@echo ""
 	@echo "  Login local: admin@tei.local / TEI2026!"
 	@echo "  Roles: gerente, despacho, contador, tesoreria, taller, conductor, auditor"
@@ -96,9 +94,3 @@ e2e:
 
 restore-drill:
 	@./scripts/restore_drill.sh
-
-cutover-dry:
-	@$(PYTHON) scripts/cutover_legacy.py --dry-run
-
-cutover:
-	@$(PYTHON) scripts/cutover_legacy.py --freeze

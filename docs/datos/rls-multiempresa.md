@@ -14,6 +14,14 @@
 > **Estado:** 🟢 diseñada y probada en `tei_test` · 🔴 **no aplicada** a la base de
 > la app · 🔴 **no vigente** para la app mientras conecte como `postgres`.
 >
+> **Actualización 2026-11-12:** `0020` **sí está aplicada a la base de la app**
+> (ledger 35/35; `select count(*) from pg_policies where schemaname='nucleo'`
+> en `postgres` → **54 políticas** 🟢). El estado "🔴 no aplicada" de arriba
+> quedó superado. Sigue abierto: el **rol efectivo** del backend (RA-03) y la
+> prueba con el rol real de `DATABASE_URL`. Las filas que citan
+> `cutover_control` son históricas: la tabla fue retirada por `0035`
+> (2026-11-12) y sus políticas/grants cayeron con ella.
+>
 > **Nota de entorno:** durante esta sesión `tei_test` fue **recreada** (los viajes
 > pasaron de 553 a 42 y desaparecieron las políticas recién creadas). Causa
 > identificada 🟢: `scripts/test_db_reset.sh` (artefacto de otro agente) hace

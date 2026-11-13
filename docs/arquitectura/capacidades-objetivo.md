@@ -1,9 +1,15 @@
 # Capacidades objetivo — matriz de brecha
 
 > **Pregunta que responde:** ¿qué capacidades del ERP objetivo están construidas, parciales o ausentes hoy?
-> **Dueño:** arquitectura · **Verificado:** 2026-10-29 · **Método:** lectura estática del código/DDL contra el diseño funcional de `PLAN_MAESTRO_ERP_V2.md` §4–21 y `CATALOGO_KPIS_Y_FREIGHT_SCORE.md`; sin ejecución.
+> **Dueño:** arquitectura · **Verificado:** 2026-10-29 · **Revisado:** 2026-11-12 (retiro del legacy) · **Método:** lectura estática del código/DDL contra el diseño funcional de `PLAN_MAESTRO_ERP_V2.md` §4–21 y `CATALOGO_KPIS_Y_FREIGHT_SCORE.md`; sin ejecución.
 > **Caduca si:** se implementa o retira una capacidad de esta lista, o cambia el alcance del piloto.
 > **Re-verificar con:** `grep -rn` del mecanismo citado + `docs/estado.md` §3.
+>
+> **Nota (2026-11-12):** la revisión 2026-10-29 comparaba dos capas (legacy
+> `public` vs núcleo). El legacy fue retirado (`0028`, 2026-11-01) y sus
+> capacidades portadas en la Ola B (`0024`–`0026`) o retiradas con decisión
+> (`RET-05`/`RET-10`). Las filas afectadas llevan la corrección fechada; el
+> resto de la matriz sigue en su estado de 2026-10-29.
 
 ---
 
@@ -25,7 +31,7 @@
 |---|---|---|---|
 | O01 | Ciclo de vida del viaje con estados explícitos y transiciones permitidas | 🟢 | 14 estados en `0004:51-55`; tabla `transiciones_viaje` y 29 transiciones `0004:772-808`; trigger `fn_viaje_transicion` `0004:1511-1547` |
 | O02 | Planificación por ventana `[inicio, fin)` con buffer operacional | 🟢 | `ventana tstzrange` `0004:561`; cálculo `fn_viaje_ventana` `0004:899-940`; check `0004:666-670` |
-| O03 | Libro único de ocupación y exclusión de solape por tracto, rampla y chofer | 🟡 | `reservas_recurso` `0004:703-741`; 3 `EXCLUDE` `0004:744-757`; trigger `0015:183-238`. **Solo protege escrituras del núcleo**: el legacy no inserta reservas (RA-02) |
+| O03 | Libro único de ocupación y exclusión de solape por tracto, rampla y chofer | 🟡 | `reservas_recurso` `0004:703-741`; 3 `EXCLUDE` `0004:744-757`; trigger `0015:183-238`. *(2026-11-12: el escritor legacy ya no existe — retirado con `public`; la única puerta de escritura es el núcleo.)* |
 | O04 | "Libre desde" por recurso, con traslado | 🟢 | `libre_desde` `servicio_disponibilidad.py:687`; endpoint `api.py:150-166` |
 | O05 | Mesa de despacho con previsualización y asignación atómica | 🟢 | pantalla `despacho/page.tsx:195-201,321-325`; validar `api.py:169-175`; asignar `api.py:178-189`; locks `servicio_disponibilidad.py:1397-1409` |
 | O06 | Motor de asignación automática u optimización de rutas/recursos | 🔴 | Búsqueda `automatic\|optimiz\|sugerir\|asignacion_automatica` en `backend/app/nucleo` → 0 coincidencias; la asignación es manual |
@@ -35,7 +41,7 @@
 | O10 | PWA del conductor con check-in/out y cola offline | 🟡 | endpoints `api_conductor.py:29-57`; `offline-queue.ts:20-30`. Comportamiento offline **no verificado** (`docs/estado.md` §4) |
 | O11 | Cierre de viaje con checklist obligatorio | 🟢 | `servicio_expediente.py:1244-1292`; motivos de bloqueo `311-315` |
 | O12 | Reapertura controlada de un viaje cerrado | 🔴 | `servicio_expediente.py:1294-1304` solo devuelve error; la máquina de estados no permite volver de `cerrado` (`0004:807-808`) |
-| O13 | Mantenimiento preventivo por km, con pauta y alerta | 🔴 | En `nucleo` solo existe `tipo_reserva='mantenimiento'` (`servicio_alertas.py:172`); no hay tablas de pauta/mantención en `0004`–`0019` |
+| O13 | Mantenimiento preventivo por km, con pauta y alerta | 🟡 | *(2026-11-12: construido en la Ola B — `0024_mantenimiento_nucleo.sql` con `pautas_mantenimiento`, `mantenimientos`, `v_mantenimiento_estado` y trigger `odometro`; `api_mantenimiento.py`; pantalla `/mantenimiento`. La revisión 2026-10-29 lo marcaba 🔴 porque en `0004`–`0019` solo existía `tipo_reserva='mantenimiento'`.)* |
 | O14 | GPS, telemetría, geocercas y ETA automática | 🔴 | Sin tablas ni endpoints; solo `ubicacion_*` manual en recursos (`0004:210-213`) y lat/lon de POD (`0009:16-17`) |
 
 ## 2. Comercial (7)
@@ -61,14 +67,14 @@
 | F05 | Promesas de pago | 🟢 | `promesas_pago_nucleo` `0013:139-153`; `crear_promesa` `servicio_facturacion.py:693-710` |
 | F06 | Aging de cartera | 🟢 | `GET /nucleo/cobranza/aging` `api_facturacion.py:124`; `servicio_facturacion.py:712` |
 | F07 | DTE / SII real | 🔴 | Declarado fuera del piloto en `0013:4`; sin tablas, XML ni integración |
-| F08 | IVA mensual y F29 | 🟡 | Solo legacy: `GET /iva/resumen` `finanzas.py:116-185`; cálculo interno, no F29 (`docs/estado.md` §3) |
+| F08 | IVA mensual y F29 | 🟡 | *(2026-11-12: portado al núcleo — `api_iva.py` y `nucleo.configuracion_empresa` (`0026`); la pantalla `/iva` lee `nucleo.config_vigente` (`iva/page.tsx:239`). Sigue sin F29/DTE real.)* |
 | F09 | Cuentas por pagar, tesorería y conciliación bancaria | 🔴 | Sin tablas ni endpoints; `tesoreria` solo existe como rol (`permisos.py:99`) |
 | F10 | Cierre contable mensual y estado de resultados | 🔴 | No hay período contable, asientos ni P&L; `configuracion_costos` solo alimenta margen por viaje (`0012:8-25`) |
 | F11 | Gastos con aprobación y segregación de funciones | 🟢 | `servicio_gastos.py:346-435`; endpoint `api_gastos.py:120-134`; permiso `gastos:aprobar` |
 | F12 | Costo real por viaje con gastos aprobados + comisión | 🟢 | `fn_viaje_costos` `0011:91-135`; trigger `0011:137-156` |
 | F13 | Configuración de costos y margen objetivo por empresa | 🟢 | `configuracion_costos` `0012:8-32`; `servicio_rentabilidad.py:108-178` |
-| F14 | Liquidación de comisión del chofer | 🟡 | Solo legacy: `liquidaciones.py:51-96,278-344`. El núcleo no tiene módulo de liquidaciones |
-| F15 | Snapshot inmutable y PDF reproducible de la liquidación | 🔴 | El PDF recalcula la comisión al emitir (`liquidaciones.py:515-533`); SEC-002 abierto |
+| F14 | Liquidación de comisión del chofer | 🟡 | *(2026-11-12: portado al núcleo — `0025_liquidaciones_nucleo.sql` + `api_nomina.py` (`liquidaciones:leer/escribir`); pantalla `/liquidaciones` sobre `nucleo.ts`. La revisión 2026-10-29 decía "solo legacy `liquidaciones.py`". Sigue abierta la base de devengamiento `D-01`.)* |
+| F15 | Snapshot inmutable y PDF reproducible de la liquidación | 🔴 | *(2026-11-12: la implementación del núcleo congela montos al emitir (`retiro-legacy.md` §5.6), pero la prueba/PDF reproducible sigue pendiente y la base de comisión `D-01` no está ratificada. El defecto legacy citado — `liquidaciones.py:515-533` — desapareció con el código retirado.)* |
 | F16 | Nómina legal (AFP, salud, cesantía, finiquito, gratificación) | 🔴 | Búsqueda `AFP\|cesantia\|finiquito\|gratificacion\|nomina` en `*.py,*.ts,*.sql` → 0 coincidencias |
 | F17 | Combustible: precios, litros, rendimiento y costo | 🟢 | `precios_diesel` + `viaje_gastos` `0011:11-83`; `servicio_gastos.py:201-309` |
 
@@ -95,25 +101,25 @@
 
 | # | Capacidad objetivo | Estado | Evidencia |
 |---|---|---|---|
-| B01 | KPIs configurables por fórmula, con preview | 🟡 | Solo legacy: `kpis.py:38-204` y `kpi_engine.py`; el núcleo tiene indicadores fijos |
+| B01 | KPIs configurables por fórmula, con preview | 🔴 | *(2026-11-12: retirado sin reemplazo — `kpi_engine.py` y `routes/kpis.py` fueron eliminados; el núcleo tiene indicadores fijos. Decisión `RET-05` abierta con el dueño.)* |
 | B02 | Tablero operativo de alertas | 🟢 | `GET /nucleo/alertas/tablero` `api_alertas.py:24`; categorías docs/bloqueos/POD/facturación/OC/margen `servicio_alertas.py:115-198` |
-| B03 | Exportación CSV/Excel | 🟡 | Solo legacy: `export.py:49-108`; el núcleo no exporta (`grep csv` en `backend/app/nucleo` → 0) |
-| B04 | Importación CSV de maestros | 🟡 | Solo legacy: `export.py:194-272`; escribe `public.clientes/choferes` |
+| B03 | Exportación CSV/Excel | 🟡 | *(2026-11-12: existe export del núcleo — `api_export.py` (Ola B). La revisión 2026-10-29 decía "solo legacy `export.py`".)* |
+| B04 | Importación CSV de maestros | 🔴 | *(2026-11-12: retirado sin reemplazo — el import legacy escribía `public.clientes/choferes` y no se portó. Decisión `RET-10`.)* |
 | B05 | BI, warehouse o reporting histórico | 🔴 | No hay réplica, esquema analítico, ETL ni herramienta de BI |
-| B06 | Copiloto / IA sobre los datos | 🔴 | Búsqueda `copiloto\|openai\|llm\|embedding` → 0 coincidencias |
+| B06 | Copiloto / IA sobre los datos | 🟡 | *(2026-11-12: existe el agente IA — `0030`–`0032`, `backend/app/nucleo/agente/**`, `/agente/chat`, `/agente/buzon`. La revisión 2026-10-29 buscaba `openai|llm` y daba 0.)* |
 
 ## 7. Integraciones (1)
 
 | # | Capacidad objetivo | Estado | Evidencia |
 |---|---|---|---|
-| I01 | WhatsApp, email, mapas, bancos u otras integraciones externas | 🔴 | Búsqueda `whatsapp\|twilio\|smtp\|sendgrid\|mapbox\|google_maps` → 0 coincidencias; solo Supabase Storage (`storage.py:34-77`) |
+| I01 | WhatsApp, email, mapas, bancos u otras integraciones externas | 🟡 | *(2026-11-12: existe el conector de agente WhatsApp — `0021`–`0022`, `backend/app/nucleo/agente/**`, ADR-0003/0004/0007. La revisión 2026-10-29 buscaba `whatsapp|twilio` y daba 0. Email/mapas/bancos siguen ausentes.)* |
 
 ## 8. Seguridad y operación (5)
 
 | # | Capacidad objetivo | Estado | Evidencia |
 |---|---|---|---|
 | S01 | Aislamiento multiempresa efectivo en base (RLS con políticas) | 🟡 | RLS habilitado en todo `nucleo` (`0004:1867-1881` y migraciones posteriores), **sin `create policy`**; rol efectivo no verificado (RA-03) |
-| S02 | Auditoría append-only de cambios | 🟡 | `auditoria` + triggers `0004:813-892`; cobertura parcial: no cubre `transiciones_viaje`, `folio_contador`, `cutover_control` (RA-07); legacy sin auditoría |
+| S02 | Auditoría append-only de cambios | 🟡 | `auditoria` + triggers `0004:813-892`; cobertura parcial: no cubre `transiciones_viaje`, `folio_contador`, `cutover_control` (RA-07). *(2026-11-12: "legacy sin auditoría" dejó de aplicar — el legacy fue retirado.)* |
 | S03 | Backup y restore probado con comparación antes/después | 🟡 | `scripts/restore_drill.sh:26-50` hace dump, restore y 6 conteos, pero no compara ni prueba la app (RA-05) |
 | S04 | CI y observabilidad | 🟡 | CI existe: import + pytest + lint + build (`.github/workflows/ci.yml:27-50`), **sin PostgreSQL, migraciones, integración ni E2E**; no hay Sentry/OTel/métricas |
 | S05 | API versionada y contrato verificable | 🟡 | Prefijo `/api/v1` (`main.py:33`); sin generación de cliente ni pruebas de contrato; tipos frontend escritos a mano |
@@ -123,7 +129,7 @@
 ## 9. Lectura de brecha
 
 1. **Lo construido se concentra en el núcleo operativo**: viaje, disponibilidad, expediente, POD, comercial, facturación y costos. Es una base real, no un prototipo de pantallas.
-2. **Las brechas que bloquean el piloto no son de UI**: RLS efectivo, cutover seguro, conciliación legacy↔núcleo, snapshot de liquidación y mantenimiento preventivo.
-3. **Cinco capacidades viven solo en legacy** (F08, F14, B01, B03, B04). Retirar el legacy sin migrarlas rompe IVA, nómina, KPIs, export e import.
-4. **15 capacidades están ausentes** (O06, O12, O13, O14, F07, F09, F10, F15, F16, P02, P05, D03, B05, B06, I01). No se proponen aquí: se registran como alcance futuro o decisión del dueño.
+2. *(2026-11-12, revisado: "RLS efectivo, cutover seguro y conciliación legacy↔núcleo" dejaron de ser brechas del piloto — el cutover se ejecutó y `public` fue retirado. Sigue abierto RLS efectivo (RA-03), snapshot de liquidación (`D-01`) y mantenimiento preventivo quedó construido en `0024`.)*
+3. *(2026-11-12, revisado: ya **no** hay "cinco capacidades solo en legacy": IVA, nómina y export se portaron (Ola B); KPI por fórmula e import CSV se retiraron con decisión `RET-05`/`RET-10`.)*
+4. **Capacidades ausentes** (O06, O12, O14, F07, F09, F10, F16, P02, P05, D03, B05): no se proponen aquí; se registran como alcance futuro o decisión del dueño.
 5. **Ninguna fila 🟢 acredita producción.** La verificación de ejecución (suite, E2E, restore, concurrencia) sigue pendiente en `docs/estado.md` §4.

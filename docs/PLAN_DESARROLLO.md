@@ -379,6 +379,14 @@ No existe "100 % seguro"; se define un umbral objetivo:
 
 **Estado:** `cerrada` (Fase 1 + Fase 2 del repo; 2026-11-01). Evidencia: `docs/estado.md` addendum; `ADR-0002`.
 
+> **Nota 2026-11-12 (orquestador, ejecución autorizada por el dueño):** se completó el
+> remanente de código de F1.6/F1.7 que seguía vivo tras el retiro de `public`: API y
+> servicio de cutover (`api_cutover.py`, `servicio_cutover.py`), middleware
+> `congelar_escritura_legacy` de `main.py`, `scripts/cutover_legacy.py`, targets
+> `make cutover*`, página `/cutover` y las 9 páginas `(retiradas)` (308→404), y la
+> documentación activa se actualizó al estado de un solo esquema. Detalle y evidencia:
+> `docs/orquestacion/registro.md` (entrada 2026-11-12).
+
 **Objetivo.** Eliminar `public` (legacy) y el cutover; dejar **un solo esquema** con todos los componentes del Núcleo.
 
 **Alcance.**

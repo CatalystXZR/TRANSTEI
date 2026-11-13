@@ -3,7 +3,7 @@
 > Instrucciones globales para todos los agentes de OpenCode en este repositorio.
 > Snapshot del entorno: **2026-10-28** (cifras de la sección 1 heredadas de esa
 > verificación; **no re-verificadas** al editar este archivo). Si cambia el stack,
-> la base o el estado del cutover, vuelve a verificar antes de confiar en ellas.
+> la base o el estado del sistema, vuelve a verificar antes de confiar en ellas.
 
 Este archivo es una guía de trabajo, no una fuente de verdad sobre el producto. La
 verdad se establece con código, migraciones, configuración y pruebas ejecutadas.
@@ -28,7 +28,7 @@ lo que busco" y es el punto de entrada antes de abrir cualquier otro documento.
 
 | Elemento | Dónde verificarlo (no lo asumas) |
 |---|---|
-| Raíz | `/Users/pc/Desktop/Informatica/TRANSTEI/TRANSTEI` |
+| Raíz | `/Users/pc/Desktop/Informatica/ADVISORY/TMS` (repo movido por el dueño 2026-11-12) |
 | Git | `git status --short` — hay trabajo del núcleo sin commitear; **no reviertas cambios ajenos** |
 | Stack backend | `backend/requirements.txt` |
 | Stack frontend | `frontend/package.json` |
@@ -36,7 +36,7 @@ lo que busco" y es el punto de entrada antes de abrir cualquier otro documento.
 | Migraciones | `ls supabase/migrations/` — **cuenta, no cites de memoria** |
 | API | `backend/app/api/router.py` |
 | Estado del sistema | `docs/estado.md` |
-| Capacidades que existen | `docs/arquitectura/modulos.md` |
+| Capacidades que existen | `docs/_archivo/modulos.md` (histórico; ver `docs/estado.md`) |
 | Qué esquema manda | `docs/arquitectura/fuentes-de-verdad.md` |
 
 **Regla de cifras:** nunca cites un conteo, versión o resultado sin haberlo
@@ -55,7 +55,6 @@ make unit         # unitarias del núcleo (no requieren base)
 make test         # suite completa (requiere Supabase local)
 make e2e          # Playwright (requiere frontend y datos)
 make restore-drill # backup + restore en base temporal
-make cutover-dry  # dry-run legacy -> nucleo
 ```
 
 No inventes comandos, rutas de modelo ni herramientas. Para descubrir agentes:
@@ -231,7 +230,6 @@ Reglas:
 - Leer, buscar, mapear flujos y ejecutar pruebas unitarias.
 - Editar código o documentación dentro del alcance autorizado **y de los permisos de tu agente**.
 - Ejecutar `ruff`, `tsc`, `eslint`, builds y pruebas que no toquen datos reales.
-- Ejecutar `cutover_legacy.py --dry-run` si la base local está disponible.
 
 **Pedir autorización**
 - Crear o modificar migraciones, `supabase db reset`, backfills o cambios de esquema.
@@ -314,7 +312,7 @@ solo en su carpeta:
 | `docs/qa/` | `qa` | línea base, matriz de trazabilidad, UAT, informes |
 | `docs/seguridad/` | `auditor-seguridad` | hallazgos |
 | `docs/orquestacion/` | `orquestador` | registro de tareas |
-| `docs/operacion/` | `orquestador` | setup, cutover, backup, deploy |
+| `docs/operacion/` | `orquestador` | setup, backup, deploy |
 | `docs/desarrollo/` | `orquestador` | guía, pruebas, backlog |
 | `docs/_archivo/` | — | histórico, **no citar como estado** |
 
@@ -420,10 +418,10 @@ Reglas que sí viven acá, porque son permanentes:
 | `docs/estado.md` | Estado real y riesgos abiertos |
 | `docs/mapa-sistema.md` | Capas, flujos y dónde vive cada pieza |
 | `docs/arquitectura/nucleo-diseno.md` | Diseño del schema `nucleo`, disponibilidad, concurrencia |
-| `docs/arquitectura/modulos.md` | Inventario histórico de módulos (superado; no citar como estado) |
+| `docs/arquitectura/modulos.md` | Histórico (movido a `docs/_archivo/modulos.md` 2026-11-12) |
 | `docs/arquitectura/fuentes-de-verdad.md` | Qué esquema manda por concepto |
 | `docs/negocio/catalogo-reglas.md` | Reglas de negocio `R-0XX` |
-| `docs/operacion/cutover.md` | Cutover y rollback |
+| `docs/_archivo/cutover.md` | Cutover ejecutado (histórico; movido 2026-11-12) |
 | `docs/operacion/setup-local.md` | Entorno local |
 | `docs/qa/uat-piloto.md` | Escenarios de aceptación |
 | `docs/_archivo/` | Histórico: **no citar como estado** |

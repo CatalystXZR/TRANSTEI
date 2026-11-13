@@ -20,6 +20,17 @@
 > histórico duplicado sin migrar ni reconciliar"**. Este documento distingue
 > ambas cosas en cada fila.
 
+> **Cambio de marco (2026-11-12).** Lo anterior quedó superado: **`public` fue
+> retirado físicamente** (`0028`, 2026-11-01: 0 tablas) y **la Ola D ejecutó el
+> cutover local** (2026-11-01). No hay dos esquemas ni histórico pendiente **en
+> la base local**: la aplicación y los datos viven en `nucleo`. La matriz §2
+> (rev. 2) se conserva como **referencia histórica** del período pre-retiro; sus
+> columnas "Tabla(s) en `public`" citan objetos que ya no existen. El estado
+> vigente por concepto está en §5. Los comandos de re-verificación de la
+> cabecera quedaron obsoletos (los scripts de cutover fueron eliminados del
+> repo el 2026-11-12); el reemplazo es `ls backend/app/api/routes/` (solo
+> `auth.py`) y `grep -rn "@/lib/api" frontend/src` (0 coincidencias).
+
 ---
 
 ## 1. Regla de lectura
@@ -116,3 +127,43 @@ Antes de escribir una línea de código nueva:
 > primera **no** se cumple en ninguno. La respuesta a "¿cuál manda?" es:
 > **"la aplicación manda en `nucleo`; el histórico manda en `public` hasta que D
 > lo migre"**.
+>
+> *(2026-11-12 — superado por el cierre: ver §5.)*
+
+---
+
+## 5. Estado actual (2026-11-12)
+
+Marco: `public` retirado (`0028`, 2026-11-01), Ola D ejecutada (2026-11-01) y
+código legacy/cutover eliminado del repo (2026-11-12). Estado por concepto:
+
+| Concepto | Fuente de verdad hoy | Nota |
+|---|---|---|
+| Cliente, chofer, tracto, rampla | `nucleo` (único esquema) | Cutover local 2026-11-01: maestros 3/3 reconciliados (`docs/_archivo/cutover-ejecutado-2026-11-01.md` §3). `RET-11` (tara/capacidad reales) sigue pendiente como decisión de datos, no de esquema |
+| Viaje | `nucleo.viajes` | 0 viajes legacy en la base local; no hubo filas `MIG-*` |
+| Reserva / ocupación | `nucleo.reservas_recurso` | Único libro, sin cambios |
+| Factura, pago, gasto | `nucleo` | Tablas legacy vacías localmente; no hubo filas que migrar |
+| Liquidación, mantenimiento, configuración | `nucleo` (`0024`–`0026`) | Ola D migró 6 pautas de mantenimiento; resto vacío |
+| Usuario / identidad | `nucleo.usuarios_empresa` + JWT | Sin `public.usuarios` (`auth.py:13-14`; `deps.py:96`) |
+| Empresa / tenant | `nucleo.empresas` | Sin cambios |
+| KPI | indicadores fijos (`servicio_alertas.py`, `servicio_rentabilidad.py`) | El motor por fórmula (`kpi_engine.py`) fue eliminado; decisión `RET-05` abierta con el dueño |
+
+**Reglas operativas vigentes:**
+
+1. **Un solo escritor por operación:** la aplicación escribe en `nucleo`. No
+   existen endpoints legacy ni scripts de cutover en el repo (verificado
+   2026-11-12: `api/routes/` solo `auth.py`; `scripts/` sin `cutover_legacy.py`).
+2. **El cutover ya no tiene interruptor ni tabla.** El middleware que leía
+   `nucleo.cutover_control` fue retirado de `main.py` (2026-11-12) y la tabla
+   fue **retirada físicamente por `0035`** (2026-11-12; `nucleo` 51 → 50
+   tablas). Las reglas §4.3/§4.5 ("congelar durante la ventana") describen la
+   operación ejecutada, no el runtime vigente. El rastro del cutover queda en
+   `docs/_archivo/cutover-ejecutado-2026-11-01.md` y en
+   `backups/cutover_pre_20261101_115202.sql`.
+3. **El histórico fuera de `nucleo` solo existe en backups** (P0 de `0028`:
+   `backups/cutover_pre_20261101_115202.sql`). Toda consulta sobre datos
+   anteriores al cutover se responde desde el backup, no desde una tabla viva.
+4. **Reconciliación** (`datos`): la Ola D local cerró con Δ 0 en maestros y
+   pautas (`cutover-ejecutado-2026-11-01.md` §3–§4). Para cualquier otro entorno
+   con filas legacy, aplica lo declarado en `retiro-legacy.md` §5 (consultas
+   históricas) y `docs/_archivo/cutover.md`.

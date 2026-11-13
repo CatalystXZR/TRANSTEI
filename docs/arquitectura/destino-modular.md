@@ -166,16 +166,22 @@ existencia.
 | **Prohibido escribir** | No escribe nada, en ninguna tabla. Si necesita un dato nuevo, se lo pide al módulo dueño. |
 | **Riesgo actual** | Lee 9 tablas de 6 módulos e **importa `ServicioFacturacion`** (`:40`): es el módulo más acoplado y el primer candidato a interfaces de lectura (§3.3, D-10). |
 
-### M12 — Cutover (**transitorio**) · `servicio_cutover.py:21-138`
+### M12 — Cutover (**transitorio — retirado por completo**) · ~~`servicio_cutover.py:21-138`~~
 
-| | |
-|---|---|
-| **Responsabilidad** | Congelar escrituras legacy mientras `public` siga existiendo. |
-| **Tablas** | `nucleo.cutover_control` (`0014:8`) |
-| **Endpoints** | `GET /nucleo/cutover/estado` (`api_cutover.py:31`), `POST /congelar` (`:38`), `POST /descongelar` (`:46`) |
-| **Efectos** | `main.py:36-61` bloquea todo verbo no-GET fuera de `/nucleo` y `/auth` cuando el flag está activo. |
-| **Prohibido escribir** | Nadie más escribe `cutover_control`. |
-| **Ciclo de vida** | **Se elimina** al cerrar G0.4 de ADR-0002 (`ADR-0002:293`). No es un módulo permanente del destino. |
+> **2026-11-12 — ELIMINADO EN SU TOTALIDAD.** El ciclo de vida de abajo se
+> cumplió: el middleware de congelamiento fue retirado de `main.py`,
+> `api_cutover` desmontado de `router.py` y `scripts/cutover_legacy.py`
+> eliminado. En esta misma fecha se eliminaron `servicio_cutover.py`,
+> `api_cutover.py` y sus pruebas (`grep -rni cutover backend/app backend/tests
+> frontend/src scripts Makefile` → 0 coincidencias) y la tabla
+> `nucleo.cutover_control` fue retirada por la migración `0035`
+> (`nucleo`: 51 → 50 tablas; ledger 35/35). El registro histórico del cutover
+> queda en `docs/_archivo/cutover-ejecutado-2026-11-01.md` y en
+> `backups/cutover_pre_20261101_115202.sql`. Evidencia:
+> `docs/orquestacion/registro.md` (2026-11-12); `retiro-legacy.md` §11.
+
+*(El ciclo de vida histórico —responsabilidad, endpoints, middleware— se
+conserva en el historial de git de este documento; hoy el módulo no existe.)*
 
 **Nota sobre el canal conductor.** La PWA del conductor (`api_conductor.py:20-57`,
 `servicio_conductor.py:73-289`) **no es un módulo**: es una *fachada* de M04/M06/M07 para
@@ -248,6 +254,15 @@ asimetría es intencional: la base no se puede saltar con un `if` mal escrito.
 Criterio: **una tabla canónica por concepto**. "Legacy que la duplica" lista la tabla de
 `public` que guarda el mismo concepto; si está vacía, no hay duplicado.
 
+> **2026-11-12 — la columna "Legacy que la duplica" ya no describe el runtime:**
+> `public` fue retirado por `0028` (2026-11-01) y el cutover (Ola D) migró el
+> histórico local. Toda fila con "Sí/🔴" en "¿Dos fuentes vivas?" quedó resuelta
+> por eliminación de la fuente legacy, no por reconciliación. Además, las filas
+> Liquidación, Mantención, Configuración e IVA quedaron **superadas por la Ola B**
+> (`0024`–`0026`): hoy tienen tabla canónica en `nucleo`. La tabla se conserva
+> como registro del diagnóstico pre-retiro; el estado vigente por concepto está
+> en `fuentes-de-verdad.md` §5.
+
 | Dominio | Tabla canónica (`nucleo`) | Quién escribe | Quién lee | Legacy que la duplica | ¿Dos fuentes vivas? |
 |---|---|---|---|---|---|
 | Empresa | `nucleo.empresas` | M01 | Todos | — (no existe en `public`) | No |
@@ -282,6 +297,8 @@ ya clasificó. **Ninguno** de los dos lados es "solo lectura": `public.viajes`,
 (`viajes.py:152-253`, `gastos.py:55`, `facturas.py:101-241`). Mientras el cutover no
 congele, hay dos escritores reales. Eso **no lo resuelve este documento**: lo resuelve
 ADR-0002 con sus cuatro puertas.
+*(2026-11-12: situación histórica — `public` no existe desde `0028` (2026-11-01) y
+hoy hay un único escritor: `nucleo`.)*
 
 ---
 
@@ -337,7 +354,7 @@ limpieza, no con un rollback imposible.
 | Réplicas de lectura para M11 y M09 | Viable: son consumidores puros y toleran latencia (`servicio_alertas.py`, `servicio_rentabilidad.py` no escriben) |
 | Partición por fecha de `nucleo.auditoria` | Viable: `ocurrido_en` es `timestamptz` indexado (`0004:828`) y la tabla es append-only (`0004:890`). Requiere migración `PARTITION BY RANGE` |
 | Partición por fecha de `nucleo.viajes` | **No todavía**: hay FKs entrantes desde 5 tablas (`0004:721-728`, `0007:17-181`, `0013:54`) |
-| Réplicas del proceso API | Viable: el estado está en PostgreSQL. Excepción: el caché de cutover (`servicio_cutover.py:17-41`) es por proceso, TTL 5 s |
+| Réplicas del proceso API | Viable: el estado está en PostgreSQL. ~~Excepción: el caché de cutover (`servicio_cutover.py:17-41`) es por proceso, TTL 5 s~~ *(2026-11-12: la excepción desapareció con la eliminación de `servicio_cutover.py`)* |
 | Connection pooling | Necesario antes de escalar réplicas; el engine se crea una vez (`database.py:21-24`) |
 
 ### 6.2 Qué se difiere, y **qué evidencia** lo justificaría

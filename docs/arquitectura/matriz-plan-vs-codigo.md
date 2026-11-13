@@ -1,4 +1,12 @@
 > ⚠️ **Aviso de vigencia (2026-11-01):** cita archivos/cifras anteriores al retiro del legacy (`public`, `lib/api.ts`, `backend/app/api/routes/*`, `kpi_engine.py`). No citar como estado actual; ver `docs/estado.md` §2–§6 y `docs/PLAN_DESARROLLO.md`.
+>
+> **Cierre (2026-11-12):** `public` fue retirado físicamente (`0028`, 2026-11-01),
+> el cutover ejecutado (Ola D) y el código legacy/cutover eliminado del repo. Las
+> columnas **L** ("estado en `public`") de las tablas de abajo describen el legacy
+> **tal como era antes del retiro** y ya no representan ningún riesgo de runtime:
+> no queda escritor legacy que evada las garantías del núcleo. Este documento
+> queda como **contraste histórico** plan-v1 vs implementación; el estado vigente
+> es `docs/estado.md`.
 
 # Matriz de reconciliación — `docs/_archivo/planes/PLAN_MAESTRO_ERP_V2.md` vs. repositorio
 

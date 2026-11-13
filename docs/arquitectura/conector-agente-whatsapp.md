@@ -279,8 +279,9 @@ silencio puede ocultar una tool mal declarada.
 **Hecho verificado al 2026-10-30 (antes de `0023`):** no existía tabla de módulos
 por empresa. `nucleo.empresas` no tiene columna de configuración
 (`supabase/migrations/0004_nucleo_operacional.sql:102-134`);
-`nucleo.cutover_control` es otra cosa — controla el congelamiento legacy→núcleo
-(`supabase/migrations/0014_cutover.sql:8-31`) — y reutilizarlo acoplaría dos flags
+`nucleo.cutover_control` era otra cosa — controlaba el congelamiento
+legacy→núcleo (`supabase/migrations/0014_cutover.sql:8-31`; tabla retirada
+después por `0035`, 2026-11-12) — y reutilizarla acoplaría dos flags
 sin relación. Una búsqueda en `supabase/migrations/` por
 `modulos_empresa|habilitado` no devuelve la tabla (solo coincidencias de
 `nucleo.empresas` y comentarios de RLS).
@@ -808,7 +809,7 @@ un viaje del mismo chofer, la tool devuelve `CODIGO_AMBIGUO` con las opciones
 | A2 | `facturacion.resumen_mes` | `facturacion:facturacion.empresa` | lectura | `{anio?, mes?}` | `{emitido, cobrado, pendiente, vencido, moneda}` | 🟢 facturas/pagos/NC (`servicio_facturacion.py`) | Sí (agregado nuevo) |
 | A3 | `cobranza.clientes_pendientes` | `cobranza:cobranza.empresa` | lectura | `{min_dias_vencido?, limite?}` | `{items:[{cliente_id, cliente_nombre, saldo, vencido, dias_max}], total}` | 🟢 `aging:719-754` + `listar_facturas:198-227` | Sí |
 | A4 | `flota.estado_vehiculo` | `flota:flota.empresa` | lectura | `{patente}` | `{tipo, patente, estado, ubicacion?, ultimo_viaje?, documentos_por_vencer[]}` | 🟢 `Tracto`, `Rampla`, `Documento`, `ReservaRecurso` (`models.py:470,515,601,1282`) | Sí (consulta nueva) |
-| A5 | `mantenimiento.estado_vehiculo` | `mantenimiento:mantenimiento.empresa` | lectura | `{patente}` | `{pauta?, ultimo_service?, proximo_km?, historial[]}` | 🔴 no hay tabla de pautas/historial en `nucleo`; mantenimiento vive en legacy `public` y en `ReservaRecurso.tipo_reserva='mantenimiento'` (`servicio_alertas.py:172`) | **No** hasta crear el objeto en `nucleo` |
+| A5 | `mantenimiento.estado_vehiculo` | `mantenimiento:mantenimiento.empresa` | lectura | `{patente}` | `{pauta?, ultimo_service?, proximo_km?, historial[]}` | 🔴 no hay tabla de pautas/historial en `nucleo`; mantenimiento vive en legacy `public` y en `ReservaRecurso.tipo_reserva='mantenimiento'` (`servicio_alertas.py:172`) — *(2026-11-12: el objeto **ya existe** en `nucleo`: `0024_mantenimiento_nucleo.sql` creó `pautas_mantenimiento`, `mantenimientos` y `v_mantenimiento_estado`; el bloqueo original quedó superado y A5 es implementable con ese servicio.)* | **No** hasta crear el objeto en `nucleo` |
 | A6 | `gastos.resumen_por_categoria` | `gastos:gastos.empresa` | lectura | `{desde, hasta, categoria?}` | `{items:[{categoria, monto, moneda, cantidad}], total}` | 🟡 `ViajeGasto` existe; `listar_gastos` es por viaje (`servicio_gastos.py:230-253`) | Sí (agregado nuevo) |
 | A7 | `solicitudes.bandeja` | `solicitudes:solicitudes.bandeja` | lectura | `{estado?, tipo?, limite?}` | `{items:[...], total}` | 🟢 tabla `solicitudes` | Sí |
 | A8 | `facturacion.documentos_cliente` | `facturacion:documentos.empresa` | lectura | `{cliente_id?/cliente_rut?, tipo?, estado?, limite?}` | `{items:[{tipo, numero, fecha, estado, saldo, moneda}], total}` | 🟢 facturas/OC/NC | Sí (D4: exigir cliente o `CODIGO_AMBIGUO`) |
@@ -857,7 +858,7 @@ deniega por la llave 3. Esto es deliberado: el toggle de componente es el
 | 🟢 datos y paridad existen | C1, C2, C3, C5, K1, K2, A1, A2, A3, A4, A7, A8 | Se puede implementar el ejecutor con servicios/consultas actuales; falta el adaptador de filtro forzado (ADR-0006). |
 | 🟡 requiere consulta/agregado nuevo | C4, C6, K4, A6 | El dato existe, pero no hay método declarado con esa proyección. |
 | 🔴 requiere servicio del módulo | C7, C8, K3 | La tabla existe; el servicio de solicitudes/hoja de ruta es O2.4/O2.5. |
-| 🔴 bloqueada por pieza de dominio | A5 | Mantenimiento no está en `nucleo`; no se lee `public`. |
+| 🔴 bloqueada por pieza de dominio | A5 | Mantenimiento no está en `nucleo`; no se lee `public`. — *(2026-11-12: superado: `0024` creó el objeto en `nucleo`; A5 pasa a "requiere servicio/agregado" cuando se implemente su ejecutor.)* |
 | 🔴 diferida por decisión | `gerente.consultar` | D-09 abierta. |
 
 **Conteo honesto:** el catálogo declara 20 tools, pero el registry carga **19**:
@@ -1632,7 +1633,7 @@ consultar históricamente qué modelo respondió cada mensaje, el DI ya lo guard
 | # | Riesgo/pregunta | Evidencia | Impacto | Mitigación F2.1 |
 |---|---|---|---|---|
 | R1 | Contradicción D-09 vs CL-05: el cliente “no ve números de camiones” pero la aprobación notifica camión/rampla/conductor | `agente-whatsapp-roles.md:101-103` vs `:31-34` | El alcance de la tool C2/C6 y la notificación no están claros | Se excluyen patentes de las tools; la notificación es un mensaje del runtime; decisión de negocio 🔴 |
-| R2 | `A5 mantenimiento` no tiene objeto en `nucleo` | `models.py` sin pauta/mantenimiento; `servicio_alertas.py:172` solo reserva | No se puede responder “¿se hizo la mantención?” con datos del núcleo | No se registra A5; no se lee `public`; se crea el objeto en `nucleo` primero |
+| R2 | `A5 mantenimiento` no tiene objeto en `nucleo` | `models.py` sin pauta/mantenimiento; `servicio_alertas.py:172` solo reserva | No se puede responder “¿se hizo la mantención?” con datos del núcleo | No se registra A5; no se lee `public`; se crea el objeto en `nucleo` primero — *(2026-11-12: resuelto por `0024_mantenimiento_nucleo.sql`; queda pendiente solo el ejecutor de A5, no la pieza de dominio.)* |
 | R3 | Tool de lectura duplica el filtro del servicio humano (ADR-0006) | ADR-0006 §Consecuencias | Deriva entre consulta humana y del agente | Pruebas de paridad por componente; no reimplementar reglas, solo filtro/proyección |
 | R4 | El runtime puede llamar a la tool con un `request_id` falso | No hay firma interna en F2.1 | Auditoría correlacionada pero no autenticada | El runtime es el único que llama; si se separa en worker, se exige autenticación de servicio (decisión de `backend`) |
 | R5 | `auditoria_consultas_agente` no registra teléfonos no enrolados | `contacto_id NOT NULL` (`0021:681`) | Intento no auditado en base | Log del runtime con hash; si se exige base, tabla nueva (migración) |

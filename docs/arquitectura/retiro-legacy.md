@@ -430,8 +430,8 @@ devuelve 0 filas y una salida fechada.
 | `docs/negocio/{implementacion,contexto,kpis,preguntas}.md` | `routes/liquidaciones.py`, `viajes.py`, `facturas.py`, `dashboard.py` | `negocio-finanzas` | Re-apuntar; marcar `D-01`/`P-09` abiertas |
 | `docs/backend/contratos/liquidaciones-comision-r01.md` | `routes/liquidaciones.py` (ya tiene aviso) | `backend` | Completar re-mapeo a `servicio_nomina.py` |
 | `docs/datos/invariantes.md` | `api/routes/gastos.py` | `datos` | Re-apuntar a `servicio_gastos.py`/`api_gastos.py` |
-| `docs/mapa-sistema.md` | `lib/api.ts` vigente | `arquitectura` | Actualizar §1 y tabla de clientes |
-| `docs/arquitectura/modulos.md` | 12 routers legacy, 13 pantallas legacy | `arquitectura` | Aviso de superado (ver cabecera del archivo) |
+| `docs/mapa-sistema.md` | `lib/api.ts` vigente | `arquitectura` | Reescritura lista 2026-11-12 (`docs/arquitectura/handoff-mapa-sistema-2026-11-12.md`); aplicación sobre `docs/mapa-sistema.md` pendiente de permiso de edición (ver §11) |
+| `docs/arquitectura/modulos.md` | 12 routers legacy, 13 pantallas legacy | `arquitectura` | Archivado 2026-11-12 a `docs/_archivo/modulos.md`; el `git mv` físico requiere shell, denegado a esta sesión (ver §11) |
 | `docs/arquitectura/deuda.md` | D-01/D-04/D-06/D-09/D-15/D-16 con `routes/*` | `arquitectura` | Aviso + revisión de filas |
 | `docs/arquitectura/matriz-plan-vs-codigo.md` | `routes/viajes.py`, `gastos.py`, `facturas.py`, `liquidaciones.py`, `mantenimiento.py` | `arquitectura` | Re-apuntar a servicios del núcleo |
 | `docs/arquitectura/destino-modular.md` | `viajes.py`, `gastos.py`, `facturas.py` como escritores | `arquitectura` | Actualizar reparto de escrituras |
@@ -439,3 +439,44 @@ devuelve 0 filas y una salida fechada.
 | `docs/orquestacion/registro.md` | `routes/*` en fases previas | `orquestador` | Añadir entrada de Olas B/C; no reescribir pasado |
 | `docs/frontend/f2-tenant2-navegacion.md` | `lib/api.ts`, 12 pantallas legacy | `frontend` | Aviso de superado |
 | `docs/PLAN_DESARROLLO.md`, `docs/_archivo/**` | `api.ts`, routers legacy | — | Histórico: no citar como estado |
+
+---
+
+## 11. Cierre (2026-11-12)
+
+La matriz de arriba (rev. 3, 2026-10-31) describe el estado **anterior** al cierre.
+Lo que pasó después, con evidencia fechada:
+
+- **Ola D ejecutada (2026-11-01, base local):** cutover idempotente
+  (`pautas_migradas: 6`; segunda corrida 0), maestros 3/3, 0 viajes legacy
+  pendientes. Evidencia: `docs/_archivo/cutover-ejecutado-2026-11-01.md`;
+  `docs/estado.md` §4 ("Cutover ejecutable ⚪ superado: `public` fue retirado
+  (0028) y la Ola D ejecutó el cutover local").
+- **`public` retirado físicamente (2026-11-01):** `supabase/migrations/0028_retiro_public.sql`
+  borró las 17 tablas, los 8 enums, las 2 funciones y el trigger
+  `on_auth_user_created` de `auth.users` (`0028:6-27`). El esquema se conserva
+  **vacío** (sin `DROP SCHEMA`; `0028:75-78`). `docs/estado.md` §3: 0 tablas.
+- **Identidad cerrada (Ola E):** `/auth/me` resuelve desde el JWT de Supabase y
+  `nucleo.usuarios_empresa`, sin leer `public.usuarios`
+  (`backend/app/api/routes/auth.py:13-14`; `backend/app/api/deps.py:4-8,96`).
+- **Código legacy/cutover eliminado del repo (2026-11-12):** las 9 páginas
+  `(retiradas)` y `(app)/cutover` borradas; el middleware
+  `congelar_escritura_legacy` retirado de `main.py`; `api_cutover` desmontado de
+  `router.py` (comentario "Retiro legacy completado (Ola E, 2026-11)",
+  `router.py:3-5`); `scripts/cutover_legacy.py` eliminado.
+  **Residual en retiro:** `backend/app/nucleo/servicio_cutover.py` y
+  `api_cutover.py` siguen en disco sin importadores de aplicación (solo tests
+  los referencian); su borrado está en curso.
+- **Los comandos de re-verificación del encabezado quedaron obsoletos:**
+  - `grep -rn "public\." backend/app/`: ya no aplica — `public` no existe; el
+    único lector era `servicio_cutover.py` (en retiro).
+  - `ls backend/app/api/routes/`: sigue siendo solo `auth.py` (🟢 2026-11-12).
+  - `grep -rn "@/lib/api" frontend/src`: obsoleto — `api.ts` no existe
+    (🟢 0 coincidencias, 2026-11-12).
+  - Las consultas §5 contra `public.*` fallan con `42P01`: el histórico vive hoy
+    en `nucleo` (lo que migró la Ola D) o en el backup P0 de `0028`
+    (`backups/cutover_pre_20261101_115202.sql`).
+- **Estado vigente:** `docs/estado.md` (único autorizado a cifras volátiles).
+  Este documento queda como **registro histórico** de la matriz de retiro: su
+  inventario §1–§2 describe `public` tal como era **antes** de `0028`, no como
+  existe hoy.

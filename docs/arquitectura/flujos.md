@@ -1,9 +1,15 @@
 # Flujos reales — de la pantalla a la tabla
 
 > **Pregunta que responde:** ¿qué camino recorre cada operación crítica, quién escribe, quién lee y dónde se corta la cadena?
-> **Dueño:** arquitectura · **Verificado:** 2026-10-29 · **Método:** lectura estática de pantallas, clientes HTTP, routers, servicios, DDL y triggers; sin ejecución ni base.
+> **Dueño:** arquitectura · **Verificado:** 2026-10-29 · **Revisado:** 2026-11-12 (retiro del legacy) · **Método:** lectura estática de pantallas, clientes HTTP, routers, servicios, DDL y triggers; sin ejecución ni base.
 > **Caduca si:** cambia un endpoint, un permiso, un trigger o el cliente HTTP de una pantalla.
 > **Re-verificar con:** `grep -n "include_router" backend/app/api/router.py` y `grep -rn "nucleo/viajes" frontend/src`
+>
+> **Nota (2026-11-12):** los flujos (d) y (e) de la revisión 2026-10-29 describían
+> el legacy (`public`, `lib/api.ts`, `api/routes/*`), retirado por `0028`
+> (2026-11-01). (d) quedó reescrito contra el módulo de liquidaciones del núcleo
+> (`0025`); (e) se conserva como contraste histórico y no describe ningún camino
+> ejecutable hoy.
 
 ---
 
@@ -83,26 +89,33 @@ Cada paso cita `archivo:línea`. **"Se corta"** significa que el flujo no contin
 
 ---
 
-## (d) Liquidar comisión de chofer (legacy)
+## (d) Liquidar comisión de chofer — núcleo (`0025`)
+
+> Reescrito 2026-11-12: la revisión 2026-10-29 describía este flujo en el legacy
+> (`public.liquidaciones`, router `liquidaciones.py`), retirado con `public`
+> (`0028`). El módulo fue portado al núcleo en la Ola B (`0025`).
 
 | Paso | Evidencia |
 |---|---|
-| Pantalla: `/liquidaciones`, botones calcular y emitir | `frontend/src/app/(app)/liquidaciones/page.tsx:211,225` |
-| Cliente: `api.post("/liquidaciones/calcular?chofer_id=…&mes=…")` | `frontend/src/lib/api.ts:39-40` |
-| Endpoint: `POST /liquidaciones/calcular` | `backend/app/api/routes/liquidaciones.py:278-344` |
-| Permiso: solo `admin` y `contabilidad`, lectura y escritura | `liquidaciones.py:33-34` |
-| Servicio: `_comision_chofer` atribuye por **fecha de emisión de la primera factura no anulada**; si no hay factura pero el viaje está `facturado`, usa la fecha del viaje | `liquidaciones.py:51-96` |
-| Cálculo: `sueldo_base + comisión + bonos − descuentos − anticipos` | `liquidaciones.py:332-336` |
-| Tablas: `public.liquidaciones` (`unique (chofer_id, mes)`), `anticipos_chofer`, `ajustes_liquidacion` | `0001:151-186` |
-| Documento: `GET /liquidaciones/{id}/pdf` | `liquidaciones.py:502` |
-| Riesgo abierto: el PDF recalcula la comisión al emitir y no congela un snapshot | `liquidaciones.py:515-533`; SEC-002 |
+| Pantalla: `/liquidaciones`, botones calcular, emitir y anular | `frontend/src/app/(app)/liquidaciones/page.tsx:262,286,314` |
+| Cliente: `nucleo.post("/nucleo/liquidaciones", …)` (único cliente HTTP) | `liquidaciones/page.tsx:14`; `lib/nucleo.ts:37-49` |
+| Endpoint: `POST /nucleo/liquidaciones` (calcular), `POST /nucleo/liquidaciones/{id}/emitir`, `POST /nucleo/liquidaciones/{id}/anular` | `backend/app/nucleo/api_nomina.py:58,71,80` |
+| Anticipos y ajustes: `GET/POST /nucleo/anticipos`, `GET/POST /nucleo/ajustes` | `api_nomina.py:90,100,113,123` |
+| Permiso: `liquidaciones:leer` / `liquidaciones:escribir` | `api_nomina.py:35,42` |
+| Tablas: `nucleo.liquidaciones` (`unique (chofer_id, mes)`), `nucleo.anticipos_chofer`, `nucleo.ajustes_liquidacion` | `supabase/migrations/0025_liquidaciones_nucleo.sql` |
+| Base de comisión: `nucleo.choferes.porcentaje_comision` (default 10 % desde `0017`/`0019`) | `0004:282-321`; `0017:47-48`; `0019:44-67` |
 
-**Quién escribe:** router legacy → `public.liquidaciones`, `public.anticipos_chofer`, `public.ajustes_liquidacion`.
-**Se corta:** el núcleo **no tiene módulo de liquidaciones**; solo estima la comisión como costo (`0011:119-124`). La nómina sigue leyendo `public.choferes.porcentaje_produccion`, mientras el costo del núcleo lee `nucleo.choferes.porcentaje_comision` (SEC-003). No hay snapshot inmutable (SEC-002) ni idempotencia en anticipos (SEC-007).
+**Quién escribe:** `api_nomina.py` → `nucleo.liquidaciones`, `nucleo.anticipos_chofer`, `nucleo.ajustes_liquidacion`.
+**Se corta / pendiente:** la regla de devengamiento de la comisión (al finalizar, facturar o cobrar) sigue abierta como decisión de negocio (`D-01`); la emisión del núcleo congela montos, pero la base de cálculo no está ratificada. La versión legacy de este flujo (comisión sobre flete no cobrado, PDF recalculado, SEC-002/SEC-003) se describe como histórico en `retiro-legacy.md` y en `docs/_archivo/retiro-legacy-modulos.md`.
 
 ---
 
-## (e) Crear viaje en el legacy (contraste)
+## (e) Crear viaje en el legacy (contraste histórico)
+
+> **2026-11-12: este flujo ya no existe.** El router `routes/viajes.py`, el
+> cliente `lib/api.ts`, la pantalla `/viajes` y el esquema `public` fueron
+> retirados (Olas A–E, `0028`). Se conserva como registro del defecto
+> estructural (RA-02) que motivó el núcleo.
 
 | Paso | Evidencia |
 |---|---|
@@ -125,27 +138,26 @@ Cada paso cita `archivo:línea`. **"Se corta"** significa que el flujo no contin
 | Paso | Evidencia |
 |---|---|
 | Pantalla: `/login` → `signIn(email, password)` | `frontend/src/app/login/page.tsx:20-32` |
-| Cliente: Supabase Auth directo (`signInWithPassword`), no pasa por FastAPI | `frontend/src/context/auth-context.tsx:77-86` |
-| Redirección: `next` o `/dashboard` | `login/page.tsx:30-31` |
-| Bootstrap legacy: el `AuthProvider` llama `GET /auth/me` y lee `public.usuarios` | `frontend/src/context/auth-context.tsx:56-68`; `backend/app/api/routes/auth.py:10-18`; `api/deps.py:9-28` |
+| Cliente: Supabase Auth directo (`signInWithPassword`), no pasa por FastAPI | `frontend/src/context/auth-context.tsx` |
+| Redirección: `next` o `/tablero` | `login/page.tsx:30-31` |
+| Bootstrap: el `AuthProvider` llama `GET /auth/me`; la identidad sale del JWT (`sub`, `email`, `user_metadata`) y del rol de menú de `nucleo.usuarios_empresa` | `auth-context.tsx:61`; `backend/app/api/routes/auth.py:10-15`; `api/deps.py:4-8,96` |
 | Núcleo: `getEmpresas()` → `GET /nucleo/mis-empresas` sin `X-Empresa-ID` | `frontend/src/lib/nucleo.ts:85-86`; `backend/app/nucleo/api.py:69-76` |
 | Servicio: lee `nucleo.usuarios_empresa` activos y empresas activas | `servicio_disponibilidad.py:98-120` |
 | Selección: la pantalla toma **la primera empresa** y la guarda en estado local | `despacho/page.tsx:162-167` |
 | Cada request del núcleo envía `X-Empresa-ID`; el backend valida membresía y empresa activa | `nucleo.ts:25-34`; `deps.py:43-82` |
 | Autorización fina: rol → permisos por endpoint | `permisos.py:15-172` |
 
-**Quién escribe:** Supabase Auth emite el JWT; el backend no crea usuarios en este flujo. La membresía vive en `nucleo.usuarios_empresa` y el rol legacy en `public.usuarios`.
-**Se corta:** no hay selector de empresa ni persistencia de la selección; un usuario con dos membresías ve la primera y no puede cambiarla desde la UI (🟢 código: no existe componente de selector). El login es compartido, pero **los roles no**: legacy usa 3 roles globales y núcleo 8 roles por empresa. Esto obliga a decidir cuál es la identidad canónica antes del cutover.
+**Quién escribe:** Supabase Auth emite el JWT; el backend no crea usuarios en este flujo. La membresía vive en `nucleo.usuarios_empresa`; **no existe** `public.usuarios` (retirado por `0028`).
+**Se corta:** no hay selector de empresa ni persistencia de la selección; un usuario con dos membresías ve la primera y no puede cambiarla desde la UI (🟢 código: no existe componente de selector).
 
 ---
 
-## Diagrama de capas
+## Diagrama de capas (2026-11-12)
 
 ```mermaid
 flowchart LR
-  UI["Pantalla"] -->|api.ts| LEG["Routers legacy<br/>public"]
-  UI -->|nucleo.ts + X-Empresa-ID| NUC["Routers núcleo<br/>nucleo"]
-  LEG --> PG1[("public<br/>sin reservas")]
+  UI["Pantallas<br/>/(app)/*, /conductor, /login"] -->|nucleo.ts + X-Empresa-ID| NUC["Routers núcleo<br/>/api/v1/nucleo/*"]
+  UI -->|Supabase Auth| AUTH["/api/v1/auth/me<br/>(JWT + nucleo.usuarios_empresa)"]
   NUC --> PG2[("nucleo<br/>reservas + documentos + auditoría")]
   PG2 --> TRG["Triggers:<br/>ventana, reservas, docs, A5, OC, auditoría"]
 ```

@@ -8,6 +8,10 @@
 > **Estado: PLAN NO EJECUTADO.** La tabla de evidencia (§4) está vacía: no hay fecha,
 > ejecutor ni resultado por escenario. Este documento define **qué** hay que validar;
 > no es una aprobación. Ver `docs/estado.md` para lo que sí está verificado.
+>
+> **Excepción:** P0-13 (cutover y continuidad) quedó **SUPERADO**: el cutover se
+> ejecutó el 2026-11-01 (Ola D) y el código de cutover se eliminó del producto el
+> 2026-11-12 (F1). Ver §3 y §4.
 
 ---
 
@@ -144,12 +148,18 @@ Un escenario se acepta solo si:
 - [ ] Ver diff antes/después de un cambio.
 
 ### P0-13 — Cutover y continuidad
-- [ ] Ejecutar seed completo y validar 8 usuarios.
-- [ ] Ejecutar `scripts/restore_drill.sh` y confirmar `restore_ok`.
-- [ ] Ejecutar `npm run test:e2e` (9 escenarios).
-- [ ] Ejecutar `scripts/cutover_legacy.py --dry-run` y luego `--freeze`.
-- [ ] Verificar que POST legacy devuelve 409 y que el núcleo sigue operando.
-- [ ] Confirmar backup final y checklist de cutover.
+
+> **✅ SUPERADO — cutover ejecutado el 2026-11-01 (Ola D); el código de cutover
+> se eliminó del producto el 2026-11-12 (F1).** Fuente: orquestador, 2026-11-12;
+> ver `docs/estado.md`. Los subítems quedan anotados con su disposición al
+> cierre, sin borrar la historia:
+
+- [x] Ejecutar seed completo y validar 8 usuarios — cumplido en el piloto (seed local).
+- [ ] Ejecutar `scripts/restore_drill.sh` y confirmar `restore_ok` — **n/a como hito**: el drill dejó de ser parte del cutover ya concluido; no re-ejecutado al anotar esta fila.
+- [ ] Ejecutar `npm run test:e2e` (9 escenarios) — **n/a**: la suite creció (20 tests al 2026-10-31) y su ejecución es continua, no un hito de cierre de cutover.
+- [x] Ejecutar `scripts/cutover_legacy.py --dry-run` y luego `--freeze` — cumplido: el cutover se ejecutó el 2026-11-01 (Ola D); el script se eliminó con el código legacy el 2026-11-12.
+- [x] Verificar que POST legacy devuelve 409 y que el núcleo sigue operando — cumplido durante el congelamiento; desde 2026-11-12 las rutas legacy responden 404 (eliminadas, F1).
+- [x] Confirmar backup final y checklist de cutover — cumplido en el cierre del cutover (2026-11-01).
 
 ---
 
@@ -169,7 +179,7 @@ Un escenario se acepta solo si:
 | | P0-10 | | | |
 | | P0-11 | | | |
 | | P0-12 | | | |
-| | P0-13 | | | |
+| 2026-11-01 | P0-13 | Orquestador (Ola D) | SUPERADO | Cutover ejecutado; código de cutover eliminado 2026-11-12 (F1). Ver `docs/estado.md` |
 
 ---
 
@@ -180,7 +190,7 @@ Un escenario se acepta solo si:
 - Sin integraciones reales de GPS, combustible, peajes, banco, WhatsApp ni firma electrónica.
 - La PWA cachea shell y encola acciones JSON; fotos y POD requieren conexión.
 - Los datos de seed son ficticios; la UAT con datos reales requiere la lista de maestros y tarifas del negocio.
-- La migración legacy asume pesos/capacidades estándar cuando el legacy no los tiene; debe revisarse antes de producción.
+- ~~La migración legacy asume pesos/capacidades estándar cuando el legacy no los tiene; debe revisarse antes de producción.~~ **Histórica (n/a):** el cutover se ejecutó el 2026-11-01 y el código legacy se eliminó el 2026-11-12; esta nota deja de ser un pendiente previo a producción.
 
 ---
 

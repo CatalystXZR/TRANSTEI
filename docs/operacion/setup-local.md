@@ -37,7 +37,6 @@ make unit            # unitarias del núcleo (no requiere base)
 make test            # suite completa (requiere Supabase local)
 make e2e             # Playwright (requiere :3000 + datos)
 make restore-drill   # backup + restore en base temporal
-make cutover-dry     # dry-run legacy -> nucleo
 make help            # lista real de targets
 ```
 

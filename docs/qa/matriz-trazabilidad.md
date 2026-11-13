@@ -98,25 +98,35 @@ Toda garantía de concurrencia es, como mínimo, `parcial`.
 
 ## 6. Legacy `public`
 
+> **Aviso de vigencia (2026-11-12):** histórico — `public` fue retirado en la
+> migración `0028` (2026-11-01) y el código legacy restante se eliminó el
+> 2026-11-12 (F1). Las filas de esta sección documentan el estado previo; no
+> citar como estado actual. Ver `docs/estado.md`.
+
 | ID | Dónde se impone | Prueba (`archivo:línea`) | ¿Existe? | Cobertura |
 |---|---|---|---|---|
-| INV-L01 / **RA-02** doble asignación legacy | **sin mecanismo**: `SELECT` sin lock en `viajes.py:99-115` (solo tracto) | `test_flujos_criticos.py:106` | sí | parcial (secuencial; ignora rampla, chofer y concurrencia) |
+| INV-L01 / **RA-02** doble asignación legacy | **sin mecanismo**: `SELECT` sin lock en `viajes.py:99-115` (solo tracto) · **retirado con `public` (0028)** | `test_flujos_criticos.py:106` | sí | parcial (secuencial; ignora rampla, chofer y concurrencia) |
 | INV-L02 folio SII único por empresa | `unique (numero_sii, cliente_id)` `0001:142` (permite repetir entre clientes) | — | no | sin cobertura |
 | INV-L03 `total = neto + iva` | **sin CHECK** (`0001:132-134`) | `test_flujos_criticos.py:134` | sí | parcial (aritmética HTTP, no DB) |
-| INV-L04 factura legacy no se borra | **sin mecanismo** (`DELETE` en `facturas.py:241-263`) | — | no | sin cobertura |
+| INV-L04 factura legacy no se borra | **sin mecanismo** (`DELETE` en `facturas.py:241-263`) · **retirado con `public` (0028)** | — | no | sin cobertura |
 | INV-L05 liquidación coherente e inmutable al emitir | Cálculo Python `liquidaciones.py:336`; sin trigger | `test_flujos_criticos.py:167` | sí | parcial (coherencia; no inmutabilidad → SEC-002) |
 | INV-L06 `fecha_fin >= fecha_inicio` | Solo servicio `viajes.py:91-96`; sin CHECK | `test_flujos_criticos.py:106` | sí | parcial (servicio, no DB) |
 
 ## 7. Tenant, auditoría y cutover
+
+> **Aviso de vigencia (2026-11-12):** las filas de cutover de esta sección
+> (INV-T04/RA-04/INV-X01, INV-A02) y SEC-009 (§8) quedaron **retiradas con el
+> cutover** (ejecutado 2026-11-01; código eliminado 2026-11-12). Histórico: ver
+> `docs/estado.md`. Las demás filas de esta sección siguen vigentes.
 
 | ID | Dónde se impone | Prueba (`archivo:línea`) | ¿Existe? | Cobertura |
 |---|---|---|---|---|
 | INV-T01 aislamiento multiempresa (RA-03) | **sin mecanismo**: 0 políticas RLS en `nucleo`; rol efectivo no verificado | `test_nucleo_permisos.py:32` prueba la matriz de roles, **no** el aislamiento | no | sin cobertura |
 | INV-T02 reserva ligada a viaje de la misma empresa | Trigger solo si `activa` `0004:1669-1676`; FK simple `0004:727-728` | — | no | sin cobertura |
 | INV-T03 membresía apunta a `auth.users` | **sin FK** `0004:142` | — | no | sin cobertura |
-| INV-T04 / INV-X01 / **RA-04** cutover fail-closed | Middleware `main.py:36-56`; **fail-open** `servicio_cutover.py:38-39`; sin trigger en `public` | `test_nucleo_cutover.py:26` (solo roundtrip del flag) | sí | parcial |
+| INV-T04 / INV-X01 / **RA-04** cutover fail-closed | Middleware `main.py:36-56`; **fail-open** `servicio_cutover.py:38-39`; sin trigger en `public` · **retirado con el cutover (2026-11-12)** | `test_nucleo_cutover.py:26` (solo roundtrip del flag) | sí | parcial |
 | INV-A01 `auditoria` no admite `TRUNCATE` | **sin mecanismo** (trigger `FOR EACH ROW` `0004:880-892`) | — | no | sin cobertura |
-| INV-A02 cambios de cutover auditados | **sin trigger** `_audit` en `cutover_control` `0014:8-15` | — | no | sin cobertura |
+| INV-A02 cambios de cutover auditados | **sin trigger** `_audit` en `cutover_control` `0014:8-15` · **retirado con el cutover (2026-11-12)** | — | no | sin cobertura |
 | 10.1 log append-only (`UPDATE`/`DELETE`) | `fn_auditoria_inmutable` `0004:880-892` | `test_nucleo_expediente.py:260` (solo `viaje_eventos`); `test_nucleo_permisos.py:71` (lectura) | sí | parcial |
 | 11.3 permisos por rol en servidor | `permisos.py:150-160` | `test_nucleo_permisos.py:32` | sí | completa (unitaria) |
 | 11.2 empresa desde `X-Empresa-ID`, nunca del body | `deps.py:44-82` | `test_flujos_criticos.py:84`, `:90` | sí | parcial (sin prueba IDOR/otra empresa) |
@@ -133,7 +143,7 @@ Toda garantía de concurrencia es, como mínimo, `parcial`.
 | SEC-006 INV-DOC04 no se cumple en `UPDATE` | Excepción de `0015:270-277` | — | no | sin cobertura |
 | SEC-007 anticipos/ajustes sin idempotencia | **sin mecanismo** (`liquidaciones.py:118-145`, `:178-205`) | — | no | sin cobertura |
 | SEC-008 lectura de sueldos/RUT restringida a admin/contabilidad | `liquidaciones.py:34` (`require_roles`); antes bastaba autenticarse | — | no | sin cobertura (mecanismo corregido, falta prueba 403) |
-| SEC-009 `cutover_legacy.py` inoperante con 0015 | **Desactualizado**: el comentario de `0015:130-143` describe una versión anterior; el script actual migra sin recursos (`cutover_legacy.py:6-13,378-401`) | — | no | mecanismo corregido; falta prueba `--dry-run` (D-05) |
+| SEC-009 `cutover_legacy.py` inoperante con 0015 | **Desactualizado**: el comentario de `0015:130-143` describe una versión anterior; el script actual migra sin recursos (`cutover_legacy.py:6-13,378-401`) · **retirado con el cutover (2026-11-12)**: el script se eliminó con el código legacy | — | no | mecanismo corregido; **n/a — retirado con el cutover (2026-11-12)** |
 | SEC-010 tests R-01/R-02 usan `DATABASE_URL` | `test_reglas_negocio.py:114-120` | — (es el defecto de la prueba) | no | sin cobertura |
 | SEC-011 E2E con aserciones que no pueden fallar | `tei.spec.ts:48-54`, `:96-100` | `frontend/e2e/tei.spec.ts` (9 escenarios) | sí | parcial |
 | SEC-013 carrera en `calcular_liquidacion` → 500 | **sin manejo de 23505** `liquidaciones.py:279-290` | — | no | sin cobertura |
@@ -146,19 +156,25 @@ Toda garantía de concurrencia es, como mínimo, `parcial`.
 > redirección `aviso=sin-acceso-legacy`). Evidencia en
 > `docs/qa/informes/f2-ola-bc-e2e.md`; estado anterior en
 > `docs/qa/informes/f2-ola-a-e2e.md`.
+>
+> **Actualización 2026-11-12 (F1 — fin del retiro legacy):** las rutas legacy
+> dejaron de existir (404), la página `/cutover` se eliminó y el ítem
+> "Cutover legacy" salió del menú (17 ítems). Las filas afectadas de esta sección
+> se reescribieron en `tei.spec.ts`; su re-ejecución queda pendiente del
+> orquestador (estado: **escrita, no ejecutada**).
 
 | ID | Dónde se impone | Prueba (`archivo:línea`) | ¿Existe? | Cobertura |
 |---|---|---|---|---|
-| P0-01…P0-13 (`docs/qa/uat-piloto.md`) | Flujo visible completo | `frontend/e2e/tei.spec.ts:81,89,100,108,122,128,136,146,154,163,174` | sí, ejecutada 2026-10-31 | parcial (UI; límites en el informe) |
-| Ola A: 9 rutas retiradas responden 308 hacia el núcleo | `permanentRedirect` en `frontend/src/app/(retiradas)/*/page.tsx` | `tei.spec.ts:190` | sí, ejecutada | completa (código 308 + `Location`) |
-| Ola A: `/` responde 307 → `/tablero` | `frontend/src/app/page.tsx:4` | `tei.spec.ts:203` | sí, ejecutada | completa |
-| Ola B/C: menú TEI 17 ítems del núcleo (incluye las 4 pantallas reimplementadas) | `frontend/src/lib/navigation.ts:37-85` | `tei.spec.ts:209` | sí, ejecutada | completa |
-| Ola B/C: tenant TES con el mismo menú de 17 ítems y `/mantenimiento` montando el núcleo | `navigation.ts:91-97`, `frontend/src/app/(app)/mantenimiento/page.tsx` | `tei.spec.ts:224` | sí, ejecutada | parcial (menú y montaje; el 403 de API ya no aplica porque no quedan routers legacy, ver `backend/tests/test_f2_tenant2_gate_legacy.py`) |
-| Ola B/C: `/mantenimiento` carga 200, lee estado/pauta y no deja errores de consola | `backend/app/nucleo/api_mantenimiento.py` | `tei.spec.ts:254` | sí, ejecutada | completa (UI + lectura + consola) |
-| Ola B/C: `/iva` carga 200 y muestra el resumen de IVA débito | `backend/app/nucleo/api_iva.py` | `tei.spec.ts:284` | sí, ejecutada | completa (UI + lectura + consola) |
-| Ola B/C: `/liquidaciones` carga 200 y lista el mes en curso | `backend/app/nucleo/servicio_nomina.py` | `tei.spec.ts:301` | sí, ejecutada | completa (UI + lectura + consola) |
-| Ola B/C: `/configuracion` carga 200 y muestra los valores vigentes del servidor | `backend/app/nucleo/servicio_configuracion.py` | `tei.spec.ts:323` | sí, ejecutada | completa (UI + lectura + consola) |
-| Ola C: 11 routers legacy responden 404 y no figuran en OpenAPI; el núcleo sigue montado (401 sin token) | `backend/app/api/router.py`, `backend/app/nucleo/router.py` | `tei.spec.ts:347` | sí, ejecutada | completa |
+| P0-01…P0-13 (`docs/qa/uat-piloto.md`) | Flujo visible completo | `frontend/e2e/tei.spec.ts:91,99,110,118,132,138,146,161,169,178,189` | sí, ejecutada 2026-10-31 | parcial (UI; límites en el informe) |
+| Ola A/F1: 9 rutas legacy eliminadas responden 404 (antes: retiradas con redirección) | páginas `(retiradas)` eliminadas (F1, 2026-11-12) | `tei.spec.ts:199` | escrita, no ejecutada (reescrita 2026-11-12) | completa (404, sin redirect) |
+| Ola A: `/` responde 307 → `/tablero` | `frontend/src/app/page.tsx:4` | `tei.spec.ts:209` | sí, ejecutada | completa |
+| Ola B/C+F1: menú TEI 17 ítems del núcleo, sin rutas legacy ni cutover | `frontend/src/lib/navigation.ts:38-87` (menos el ítem cutover de `:83`, F1 2026-11-12) | `tei.spec.ts:215` | escrita, no ejecutada (reescrita 2026-11-12) | completa |
+| Ola B/C+F1: tenant TES con el mismo menú de 17 ítems, `/dashboard` en 404 y `/mantenimiento` montando el núcleo | `navigation.ts:91-97`, `frontend/src/app/(app)/mantenimiento/page.tsx` | `tei.spec.ts:235` | escrita, no ejecutada (reescrita 2026-11-12) | parcial (menú, 404 legacy y montaje; el 403 de API ya no aplica porque no quedan routers legacy, ver `backend/tests/test_f2_tenant2_gate_legacy.py`) |
+| Ola B/C: `/mantenimiento` carga 200, lee estado/pauta y no deja errores de consola | `backend/app/nucleo/api_mantenimiento.py` | `tei.spec.ts:265` | sí, ejecutada | completa (UI + lectura + consola) |
+| Ola B/C: `/iva` carga 200 y muestra el resumen de IVA débito | `backend/app/nucleo/api_iva.py` | `tei.spec.ts:295` | sí, ejecutada | completa (UI + lectura + consola) |
+| Ola B/C: `/liquidaciones` carga 200 y lista el mes en curso | `backend/app/nucleo/servicio_nomina.py` | `tei.spec.ts:312` | sí, ejecutada | completa (UI + lectura + consola) |
+| Ola B/C: `/configuracion` carga 200 y muestra los valores vigentes del servidor | `backend/app/nucleo/servicio_configuracion.py` | `tei.spec.ts:334` | sí, ejecutada | completa (UI + lectura + consola) |
+| Ola C: 11 routers legacy responden 404 y no figuran en OpenAPI; el núcleo sigue montado (401 sin token) | `backend/app/api/router.py`, `backend/app/nucleo/router.py` | `tei.spec.ts:358` | sí, ejecutada | completa |
 
 ---
 
@@ -202,14 +218,15 @@ awk -F'|' '/^\|/ { c=$(NF-1); gsub(/^ +| +$/,"",c);
 - **Tenant y auditoría:** INV-T01, INV-T02, INV-T03, INV-A01, INV-A02.
 - **Legacy:** INV-L02, INV-L04.
 - **Integridad R-02/documental:** SEC-005, SEC-006.
-- **Controles de prueba:** SEC-008, SEC-010 (SEC-009 tiene el mecanismo corregido;
-  falta ejecutar `--dry-run`, no es "sin cobertura").
+- **Controles de prueba:** SEC-008, SEC-010 (SEC-009 quedó **retirado con el
+  cutover**, 2026-11-12; ya no es "sin cobertura").
 - **Agente (0021/0022):** ACL deny-by-default por ausencia de fila; cierre de
   conversación por inactividad.
 
 **Escritas y nunca ejecutadas (3):** R-02 base (`supabase/tests/0016_01…sql`),
 INV-D04 (`0015_01` + `0015_02`), INV-DOC04 (`0015_03`). El E2E del piloto ya se
-ejecutó (2026-10-31, ver §9).
+ejecutó (2026-10-31, ver §9). Tras F1 (2026-11-12), tres filas E2E de §9 quedaron
+reescritas (404 legacy, menú 17 ítems) y pendientes de re-ejecución; ver §9.
 
 **Parciales que no deben contarse como verdes (20):** 1.1–1.3, INV-D07,
 INV-DOC03, INV-C03, INV-C04, 4.1, INV-F01, 9.1, INV-L01/RA-02, INV-L03,
@@ -217,6 +234,12 @@ INV-L05, INV-L06, INV-T04/RA-04, 10.1, 11.2, SEC-011 y la fila de TES de §9.
 Motivos recurrentes: (a) prueba secuencial donde se exige concurrencia;
 (b) validación de servicio donde el invariante exige DB; (c) aserción que admite
 más de un resultado.
+
+**Filas retiradas (ya no son deuda pendiente):** INV-L04 y las filas de cutover
+(INV-T04/RA-04/INV-X01, INV-A02, SEC-009) quedaron **retiradas con el cutover**
+el 2026-11-12, y las filas legacy quedaron **retiradas con `public` (0028)**.
+Siguen contadas en las cifras de §10 como snapshot histórico, no como trabajo
+por hacer.
 
 **Nota sobre las cifras:** `docs/datos/invariantes.md:63` declara 31 invariantes
 sin mecanismo en DB. Esta matriz cubre las filas `INV-` de ese catálogo (con
@@ -230,8 +253,9 @@ prueba: `INV-D07` lo tiene y sigue parcial.
 
 1. **Concurrencia real (2 conexiones):** pagos (`INV-F01`), OC (`4.1`), reservas
    (`1.1–1.3`, `INV-D04`), folio (`9.1`). Es la deuda transversal.
-2. **Inmutabilidad y borrado:** `INV-F03`–`F06`, `INV-G04`–`G06`, `INV-L04`,
-   `INV-A01`. Requieren migración nueva: el plan de `docs/datos/invariantes.md`
+2. **Inmutabilidad y borrado:** `INV-F03`–`F06`, `INV-G04`–`G06`, `INV-A01`
+   (`INV-L04` retirado con `public`, 0028). Requieren migración nueva: el plan de
+   `docs/datos/invariantes.md`
    las numeraba `0018`/`0019`/`0021`, pero esos números ya se usaron para A5 y
    comisión (`0018`, `0019`); la numeración debe reasignarse. Sin mecanismo, la
    prueba roja es el entregable.
@@ -240,7 +264,8 @@ prueba: `INV-D07` lo tiene y sigue parcial.
 4. **Tenant:** `INV-T01`–`T03`. Exige rol real sin `BYPASSRLS` y dos empresas.
    Con el rol actual la prueba **no vale** (`docs/datos/garantias.md` §14.2).
 5. **Cutover:** `RA-04`/`INV-T04`/`X01` y `SEC-009`. Probar el `except` y una
-   escritura por `psql` con el flag congelado.
+   escritura por `psql` con el flag congelado. **n/a (2026-11-12):** retirado
+   con el cutover; el código de cutover ya no existe.
 6. **SEC-002:** emitir, agregar un bono, regenerar el PDF y comparar líneas vs
    total almacenado. Hoy el defecto está confirmado por lectura
    (`liquidaciones.py:515` vs `:466`).

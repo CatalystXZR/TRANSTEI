@@ -1,5 +1,14 @@
 # Matriz de garantías de integridad — `nucleo` vs legacy `public`
 
+> ⚠️ **Aviso de vigencia (2026-11-12):** el legado que compara este documento
+> **ya no existe**: `public` fue retirado físicamente por `0028` (2026-11-01) y
+> el ciclo de cutover completo se retiró por código (2026-11-12) y por la
+> migración `0035` (tabla `cutover_control`, `nucleo` 51 → 50 tablas). Las
+> columnas "legacy `public`", el §12 completo y las filas que citan
+> `cutover_control`/`servicio_cutover.py` son **históricas** (estado
+> 2026-10-29). La vigencia por concepto está en `docs/datos/invariantes.md`
+> (con sus adendas) y en `docs/estado.md`.
+
 > **Pregunta que responde:** ¿qué garantiza PostgreSQL hoy y qué solo el servicio o la UI?
 > **Dueño:** agente `datos` · **Verificado:** 2026-10-29 · **Método:** lectura de DDL
 > **Caduca si:** se agrega o edita una migración, o se ejecutan pruebas contra una base real.
@@ -201,7 +210,7 @@
 | 10.1 | El log es append-only (sin `UPDATE`/`DELETE`) | `fn_auditoria_inmutable` · `0004:880-892` + `revoke update, delete` · `0004:1890-1891` | No existe | Trigger BEFORE UPDATE/DELETE · `0004:890-892` | 🟢 |
 | 10.2 | `TRUNCATE` también está bloqueado | **No**: el trigger es `FOR EACH ROW`, `TRUNCATE` no dispara triggers de fila · `0004:890-892` | — | — | 🟡 (mitigado porque `service_role` no recibe `TRUNCATE`; el dueño sí puede) |
 | 10.3 | Cobertura de auditoría por tabla | Triggers `_audit` en: empresas, usuarios_empresa, clientes, tractos, ramplas, choferes, documentos, tarifas, OC, OC líneas, viajes, reservas, centros de costo, paradas, checklist, eventos, incidentes, docs de viaje, POD, precios diésel, gastos, config costos, facturas, factura_viajes, pagos, NC, promesas (`0004:1760-1862`, `0005:41`, `0007:57-210`, `0009:44`, `0011:23-80`, `0012:31`, `0013:48-157`) | **Ninguna** | — | 🟢 / legacy 🔴 |
-| 10.4 | Tablas del núcleo **sin** auditoría | `folio_contador` (`0004:490-496`), `transiciones_viaje` (`0004:772-777`), `cutover_control` (`0014:8-15`), `auditoria` (intencional) | — | — | 🔴 (un congelamiento de cutover no deja rastro en el log) |
+| 10.4 | Tablas del núcleo **sin** auditoría | `folio_contador` (`0004:490-496`), `transiciones_viaje` (`0004:772-777`), `cutover_control` (`0014:8-15`), `auditoria` (intencional) — *(2026-11-12: `cutover_control` fue retirada por `0035`; la cobertura pendiente real queda en `folio_contador` y `transiciones_viaje`)* | — | — | 🔴 (un congelamiento de cutover no dejaba rastro en el log) |
 | 10.5 | El usuario real queda en el log | `coalesce(current_setting('nucleo.auth_id', true), 'sistema')` · `0004:872`; `set_config` por transacción · `servicio_disponibilidad.py:1386-1395` | n/a | — | 🟢 con salvedad: si el servicio olvida `set_config`, el log dice `'sistema'` sin fallar |
 
 *Búsqueda usada:* `grep -rn "no_delete\|no_borrar" supabase/migrations/` → solo
@@ -222,6 +231,14 @@
 ---
 
 ## 12. Cutover legacy ↔ núcleo
+
+> ⚠️ **Cierre (2026-11-12):** sección histórica. El cutover se ejecutó (Ola D,
+> 2026-11-01), `public` dejó de existir (`0028`) y el mecanismo completo (flag,
+> middleware, servicios, script y tabla `cutover_control`) fue retirado
+> (código el 2026-11-12; tabla por `0035`). Las garantías 12.1–12.5 evaluaban
+> un mecanismo que ya no está en runtime; sus defectos (12.1, 12.2, 12.4)
+> quedan **superados por extinción del objeto**, no por corrección. El
+> registro de la operación está en `docs/_archivo/cutover-ejecutado-2026-11-01.md`.
 
 | # | Garantía esperada | `nucleo` | legacy `public` | Validado hoy en | Veredicto |
 |---|---|---|---|---|---|

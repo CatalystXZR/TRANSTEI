@@ -80,13 +80,13 @@
 | INV-L04 | En `public.facturas`, una factura emitida no se borra | **ausente** | — · `DELETE` físico · `facturas.py:241-263` | 23514 | — |
 | INV-L05 | En `public.liquidaciones`, `total_liquido` es coherente y no se recalcula tras emitir | **ausente** | — · columna plana · `0001:179`; cálculo en Python · `liquidaciones.py:295-299` | 23514 | — |
 | INV-L06 | En `public.viajes`, `fecha_fin >= fecha_inicio` | **solo servicio** | router `viajes.py:91-96` | 23514 | — |
-| INV-T01 | Ningún rol de aplicación lee o escribe filas de otra empresa | **diseñado y probado en `tei_test`; no aplicado en la app** | `0020`: rol `tei_app` (NOBYPASSRLS) + 35 políticas + `FORCE` + `app.empresa_id` por transacción (31 tablas) · probado en el clon 2026-10-30 | 42501 | `docs/datos/rls-multiempresa.md` §7; `supabase/tests/0020_*`; RA-03 abierto hasta cambiar el rol del backend |
+| INV-T01 | Ningún rol de aplicación lee o escribe filas de otra empresa | **diseñado y probado en `tei_test`; aplicado en la app el 2026-11-12** *(antes decía "no aplicado": `0020` ya está en la base local, 54 políticas; la prueba A–L corre en `tei_test` con rol real — queda el rol efectivo del backend en despliegue real, RA-03)* | `0020`: rol `tei_app` (NOBYPASSRLS) + políticas + `FORCE` + `app.empresa_id` por transacción · probado en el clon 2026-10-30 y re-ejecutado 2026-11-12 | 42501 | `docs/datos/rls-multiempresa.md` §7; `supabase/tests/0020_*`; RA-03 abierto hasta cambiar el rol del backend |
 | INV-T02 | Una reserva no apunta a un viaje de otra empresa | **parcial (DDL)** | `fn_reserva_validar` · `0004:1669-1676`, **solo si `activa`**; FK simple `0004:727-728` | 23503 | Una reserva desactivada puede cruzar empresas |
 | INV-T03 | Una membresía apunta a un usuario de Auth existente | **ausente** | `auth_id` sin FK · `0004:142` | 23503 | — |
-| INV-T04 | `public` no acepta escrituras cuando el cutover está congelado | **ausente** | solo middleware HTTP · `main.py:36-56`; ningún trigger ni privilegio | 23514 | Scripts/`psql`/jobs no pasan por el middleware |
-| INV-X01 | El estado de cutover es *fail-closed* | **ausente** | **fail-open**: `except Exception: congelado = False` · `servicio_cutover.py:38-39` | — (handoff) | Handoff a `backend` |
+| INV-T04 | `public` no acepta escrituras cuando el cutover está congelado | **ausente** | solo middleware HTTP · `main.py:36-56`; ningún trigger ni privilegio | 23514 | **2026-11-12: no aplicable** — `public` retirado (`0028`) y el mecanismo de congelamiento eliminado (código + `0035`) |
+| INV-X01 | El estado de cutover es *fail-closed* | **ausente** | **fail-open**: `except Exception: congelado = False` · `servicio_cutover.py:38-39` | — (handoff) | **2026-11-12: no aplicable** — `servicio_cutover.py` eliminado; el defecto se extinguió con el objeto |
 | INV-A01 | `nucleo.auditoria` no admite `TRUNCATE` | **parcial (DDL)** | trigger de fila · `0004:890-892`; `service_role` sin `TRUNCATE` · `0004:1887`; el **dueño sí puede** | 23514 | Falta trigger `BEFORE TRUNCATE` por sentencia |
-| INV-A02 | Los cambios de cutover quedan auditados | **ausente** | `cutover_control` sin trigger `_audit` · `0014:8-15` | — | — |
+| INV-A02 | Los cambios de cutover quedan auditados | **ausente** | `cutover_control` sin trigger `_audit` · `0014:8-15` | — | **2026-11-12: no aplicable** — la tabla fue retirada por `0035` (nada que auditar) |
 
 **Total: 35 invariantes** (31 previos + 4 que ya estaban documentados en §10.2 y
 se incorporan a la tabla: `INV-DOC04`, `INV-R02-01`, `INV-R02-02`, `INV-R02-03`).

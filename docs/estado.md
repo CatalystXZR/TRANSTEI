@@ -14,13 +14,13 @@
 
 | Elemento | Estado |
 |---|---|
-| Rama | `main`, árbol limpio; 9 commits de las olas 1–4 (2026-11-09) |
-| Backend `:8000` | 🟢 `GET /health` 200; `/openapi.json` 404 (docs desactivado) y las rutas nuevas responden — 2026-11-09 |
-| Frontend `:3000` | 🟢 Next.js dev sirviendo el menú con `/agente/chat`; `tsc` y `lint` verdes — 2026-11-09 |
-| PostgreSQL `:54322` | 🟢 Supabase local confirmado: contenedor `supabase_db_TRANSTEI` healthy (el listener `ssh` es el port-forward de Colima/Lima, no un túnel externo) — F0 2026-10-29 |
-| Suite de integración | 🟢 ejecutada: **504 passed, 0 skipped** (2026-11-09) |
-| E2E | 🟢 ejecutados: **20/20 passed** (2026-11-09) |
-| `make unit` | 🟢 ejecutado: **135 passed** (2026-11-09) |
+| Rama | `main`, árbol de trabajo con la entrega 2026-11-12 (retiro legacy) sin commitear |
+| Backend `:8000` | 🟢 sirviendo; 18 `include_router`, 0 rutas de cutover — 2026-11-12 |
+| Frontend `:3000` | 🟢 dev sirviendo; rutas legacy → 404; `tsc` y `lint` verdes — 2026-11-12 |
+| PostgreSQL `:54322` | 🟢 Supabase local confirmado: contenedor `supabase_db_TRANSTEI` healthy — 2026-11-12 |
+| Suite de integración | 🟢 ejecutada: **490 passed, 0 skipped** (2026-11-12) |
+| E2E | 🟢 ejecutados: **20/20 passed** (2026-11-12, tras reescritura con 404 legacy; 2.ª corrida con servidores frescos) |
+| `make unit` | 🟢 ejecutado: **135 passed** (2026-11-12) |
 | Plan de cierre | [`docs/PLAN_DESARROLLO.md`](PLAN_DESARROLLO.md) — F0 cerrada; Fase 2 cerrada; reconciliar numeración de fases |
 
 ---
@@ -29,20 +29,34 @@
 
 | Dato | Valor | Comando |
 |---|---|---|
-| Migraciones en disco | **34** (`0001`–`0034`) | `ls supabase/migrations \| wc -l` |
-| Migraciones en `HEAD` | **34** (`0001`–`0034`) | `git ls-tree HEAD supabase/migrations/ \| wc -l` |
-| Migraciones aplicadas en la base local | **34** (2026-11-09: `0001`–`0034`; también en `tei_test`) | `docker exec supabase_db_TRANSTEI psql -U postgres -tA -c "select count(*) from supabase_migrations.schema_migrations"` |
-| Tablas en `nucleo` | **51** (incluye `tenant_reglas_entidad`/`tenant_suscripciones`, `agente_chat_*` y `agente_capacidades`) · tablas en `public`: **0** | `select count(*) from pg_tables where schemaname='nucleo'` |
-| Routers montados | **18** `include_router` en `api/router.py` (+4 Ola B anidados en `/nucleo`); 0 de negocio legacy | `grep -c include_router backend/app/api/router.py` |
-| Pantallas | **31** page.tsx (incluye `/agente/chat`, `/configuracion/agentes` y 9 redirecciones 308) | `find frontend/src/app -name page.tsx \| wc -l` |
+| Migraciones en disco | **35** (`0001`–`0035`) | `ls supabase/migrations \| wc -l` |
+| Migraciones en `HEAD` | **34** (`0001`–`0034`; `0035` untracked) | `git ls-tree HEAD supabase/migrations/ \| wc -l` |
+| Migraciones aplicadas en la base local | **35** (2026-11-12: `0001`–`0035`; también en `tei_test`) | `docker exec supabase_db_TRANSTEI psql -U postgres -tA -c "select count(*) from supabase_migrations.schema_migrations"` |
+| Tablas en `nucleo` | **50** (`0035` retiró `cutover_control`: 51 → 50) · tablas en `public`: **0** | `select count(*) from pg_tables where schemaname='nucleo'` |
+| Políticas RLS en `nucleo` | **54** | `select count(*) from pg_policies where schemaname='nucleo'` |
+| Routers montados | **18** `include_router` en `api/router.py` (`auth` + núcleo + 4 agente + dominio); 0 legacy | `grep -c include_router backend/app/api/router.py` |
+| Pantallas | **21** page.tsx (sin las 9 redirecciones 308, eliminadas; rutas legacy → 404) | `find frontend/src/app -name page.tsx \| wc -l` |
 | Roles del núcleo | **8** | `backend/app/nucleo/models.py` (`RolEmpresa`) |
-| Unitarias | **135 passed** (2026-11-09, re-ejecutado) | `make unit` |
-| Integración | **504 passed, 0 skipped** (2026-11-09, re-ejecutado) | `make test` |
+| Unitarias | **135 passed** (2026-11-12) | `make unit` |
+| Integración | **490 passed, 0 skipped** (2026-11-12; −14 al retirar las pruebas de cutover) | `make test` |
 | Tenants activos (local) | **2** (TEI + TES) | `select count(*) from nucleo.empresas` |
 | E2E definidos | **20** | `grep -cE "^\s*test\(" frontend/e2e/tei.spec.ts` |
-| E2E ejecutados | **20/20 passed** (2026-11-09, re-ejecutado) | `make e2e` |
 
-> **Re-verificado 2026-11-09 (cierre de seguridad Ola 4):** `make unit` 135 passed; `make test` **504 passed, 0 skipped** (468 base + 36 adversariales); `make e2e` 20/20; `tsc` y `lint` verdes. Migraciones **34/34** en `postgres` y `tei_test`. Se corrigió el orden del gate de módulos (`upsell` antes del override, SEC-052) y se cerraron SEC-056/063/064/065/066/068/069; `0033` revoca escritura de `tei_app` sobre historial/suscripciones y `0034` su `EXECUTE` sobre la función de módulos. Siguen abiertos SEC-067 (identidad), SEC-071 (DPA), SEC-053/054 y SEC-057(a).
+> **Re-verificado 2026-11-12 (retiro del legacy y del cutover):** se eliminaron el
+> grupo `(retiradas)` de la UI (404), el middleware/middleware flag de cutover de
+> `main.py`, `api_cutover.py`, `servicio_cutover.py`, `scripts/cutover_legacy.py`,
+> targets de Makefile y las pruebas de cutover; la tabla `nucleo.cutover_control`
+> fue retirada por `0035` (51 → 50 tablas; backup previo en
+> `backups/0035_pre_cutover_control_20261112.sql`). Suites: `make test-db` OK
+> (clon con cadena de replay `0014 → 0020 → 0029 → 0033 → 0034 → 0035`);
+> `make test` **490 passed**; `make unit` **135 passed**; `tsc`/`lint` verdes;
+> `0035` verde en `postgres` y `tei_test`; RLS `0020_01_aislamiento.sh` verde
+> (A–L, rol real `tei_app`); `make e2e` **20/20** (2.ª corrida del 2026-11-12;
+> la 1.ª falló por servidores dev huérfanos de una sesión anterior, no por
+> código). Previo (2026-11-09): **504 passed / 20 E2E**; ese
+> cierre corrigió el orden del gate de módulos (SEC-052) y cerró
+> SEC-056/063/064/065/066/068/069. Siguen abiertos SEC-067 (identidad),
+> SEC-071 (DPA), SEC-053/054 y SEC-057(a).
 
 ---
 
@@ -84,7 +98,7 @@
 | Maestros | `/maestros` | `servicio_maestros.py` | 🟢 |
 | Auditoría | `/auditoria` | `servicio_auditoria.py` | 🟢 append-only |
 | Permisos | `/permisos` | `api_permisos.py` | 🟢 8 roles |
-| Cutover (datos) | — | `servicio_cutover.py` | ⚪ gate retirado en Fase 2; el servicio/script se conserva para cutover de datos local |
+| Cutover (datos) | — | ~~`servicio_cutover.py`~~ | ⚪ **retirado por completo** (2026-11-12): servicio, API, script, targets de Makefile y tabla `cutover_control` (`0035`) eliminados |
 
 ---
 
@@ -95,10 +109,10 @@
 | "Suite completa en verde" | Cerrado por F0 2026-10-29 | `make test` → **100 passed, 0 skipped** (pre y post reset) |
 | "E2E 9/9" | Cerrado por F0 2026-10-29 | `make e2e` → **9/9 passed** |
 | Migraciones 0015–0019 aplicadas | Cerrado por F0 2026-10-29: post-reset **19 aplicadas**. Pre-reset había desincronización ledger↔esquema (ver RA-14) | `select version from supabase_migrations.schema_migrations` |
-| Aislamiento multiempresa (RA-03) | RLS habilitado sin políticas verificadas | `select current_user, rolbypassrls from pg_roles` |
+| Aislamiento multiempresa (RA-03) | 🟡 cerrado parcialmente (2026-11-12): **54 políticas + FORCE** aplicadas en la base de la app y prueba de aislamiento A–L verde con el rol real `tei_app` (bypass=f); queda verificar el rol efectivo de `DATABASE_URL` en el despliegue real | `select count(*) from pg_policies where schemaname='nucleo'`; `bash supabase/tests/0020_01_aislamiento.sh` |
 | Restore drill real | Escribe en `backups/` y crea base temporal | `make restore-drill` (requiere autorización) |
 | "CI en verde" | `.github/workflows/ci.yml` existe, pero ejecuta `pytest` **sin servicio PostgreSQL** y no corre E2E: un verde de CI no cubre integración ni navegador | leer `.github/workflows/ci.yml` |
-| Cutover ejecutable | ⚪ superado: `public` fue retirado (0028) y la Ola D ejecutó el cutover local (2026-11-01). No aplica a producción. | `docs/operacion/cutover-ejecutado-2026-11-01.md` |
+| Cutover ejecutable | ⚪ superado y retirado: `public` fue eliminado (`0028`, 2026-11-01) y el mecanismo completo de cutover (código + tabla `cutover_control` por `0035`) se retiró el 2026-11-12 | `docs/_archivo/cutover-ejecutado-2026-11-01.md`; `docs/datos/catalogo-migraciones.md` (0035) |
 
 ---
 
@@ -135,7 +149,7 @@ Los bloqueos son **decisiones** y **verificación en entorno real**:
 3. **CI real** (RA-18): validar el workflow en el primer push.
 4. **Decisiones de negocio** (RA-19/RA-21): IVA/crédito/F29, nómina, comisiones, DTE, tablero, import CSV, ratificación formal de D-2.
 5. **Deuda de seguridad operativa**: rate limiting, cabeceras del frontend, `/docs` en producción, `issuer` del JWT (F0-07/08/09/11).
-6. **Plan de cierre y pendientes del agente**: el plan vigente es [`docs/PLAN_DESARROLLO.md`](PLAN_DESARROLLO.md); los pendientes operativos del agente están en [`docs/desarrollo/backlog.md`](../desarrollo/backlog.md) §6. Cifras re-verificadas el 2026-11-09 (135 unit / 468 integración / 20 E2E).
+6. **Plan de cierre y pendientes del agente**: el plan vigente es [`docs/PLAN_DESARROLLO.md`](PLAN_DESARROLLO.md); los pendientes operativos del agente están en [`docs/desarrollo/backlog.md`](../desarrollo/backlog.md) §6. Cifras re-verificadas el 2026-11-12 (135 unit / 490 integración / 20 E2E definidos).
 7. **SEC-039 cerrado (2026-11-01):** migración `0029` crea el rol `tei_admin` (privilegiado para identidad/ACL/flag) y revoca la escritura directa de `tei_app`; las escrituras de la app pasan por `nucleo.admin_*` (`SECURITY DEFINER`, con `empresa_id = ctx_empresa()`). El enrolamiento (OTP) lo inicia el admin; el envío usa el adaptador WhatsApp `fake` local hasta definir proveedor real (AB-04). Sigue pendiente `tei_platform` (RA-16) y el pooler (RA-15).
 8. **Seguridad operativa cerrada en código (2026-11-01):** `iss` del JWT validado, `/docs`/`/openapi.json` deshabilitados por defecto (`ENABLE_DOCS=false`) y cabeceras de seguridad (`nosniff`, `DENY`, `no-referrer`, `permissions-policy`, `COOP`). Rate limiting queda para staging.
 9. **Revisión Ola 4 (2026-11-09):** SEC-056/063/064/065/066/068/069 corregidos y con prueba; `0033` revoca escritura de `tei_app` sobre historial y suscripciones. Siguen abiertos SEC-067 (identidad, RA-22), SEC-071 (DPA, RA-23), SEC-053/054 (RA-24) y SEC-057(a) (RA-25). Informe: `docs/seguridad/ola4-revision-2026-11-09.md`.
@@ -146,4 +160,6 @@ Los bloqueos son **decisiones** y **verificación en entorno real**:
 
 *F0 — Due Diligence y Línea Base (2026-10-29): informe completo en [`docs/qa/informes/F0-due-diligence.md`](qa/informes/F0-due-diligence.md). **Veredicto: A (REFACTOR), ratificado por el dueño (2026-10-29). F0 cerrada.***
 
-*Fase 2 — retiro del legacy **COMPLETADO** (2026-11-01): **Olas A/B/C** (9 pantallas → 308; 4 módulos reconstruidos en el núcleo; 11 routers legacy retirados), **Ola D** (cutover local reproducible: 6 pautas, maestros 3/3, idempotente) y **Ola E** (identidad sin `public.usuarios`, gate retirado, **`public` retirado físicamente**: 0 tablas, `auth.users` sin trigger). Núcleo: 46 tablas, 51 políticas. Baseline: **128 unit + 404 integración (0 skipped) + 20 E2E**. ADR: `docs/arquitectura/adr/ADR-0002-retiro-del-legacy.md`; ejecución: `docs/operacion/cutover-ejecutado-2026-11-01.md`.*
+*Fase 2 — retiro del legacy **COMPLETADO** (2026-11-01): **Olas A/B/C** (9 pantallas → 308; 4 módulos reconstruidos en el núcleo; 11 routers legacy retirados), **Ola D** (cutover local reproducible: 6 pautas, maestros 3/3, idempotente) y **Ola E** (identidad sin `public.usuarios`, gate retirado, **`public` retirado físicamente**: 0 tablas, `auth.users` sin trigger). Núcleo: 46 tablas, 51 políticas. Baseline: **128 unit + 404 integración (0 skipped) + 20 E2E**. ADR: `docs/arquitectura/adr/ADR-0002-retiro-del-legacy.md`; ejecución: `docs/operacion/cutover-ejecutado-2026-11-01.md` (hoy en `docs/_archivo/`).*
+
+*Erradicación final del legacy (2026-11-12): código (API/servicio/script/middleware/targets de Makefile), UI (grupo `(retiradas)` y página `/cutover` → 404), pruebas y tabla `nucleo.cutover_control` (migración `0035`; `nucleo` 51 → 50 tablas; backup previo en `backups/0035_pre_cutover_control_20261112.sql`). `grep -rni cutover backend/app backend/tests frontend/src scripts Makefile` → 0. Suites: **135 unit / 490 integración / 0 skip / 20 E2E**; RLS A–L verde; `0035` verde en `postgres` y `tei_test`; `tsc`/`lint` verdes.*

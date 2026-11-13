@@ -54,8 +54,8 @@
 | D-07 | **Huecos de validación documental.** Degradar la clase A5 de un chofer con viaje vigente no se bloquea; un viaje `borrador/confirmado` con recursos puede quedar con documentos vencidos al cambiar de estado. | `0016:56-62`; `0015:270-277`; `0004:1128-1138` | Alto: despacho con documento inválido | **M** | Cuando exista trigger en `nucleo.choferes` o revalidación en transiciones desde estados no despachados | SEC-005, SEC-006 |
 | D-08 | **Idempotencia incompleta en dinero.** Anticipos legacy sin clave única; pagos/notas del núcleo sin `Idempotency-Key`. Un doble clic puede duplicar. | `0001:151-159`; `pagos_nucleo` `0013:78-98` (sin unique de idempotencia); `registrar_pago` `servicio_facturacion.py:620-651` | Alto: dinero duplicado | **M** | Cuando un reintento con la misma clave devuelva el mismo resultado (prueba con dos requests) | SEC-007 |
 | D-09 | **Dos definiciones de margen y KPI de mantenimiento engañoso.** El legacy calcula `ingresos − gastos` sin comisión; el KPI ignora tractos sin registro de mantención. | `kpi_engine.py:440`; `kpi_engine.py:484-485`; `0011:115-127` | Alto: decisiones sobre margen sobreestimado; flota nueva sin alerta | **S** | Cuando el dueño/contador definan la fórmula canónica y el KPI trate "sin registro" explícitamente | `matriz-plan-vs-codigo.md` #11/#13 |
-| D-10 | **Auditoría parcial.** No cubre `transiciones_viaje`, `folio_contador` ni `cutover_control`; el legacy no tiene auditoría. | `0004:813-892`; triggers de auditoría solo en tablas enumeradas en `0004:1756-1862` y migraciones posteriores | Alto: no se puede reconstruir quién cambió un folio o congeló el cutover | **M** | Cuando toda tabla de estado/financiera tenga trigger y exista una prueba de append-only | RA-07 |
-| D-11 | **Pantallas y fuentes duplicadas.** Maestros, viajes, facturación, tablero y rentabilidad tienen dos implementaciones; la selección de empresa no se persiste ni se puede cambiar. | `modulos.md` §5; `despacho/page.tsx:162-167`; `nucleo.ts:25-34` | Medio-alto: dos verdades para el usuario y decisiones distintas según pantalla | **M** | Cuando cada concepto tenga un esquema canónico declarado y una sola pantalla escriba | RA-06 |
+| D-10 | **Auditoría parcial.** No cubre `transiciones_viaje` ni `folio_contador` *(la parte de `cutover_control` dejó de aplicar: la tabla fue retirada por `0035`, 2026-11-12)*; el legacy no tiene auditoría. | `0004:813-892`; triggers de auditoría solo en tablas enumeradas en `0004:1756-1862` y migraciones posteriores | Alto: no se puede reconstruir quién cambió un folio | **M** | Cuando toda tabla de estado/financiera tenga trigger y exista una prueba de append-only | RA-07 |
+| D-11 | **Pantallas y fuentes duplicadas.** Maestros, viajes, facturación, tablero y rentabilidad tienen dos implementaciones; la selección de empresa no se persiste ni se puede cambiar. | [`docs/_archivo/modulos.md`](../_archivo/modulos.md) §5 (inventario histórico 2026-10-29); `despacho/page.tsx:162-167`; `nucleo.ts:25-34` | Medio-alto: dos verdades para el usuario y decisiones distintas según pantalla | **M** | Cuando cada concepto tenga un esquema canónico declarado y una sola pantalla escriba | RA-06 |
 | D-12 | **CI no prueba la base ni las migraciones.** Corre import, pytest sin PostgreSQL, lint y build; no aplica migraciones, no ejecuta integración/E2E. | `.github/workflows/ci.yml:27-50`; `docs/estado.md` §4 | Medio-alto: una migración rota o una garantía de DB puede llegar a `main` | **M** | Cuando el pipeline levante PostgreSQL y corra `supabase/tests/*.sql` + integración | `matriz-plan-vs-codigo.md` #19 (parcialmente desactualizado: el CI ya existe) |
 | D-13 | **Riesgo de deriva modelo↔DDL y `HEAD` incompleto.** Solo 3 de 19 migraciones están en `HEAD` (dato heredado de `estado.md` §2, no re-ejecutado en esta sesión); no hay test de deriva ni `create_all`. | `docs/estado.md` §2 y §6.3; `models.py:1-14` | Medio: el esquema real puede diferir del versionado | **M** | Cuando `HEAD` contenga las 19 migraciones y un check compare `information_schema` con los modelos | `docs/estado.md` §6 |
 | D-14 | **Uploads sin verificación de seguridad.** POD, comprobantes y documentos usan Storage; MIME real, path y visor no verificados. | `storage.py:34-77`; `servicio_pod.py:36`; `servicio_gastos.py:41` | Medio-alto: archivo malicioso o acceso indebido | **M** | Cuando exista prueba de MIME, límite, path y URL firmada con expiración | RA-11 |
@@ -89,3 +89,26 @@
 5. **D-16 + D-17** son de alcance, no de corrección: se pagan cuando el dueño decida retirar el legacy o ampliar el piloto.
 
 > **Regla:** una deuda no se cierra por haber escrito el documento que la describe. Se cierra con el mecanismo, la prueba y la evidencia fechada; hasta entonces sigue en esta tabla.
+
+---
+
+## 5. Cierre por retiro del legacy (2026-11-12)
+
+El retiro del legacy (`0028`, cutover Ola D 2026-11-01, código legacy/cutover
+eliminado del repo 2026-11-12) **no cierra** estas deudas: las elimina de la
+misma forma que se elimina una habitación al demoler la casa. Estado:
+
+| Ítem | Qué pasó | Evidencia |
+|---|---|---|
+| D-01 (dos esquemas sin reconciliación) | ⚪ **Superado**: `public` no existe; la Ola D reconcilió maestros y pautas con Δ 0 en local | `docs/estado.md` §3–§4; `docs/_archivo/cutover-ejecutado-2026-11-01.md` §3–§4 |
+| D-02 (cutover fail-open) | ⚪ **Superado**: el flag y el middleware ya no existen en runtime; el cutover está ejecutado e idempotente | `cutover-ejecutado-2026-11-01.md` §2,§6; `main.py` sin `congelar_escritura_legacy` (2026-11-12) |
+| D-06 (financiero borrable en legacy) | ⚪ **Superado**: las tablas y los `DELETE` legacy desaparecieron con `public` | `0028_retiro_public.sql:6-27` |
+| D-15 (export legacy con inyección de fórmulas) | ⚪ **Superado** para el código legacy (eliminado). El export actual es `api_export.py` del núcleo (Ola B); revalidar su neutralización de fórmulas si se reutilizó el patrón CSV | `backend/app/nucleo/api_export.py` |
+| D-16 (nómina/IVA/export solo en legacy) | ⚪ **Superado** en lo portado (Ola B: `0024`–`0026`, `api_nomina.py`, `api_iva.py`, `api_export.py`). Sigue **abierto** el import CSV, retirado sin reemplazo (`RET-10`) | `retiro-legacy.md` §6; `docs/negocio/preguntas.md` |
+| D-05 (documentación de cutover desactualizada) | ⚪ **Superado por extinción**: el cutover se ejecutó y su documentación operativa (`cutover.md`, `cutover-ejecutado-2026-11-01.md`) fue archivada en `docs/_archivo/`; el estado vigente lo llevan `docs/estado.md` y `docs/datos/catalogo-migraciones.md` | `docs/_archivo/cutover.md`; `docs/orquestacion/registro.md` (2026-11-12) |
+
+**Sigue vigente** (no lo cierra el retiro): D-03 (RLS efectivo, RA-03), D-04/D-08
+(dinero de terceros: base de comisión `D-01` y idempotencia de pagos/anticipos),
+D-10 (cobertura de auditoría: `transiciones_viaje`, `folio_contador`; la parte
+de `cutover_control` dejó de aplicar con la migración `0035`) y D-11 (la
+selección de empresa no se persiste).

@@ -9,6 +9,14 @@
 > alcance vigente del retiro está en
 > [`adr/ADR-0002-retiro-del-legacy.md`](adr/ADR-0002-retiro-del-legacy.md) rev. 3.
 > Lo demás (P0, criterios de aceptación) no se re-verificó en esta revisión.
+>
+> **Cierre (2026-11-12):** el plan descrito en este documento **se ejecutó por
+> completo**: cutover local (Ola D, 2026-11-01), `public` retirado por `0028`,
+> identidad sin `public.usuarios` (Ola E) y código legacy/cutover eliminado del
+> repo (2026-11-12). Las secciones que describen "cerrar la escritura legacy",
+> "congelar el cutover" o "rollback por descongelar" ya no describen un plan
+> pendiente sino la operación realizada. El documento queda como **registro
+> histórico del alcance del piloto**; el estado actual es `docs/estado.md`.
 
 > **Pregunta que responde:** ¿qué entra en el piloto de 90 días y con qué criterio se acepta?
 > **Dueño:** `arquitectura` · **Verificado:** 2026-10-29 · **Método:** lectura estática

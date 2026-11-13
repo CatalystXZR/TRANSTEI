@@ -1,26 +1,33 @@
 # Modelo de datos — qué tablas existen y qué garantizan
 
 > **Pregunta que responde:** ¿dónde se guarda cada dato, con qué PK/FK y qué constraints duras lo protegen?
-> **Dueño:** arquitectura · **Verificado:** 2026-10-29 · **Método:** lectura estática de DDL (`supabase/migrations/0001`–`0019`) y de `backend/app/nucleo/models.py`; sin base ni ejecución.
+> **Dueño:** arquitectura · **Verificado:** 2026-10-29 · **Revisado:** 2026-11-12 (retiro de `public`) · **Método:** lectura estática de DDL (`supabase/migrations/0001`–`0019`) y de `backend/app/nucleo/models.py`; sin base ni ejecución.
 > **Caduca si:** se agrega, elimina o altera una tabla, constraint o trigger; o si una migración nueva cambia un tipo.
 > **Re-verificar con:** `grep -rh "create table" supabase/migrations | wc -l` y `grep -n "class .*Base\\|__tablename__" backend/app/nucleo/models.py`
+>
+> **Nota (2026-11-12):** §2 describe las 17 tablas de `public` **tal como eran
+> antes del retiro** (`0028`, 2026-11-01). Esas tablas **ya no existen** (0
+> tablas en `public`; `docs/estado.md` §3). §2 se conserva como referencia
+> histórica del esquema retirado; el modelo vigente es solo §3 (`nucleo`).
 
 ---
 
 ## 1. Reglas de lectura
 
-- **`public` es el legacy** (17 tablas, `0001`–`0003`), **sin `empresa_id`** y sin libro de ocupación.
-- **`nucleo` es el destino** (31 tablas creadas en `0004`–`0014`; `0015`–`0019` agregan reglas, no tablas), multiempresa por `empresa_id` y FKs compuestas `(empresa_id, id)`.
+- **`nucleo` es el único esquema de negocio** (51 tablas en `docs/estado.md` §2, 2026-11-09), multiempresa por `empresa_id` y FKs compuestas `(empresa_id, id)`.
+- **`public` fue retirado** (`0028_retiro_public.sql`): 17 tablas históricas descritas en §2 solo como referencia; sin `empresa_id` y sin libro de ocupación.
 - La DDL es la fuente de verdad, no los modelos: `models.py` solo mapea (`backend/app/nucleo/models.py:1-14`) y `create_all` está prohibido.
 - Dinero: `numeric`; eventos: `timestamptz`; rangos del núcleo: `tstzrange` semiabierto `[inicio, fin)` (`0004:14-16`).
 - No se dibuja el ERD completo: se listan tablas por dominio y solo las relaciones que imponen garantías.
 
 Conteo de tablas (🟢 verificado por DDL, no por base):
 `0004`=15, `0005`=1, `0007`=5, `0009`=1, `0011`=2, `0012`=1, `0013`=5, `0014`=1 → **31**.
+*(2026-11-12: conteo histórico de `0004`–`0014`. El núcleo suma hoy **51** tablas
+— migraciones `0015`–`0034`; cifra autorizada en `docs/estado.md` §2.)*
 
 ---
 
-## 2. Legacy `public` — 17 tablas
+## 2. Legacy `public` — 17 tablas *(histórico: retiradas por `0028`, 2026-11-01)*
 
 | Tabla | PK | FKs / unicidad / checks relevantes | Migración |
 |---|---|---|---|
@@ -46,7 +53,7 @@ RLS legacy: habilitado en 15 tablas de `0001` y en `kpis`, con **una sola polít
 
 ---
 
-## 3. Núcleo `nucleo` — 31 tablas por dominio
+## 3. Núcleo `nucleo` — 31 tablas por dominio *(inventario de `0004`–`0014`; ver nota de §1)*
 
 ### 3.1 Maestros y organización (6)
 

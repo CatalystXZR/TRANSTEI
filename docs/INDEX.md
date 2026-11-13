@@ -19,13 +19,14 @@
 
 | Si necesitás saber… | Leé | Tipo |
 |---|---|---|
+| **¿Qué es este sistema y qué tan maduro es?** | [`auditoria/2026-11-12-auditoria-sistema.md`](auditoria/2026-11-12-auditoria-sistema.md) | auditoría |
 | ¿Qué está listo hoy y qué no? | [`estado.md`](estado.md) | estado |
 | ¿Cómo se conecta todo el sistema? | [`mapa-sistema.md`](mapa-sistema.md) | mapa |
 | ¿Dónde se guarda un dato? ¿Qué tablas hay? | [`arquitectura/modelo-datos.md`](arquitectura/modelo-datos.md) | referencia |
-| ¿Qué pantallas, endpoints y módulos existen? | [`arquitectura/modulos.md`](arquitectura/modulos.md) | referencia |
+| ¿Qué pantallas, endpoints y módulos existen? | [`_archivo/modulos.md`](_archivo/modulos.md) | histórico |
 | ¿Cómo funciona la disponibilidad / reservas? | [`arquitectura/nucleo-diseno.md`](arquitectura/nucleo-diseno.md) | diseño |
 | ¿Cómo viaja un dato de la pantalla a la tabla? | [`arquitectura/flujos.md`](arquitectura/flujos.md) | trazabilidad |
-| ¿`public` o `nucleo` es la fuente de verdad de X? | [`arquitectura/fuentes-de-verdad.md`](arquitectura/fuentes-de-verdad.md) | decisión |
+| ¿Qué esquema es la fuente de verdad de cada dato? | [`arquitectura/fuentes-de-verdad.md`](arquitectura/fuentes-de-verdad.md) | decisión |
 | ¿Qué falta respecto del ERP objetivo? | [`arquitectura/capacidades-objetivo.md`](arquitectura/capacidades-objetivo.md) | brecha |
 | ¿Cuál es la regla de comisión, tarifa, OC, IVA? | [`negocio/catalogo-reglas.md`](negocio/catalogo-reglas.md) | regla |
 | ¿Dónde se implementa esa regla en el código? | [`negocio/implementacion.md`](negocio/implementacion.md) | trazabilidad |
@@ -34,7 +35,7 @@
 | ¿Cuál es el contexto real del negocio? | [`negocio/contexto.md`](negocio/contexto.md) | contexto |
 | ¿Quién es cada rol del agente y qué puede ver? | [`negocio/agente-whatsapp-roles.md`](negocio/agente-whatsapp-roles.md) | regla |
 | ¿Cómo levanto el entorno local? | [`operacion/setup-local.md`](operacion/setup-local.md) | guía |
-| ¿Cómo se hace el cutover sin perder datos? | [`operacion/cutover.md`](operacion/cutover.md) | runbook |
+| ¿Cómo se retiró el legacy y se ejecutó el cutover? | [`_archivo/cutover.md`](_archivo/cutover.md) + [`arquitectura/retiro-legacy.md`](arquitectura/retiro-legacy.md) | histórico |
 | ¿Cómo respaldo y restauro? | [`operacion/backup-restore.md`](operacion/backup-restore.md) | runbook |
 | ¿Cómo despliego a la nube? | [`operacion/deploy-cloud.md`](operacion/deploy-cloud.md) | contingencia |
 | ¿Qué garantiza PostgreSQL? | [`datos/garantias.md`](datos/garantias.md) | garantía |
@@ -55,7 +56,7 @@
 | ¿Qué se hizo, en qué orden y con qué evidencia? | [`orquestacion/registro.md`](orquestacion/registro.md) | bitácora |
 | ¿Qué se intentó antes y por qué se descartó? | [`_archivo/README.md`](_archivo/README.md) | histórico |
 | ¿Cuál es el alcance del piloto de 90 días? | [`arquitectura/alcance-piloto.md`](arquitectura/alcance-piloto.md) | alcance |
-| ¿Cómo se retira el legacy? | [`arquitectura/retiro-legacy.md`](arquitectura/retiro-legacy.md) | borrador |
+| ¿Cómo se retiró el legacy? | [`arquitectura/retiro-legacy.md`](arquitectura/retiro-legacy.md) | cerrado |
 | ¿Cuál es el destino modular? | [`arquitectura/destino-modular.md`](arquitectura/destino-modular.md) | propuesta |
 | ¿Qué contradicciones tenía el plan maestro? | [`arquitectura/matriz-plan-vs-codigo.md`](arquitectura/matriz-plan-vs-codigo.md) | análisis |
 
@@ -65,27 +66,26 @@
 
 | Documento | Responde | Verificado | Método |
 |---|---|---|---|
-| `estado.md` | ¿qué está listo? | 2026-10-29 | ejecución + lectura |
-| `mapa-sistema.md` | ¿cómo se conecta todo? | 2026-10-29 | lectura estática |
+| `auditoria/2026-11-12-auditoria-sistema.md` | ¿qué es el sistema, qué está listo y qué falta? | 2026-11-12 | ejecución + lectura |
+| `estado.md` | ¿qué está listo? | 2026-11-12 | ejecución + lectura |
+| `mapa-sistema.md` | ¿cómo se conecta todo? | 2026-11-12 | lectura estática |
 | `arquitectura/modelo-datos.md` | ¿dónde se guarda? | 2026-10-29 | lectura de DDL |
-| `arquitectura/modulos.md` | ¿qué existe? | 2026-10-29 | lectura de routers/páginas |
 | `arquitectura/nucleo-diseno.md` | ¿cómo funciona el núcleo? | 2026-10-29 | lectura de DDL + servicios |
 | `arquitectura/flujos.md` | ¿cómo fluye un dato? | 2026-10-29 | lectura estática |
-| `arquitectura/fuentes-de-verdad.md` | ¿qué esquema manda? | 2026-10-29 | lectura estática |
+| `arquitectura/fuentes-de-verdad.md` | ¿qué esquema manda? | 2026-11-12 | lectura estática |
 | `arquitectura/capacidades-objetivo.md` | ¿qué falta? | 2026-10-29 | lectura estática |
-| `arquitectura/deuda.md` | ¿qué deuda hay? | 2026-10-29 | consolidación |
+| `arquitectura/deuda.md` | ¿qué deuda hay? | 2026-11-12 | consolidación |
 | `negocio/catalogo-reglas.md` | ¿cuál es la regla? | 2026-10-29 | lectura + auditoría |
 | `negocio/implementacion.md` | ¿dónde se implementa? | 2026-10-29 | lectura de código |
 | `negocio/kpis.md` | ¿cómo se calcula? | 2026-10-29 | lectura de código |
 | `negocio/preguntas.md` | ¿qué está bloqueado? | 2026-10-31 | consolidación |
 | `negocio/contexto.md` | ¿cuál es el negocio? | 2026-10-29 | fuente: dueño |
 | `operacion/setup-local.md` | ¿cómo levanto? | 2026-10-29 | lectura + ejecución |
-| `operacion/cutover.md` | ¿cómo migro? | 2026-10-29 | lectura de scripts |
 | `operacion/backup-restore.md` | ¿cómo respaldo? | 2026-10-29 | lectura de scripts |
 | `operacion/deploy-cloud.md` | ¿cómo despliego? | 2026-10-29 | lectura |
-| `datos/garantias.md` | ¿qué garantiza la DB? | 2026-10-29 | lectura de DDL |
-| `datos/invariantes.md` | ¿qué no está garantizado? | 2026-10-30 | lectura de DDL |
-| `datos/catalogo-migraciones.md` | ¿qué hace cada migración? | 2026-10-30 | lectura de DDL |
+| `datos/garantias.md` | ¿qué garantiza la DB? | 2026-11-12 (aviso) | lectura de DDL |
+| `datos/invariantes.md` | ¿qué no está garantizado? | 2026-11-12 (aviso) | lectura de DDL |
+| `datos/catalogo-migraciones.md` | ¿qué hace cada migración? | 2026-11-12 (`0035`) | lectura de DDL |
 | `datos/agente-esquema.md` | ¿qué persiste el agente? | 2026-10-30 | catálogo + ejecución |
 | `negocio/agente-whatsapp-roles.md` | ¿quién puede qué en el agente? | 2026-10-30 | fuente: dueño |
 | `desarrollo/guia.md` | ¿cómo codeo acá? | 2026-10-29 | lectura |
@@ -161,4 +161,4 @@ Cada agente escribe solo en su carpeta. Esta tabla es el contrato vigente.
 
 ---
 
-*Última reorganización: 2026-10-29. Historial en `orquestacion/registro.md`.*
+*Última reorganización: 2026-11-12 (legacy eliminado; `modulos.md` y `cutover.md` archivados). Historial en `orquestacion/registro.md`.*

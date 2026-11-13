@@ -1,18 +1,20 @@
 # Núcleo operacional v2 — diseño, riesgos y operación
 
 > **Pregunta que responde:** ¿cómo funciona el schema `nucleo` y su motor de disponibilidad?
-> **Dueño:** `arquitectura` · **Verificado:** 2026-10-29 · **Método:** lectura de DDL `0004`–`0019` y servicios
+> **Dueño:** `arquitectura` · **Verificado:** 2026-10-29 · **Revisado:** 2026-11-12 (retiro de `public`) · **Método:** lectura de DDL `0004`–`0019` y servicios
 > **Caduca si:** cambia una migración del núcleo o `servicio_disponibilidad.py`.
 > **Re-verificar con:** `grep -c "exclude using gist" supabase/migrations/0004_nucleo_operacional.sql`
-
-
-**Versión:** 1.0  
-**Fecha:** Octubre 2026  
-**Alcance:** Fase 1 del Plan Maestro (piloto 90 días): empresa, flota, choferes, OC, tarifas, viaje, disponibilidad, cumplimiento documental y auditoría.
 
 ---
 
 ## 1. Decisión de arquitectura: schema `nucleo`, no un big bang
+
+*(2026-11-12: esta sección describe la decisión y el plan de estrangulamiento tal
+como se escribieron en octubre de 2026. El plan **ya se ejecutó**: el cutover
+corrió el 2026-11-01 (`docs/_archivo/cutover-ejecutado-2026-11-01.md`), `public`
+fue retirado físicamente por `0028` y el código legacy/cutover fue eliminado del
+repo el 2026-11-12. Hoy el MVP **es** `nucleo`; la regla de cutover de abajo ya
+no describe una ventana futura sino la restricción que se aplicó.)*
 
 El MVP actual vive en `public` (`clientes`, `tractos`, `viajes`, …). El nuevo núcleo vive en el schema PostgreSQL **`nucleo`**. Esto permite:
 
@@ -311,6 +313,13 @@ values ('<uuid-empresa>', '<auth_id-supabase>', 'admin');
 
 ## 9. Migración desde el MVP y siguientes pasos
 
+*(2026-11-12: el "cutover recomendado" de abajo **ya se ejecutó** en su versión
+revisada por el ADR-0002 (Ola D, 2026-11-01): maestros reconciliados 3/3, 6
+pautas migradas, 0 viajes legacy; luego `0028` retiró `public` y se eliminó el
+código de cutover del repo. El paso 7 ("mantener `public` como histórico")
+quedó superado: el histórico vive en `nucleo` y en el backup P0 de `0028`.
+Evidencia: `docs/_archivo/cutover-ejecutado-2026-11-01.md`, `docs/estado.md` §3–§4.)*
+
 ### Cutover recomendado
 
 1. Crear empresa TEI y membresías.
@@ -319,7 +328,7 @@ values ('<uuid-empresa>', '<auth_id-supabase>', 'admin');
 4. Migrar tarifas y OC abiertas.
 5. Migrar viajes abiertos a `nucleo.viajes`, con recursos y ventana; generar `numero_viaje` con `siguiente_folio`.
 6. Apagar escritura de asignaciones en `public.viajes`; conmutar la mesa de despacho a `/api/v1/nucleo`.
-7. Mantener `public` como histórico de solo lectura hasta el cierre del piloto.
+7. Mantener `public` como histórico de solo lectura hasta el cierre del piloto. *(2026-11-12: superado — `public` fue retirado por `0028`.)*
 
 ### Limitaciones conocidas
 
