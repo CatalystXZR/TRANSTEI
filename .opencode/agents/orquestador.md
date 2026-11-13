@@ -61,7 +61,7 @@ permissions:
     effect: allow
   - action: shell
     resource: "git push*"
-    effect: deny
+    effect: allow
   - action: shell
     resource: "git reset --hard*"
     effect: deny

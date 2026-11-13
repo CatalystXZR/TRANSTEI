@@ -30,7 +30,7 @@
     { "action": "shell", "resource": "scp *", "effect": "deny" },
     { "action": "shell", "resource": "nc *", "effect": "deny" },
 
-    { "action": "shell", "resource": "git push *", "effect": "deny" },
+    { "action": "shell", "resource": "git push *", "effect": "allow" },
     { "action": "shell", "resource": "git reset --hard *", "effect": "deny" },
     { "action": "shell", "resource": "git clean *", "effect": "deny" },
     { "action": "shell", "resource": "git checkout -- *", "effect": "deny" },
